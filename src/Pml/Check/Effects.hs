@@ -20,6 +20,7 @@ import Pml.Ast.Type (Effect (..), TypeExpr (..))
 import Pml.Check.Env (ModuleExport (..), TypeEnv, lookupImport, resolveType)
 import Pml.Check.Error (CheckError (..))
 import Pml.Check.Infer (infer)
+import Pml.Check.Overload (classifyOp)
 
 type EffSet = Set Effect
 
@@ -131,11 +132,16 @@ unions :: [EffSet] -> EffSet
 unions = Set.unions
 
 -- | Effects declared on arrows consumed by this application (host ops).
+-- Overloaded pure operators have no principal type when bare; they release
+-- no effects (same as any Pure prelude builtin).
 effectsReleasedByApp :: TypeEnv -> Expr -> [Arg] -> Either CheckError EffSet
-effectsReleasedByApp env f args = do
-  ft <- infer env f
-  ft' <- resolveType env ft
-  pure (peelEffects ft' (appCount args))
+effectsReleasedByApp env f args = case f of
+  EVar (Ident n)
+    | Just _ <- classifyOp n -> pure emptyEffs
+  _ -> do
+    ft <- infer env f
+    ft' <- resolveType env ft
+    pure (peelEffects ft' (appCount args))
 
 appCount :: [Arg] -> Int
 appCount args

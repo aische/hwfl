@@ -25,12 +25,16 @@ authors can write recursive list helpers before cons patterns land.
 Minimal operators that are painful as library functions may be kernel
 builtins (still **Pure**, not host ops):
 
-- arithmetic `+ - * /`
-- comparisons `== != < …`
+- arithmetic `+ - * /` — same numeric sort only (`Int` or `Float`); **no**
+  `String` `+` (use interpolation or `lib/string`)
+- comparisons `== !=` — comparable sorts (bases, plus structural `List` /
+  records); `String` ≅ `FileRef` only via dedicated **path coercibility**
+- ordered `< ≤ > ≥` — same sort among `Int` | `Float` | `String` | `FileRef`
 - boolean `&& || not`
 
-Prefer overloading only where types stay obvious (`==` on comparable
-types). Do not add string `+`; use interpolation or `lib/string`.
+Overloading is resolved at applications of these ops (`Pml.Check.Overload`);
+bare operator references have no principal type. Prefer overloading only
+where types stay obvious.
 
 ## Anti-pattern
 

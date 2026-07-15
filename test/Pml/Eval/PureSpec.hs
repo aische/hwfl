@@ -61,6 +61,24 @@ spec = describe "pure evaluator" $ do
     it "let / arithmetic" $
       evalE "let x = 1\nlet y = 2\nx + y" `shouldBe` Right (VInt 3)
 
+    it "Float arithmetic" $
+      evalE "1.5 + 2.5" `shouldBe` Right (VFloat 4.0)
+
+    it "rejects mixed Int/Float arithmetic" $
+      evalE "1 + 2.0" `shouldSatisfy` isLeft
+
+    it "rejects String +" $
+      evalE "\"a\" + \"b\"" `shouldSatisfy` isLeft
+
+    it "String / Float equality and ord" $ do
+      evalE "\"a\" == \"a\"" `shouldBe` Right (VBool True)
+      evalE "\"a\" != \"b\"" `shouldBe` Right (VBool True)
+      evalE "1.0 < 2.0" `shouldBe` Right (VBool True)
+      evalE "\"a\" < \"b\"" `shouldBe` Right (VBool True)
+
+    it "structural list equality" $
+      evalE "[1, 2] == [1, 2]" `shouldBe` Right (VBool True)
+
     it "if / bool" $
       evalE "if true then 1 else 0" `shouldBe` Right (VInt 1)
 
@@ -80,3 +98,8 @@ spec = describe "pure evaluator" $ do
     it "rejects par" $
       evalE "par for x in xs { x }"
         `shouldBe` Left (show (Unsupported "par is not pure" :: EvalError))
+
+isLeft :: Either a b -> Bool
+isLeft = \case
+  Left _ -> True
+  Right _ -> False

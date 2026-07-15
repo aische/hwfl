@@ -39,6 +39,7 @@ library
         Pml.Check.Error
         Pml.Check.Infer
         Pml.Check.Module
+        Pml.Check.Overload
         Pml.Check.Prelude
         Pml.Check.Project
         Pml.Check.Schema

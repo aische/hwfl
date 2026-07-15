@@ -39,7 +39,10 @@ preludeTypeEnv =
 
 binOps :: [(Ident, TypeExpr)]
 binOps =
-  [ (Ident "+", numBin),
+  [ -- Overloaded kernels: applications are typed by 'Pml.Check.Overload'.
+    -- Stubs remain so the prelude env is complete; bare uses are rejected
+    -- by Infer (no principal type without operands).
+    (Ident "+", numBin),
     (Ident "-", numBin),
     (Ident "*", numBin),
     (Ident "/", numBin),
@@ -53,8 +56,8 @@ binOps =
     (Ident "||", boolBin)
   ]
 
--- | Numeric binaries are typed as Int->Int->Int at check time.
--- Float uses are accepted via a narrow special case in application.
+-- | Int default instance shown in the prelude table; Float/String dispatch
+-- lives in 'Pml.Check.Overload' (same-sort; no String @+@).
 numBin :: TypeExpr
 numBin = TFun (t "Int") (TFun (t "Int") (t "Int"))
 

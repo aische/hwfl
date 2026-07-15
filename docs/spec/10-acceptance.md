@@ -59,7 +59,7 @@
 ### Post-M8 (not yet milestone-numbered)
 
 - [x] **M9** — project-wide `pml check`: `project.json` + import graph
-- [ ] Float / `==` polymorphism cleanup
+- [x] Float / `==` polymorphism cleanup
 - [ ] `llm.object` runtime (E14); `llm.agent-object` + submit tool
 - [ ] Alternate `LlmProvider` adapter — low priority swap proof
 
@@ -69,7 +69,7 @@
 default substrate for all new agent work vs hwfi:
 
 - **Ongoing fitness:** resume, span comprehension, semantic-check-class ergonomics
-- **Next language/runtime:** Float/`==` cleanup; `llm.object` / `llm.agent-object`
+- **Next language/runtime:** `llm.object` / `llm.agent-object`
 - **Deferred / low priority:** second LLM provider adapter (interface already exists)
 
 ## 4. Explicit non-acceptance

@@ -4,11 +4,10 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now
 
-- [ ] Float / `==` polymorphism cleanup (replace M8 String/Float special-cases)
+- [ ] `llm.object` + schema reflection at runtime (E14)
 
 ## Next
 
-- [ ] `llm.object` + schema reflection at runtime (E14)
 - [ ] `llm.agent-object` with synthetic `submit` tool (structured output + tools)
 
 ## Later
@@ -37,3 +36,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] M8 follow-up: valid JSON semantic report in run folder; `json.encode`; `ctx` (2026-07-15)
 - [x] Full kont / `machine_json` codec (M5)
 - [x] M9 project-wide `pml check` (`project.json` + import graph) (2026-07-15)
+- [x] Float / `==` polymorphism cleanup (2026-07-15)

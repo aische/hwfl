@@ -57,8 +57,38 @@ spec = describe "type checker" $ do
       inferE "let x = 1\nlet y = 2\nx + y"
         `shouldBe` Right (TName (TypeName "Int"))
 
+    it "infers Float arithmetic as Float" $
+      inferE "1.5 + 2.0" `shouldBe` Right (TName (TypeName "Float"))
+
+    it "rejects mixed Int/Float arithmetic" $
+      inferE "1 + 2.0" `shouldSatisfy` isLeft
+
+    it "rejects String +" $
+      inferE "\"a\" + \"b\"" `shouldSatisfy` isLeft
+
+    it "overloads == on String and Float" $ do
+      inferE "\"a\" == \"b\"" `shouldBe` Right (TName (TypeName "Bool"))
+      inferE "1.0 == 2.0" `shouldBe` Right (TName (TypeName "Bool"))
+
+    it "overloads ordered comparison on String and Float" $ do
+      inferE "\"a\" < \"b\"" `shouldBe` Right (TName (TypeName "Bool"))
+      inferE "1.0 < 2.0" `shouldBe` Right (TName (TypeName "Bool"))
+
+    it "accepts structural list/record equality" $ do
+      inferE "[1, 2] == [1, 2]" `shouldBe` Right (TName (TypeName "Bool"))
+      inferE "{ a = 1 } == { a = 1 }" `shouldBe` Right (TName (TypeName "Bool"))
+
+    it "rejects bare overloaded operator" $
+      inferE "==" `shouldSatisfy` isLeft
+
     it "rejects Bool used as Int" $
       inferE "1 + true" `shouldSatisfy` isLeft
+
+    it "accepts String where FileRef is required (path coercibility)" $
+      checkBody
+        "fun read_it(p: FileRef): { text: String } =\n  fs.read(p)\n\
+        \fun main(_: Unit): { text: String } =\n  read_it(\"notes.md\")"
+        `shouldSatisfy` isRight
 
     it "rejects Secret in interpolation" $
       checkBody

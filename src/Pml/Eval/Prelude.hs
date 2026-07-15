@@ -1,4 +1,9 @@
 -- | Pure prelude builtins (arithmetic, comparisons, bool, list, text) — not host ops.
+--
+-- Overload rules mirror 'Pml.Check.Overload':
+-- * arith: Int+Int or Float+Float only (no String @+@, no mixed sorts)
+-- * ord: matching Int, Float, or String (FileRef is a path string at runtime)
+-- * eq: structural for comparable values; traps on closures / host / secrets
 module Pml.Eval.Prelude
   ( preludeEnv,
     applyBuiltin,
@@ -166,8 +171,14 @@ ord2 fi ff fs a b = case (a, b) of
   (VInt x, VInt y) -> Right (VBool (fi x y))
   (VFloat x, VFloat y) -> Right (VBool (ff x y))
   (VString x, VString y) -> Right (VBool (fs x y))
-  _ -> Left (Trap "ordered comparison expects matching Int, Float, or String")
+  _ ->
+    Left
+      ( Trap
+          "ordered comparison expects matching Int, Float, or String (FileRef is a path string)"
+      )
 
+-- | Structural equality for comparable values (aligned with check overloading).
+-- Non-comparable payloads (closures, host ops, secrets, …) trap.
 valueEq :: Value -> Value -> Either EvalError Bool
 valueEq a b = case (a, b) of
   (VClosure {}, _) -> Left (Trap "cannot compare closures")
@@ -182,6 +193,11 @@ valueEq a b = case (a, b) of
   (_, VToolSpec {}) -> Left (Trap "cannot compare tool specs")
   (VSecret {}, _) -> Left (Trap "cannot compare secrets")
   (_, VSecret {}) -> Left (Trap "cannot compare secrets")
+  (VUnit, VUnit) -> Right True
+  (VBool x, VBool y) -> Right (x == y)
+  (VInt x, VInt y) -> Right (x == y)
+  (VFloat x, VFloat y) -> Right (x == y)
+  (VString x, VString y) -> Right (x == y)
   (VRecord fs, VRecord gs) ->
     let fs' = Map.toList (Map.fromList fs)
         gs' = Map.toList (Map.fromList gs)
@@ -197,7 +213,14 @@ valueEq a b = case (a, b) of
         (Nothing, Nothing) -> Right True
         (Just x, Just y) -> valueEq x y
         _ -> Right False
-  _ -> Right (a == b)
+  (VUnit, _) -> Right False
+  (VBool {}, _) -> Right False
+  (VInt {}, _) -> Right False
+  (VFloat {}, _) -> Right False
+  (VString {}, _) -> Right False
+  (VRecord {}, _) -> Right False
+  (VList {}, _) -> Right False
+  (VVariant {}, _) -> Right False
 
 arityOrType :: Text -> Int -> [Value] -> Either EvalError Value
 arityOrType name n args

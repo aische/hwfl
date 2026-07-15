@@ -96,6 +96,26 @@ exactness and provide `pick` in stdlib.
 No depth subtyping variance complexity beyond `Option`/`List` covariance
 if easy; otherwise invariant.
 
+### 5.1 Path coercibility (`String` ≅ `FileRef`)
+
+Dedicated rule (not general subtyping): a `String` path literal may be
+used where `FileRef` is expected, and `==` / `!=` may compare `String` with
+`FileRef`. Runtime `FileRef` is a workspace path string. This does **not**
+make `String` and `FileRef` interchangeable elsewhere (e.g. no `String` `+`).
+
+### 5.2 Overloaded operators
+
+Applications of `+ - * /`, `== !=`, and ordered comparisons are overloaded
+by operand sort (`Pml.Check.Overload`):
+
+| Class | Allowed same-sort operands | Result |
+|-------|------------------------------|--------|
+| arith | `Int` or `Float` (no mix, no `String`) | same numeric type |
+| eq | comparable bases; structural `List`/`Record` of comparables; path rule | `Bool` |
+| ord | `Int` \| `Float` \| `String` \| `FileRef` | `Bool` |
+
+Bare overloaded operators (not applied) are check errors.
+
 ## 6. Null vs Option
 
 Interop with JSON `null`:
