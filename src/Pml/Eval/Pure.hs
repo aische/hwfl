@@ -7,6 +7,7 @@ module Pml.Eval.Pure
   ( eval,
     evalArgs,
     applyValue,
+    bindParams,
     matchPat,
   )
 where
@@ -98,8 +99,11 @@ applyValue f args = case f of
   VClosure params body cloEnv -> do
     binds <- bindParams params args
     eval (extendEnvMany binds cloEnv) body
+  VHostOp op ->
+    Left (Trap ("host op outside runtime driver: " <> hostOpName op))
   _ -> Left (Trap "applied a non-function value")
 
+-- | Bind positional or named args to parameters (shared with the host runtime).
 bindParams :: [Param] -> [(Maybe Ident, Value)] -> Either EvalError [(Ident, Value)]
 bindParams params args
   | any (isJust . fst) args && any (isNothing . fst) args =

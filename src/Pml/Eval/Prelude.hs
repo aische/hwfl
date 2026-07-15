@@ -92,6 +92,8 @@ valueEq a b = case (a, b) of
   (_, VClosure {}) -> Left (Trap "cannot compare closures")
   (VBuiltin {}, _) -> Left (Trap "cannot compare builtins")
   (_, VBuiltin {}) -> Left (Trap "cannot compare builtins")
+  (VHostOp {}, _) -> Left (Trap "cannot compare host ops")
+  (_, VHostOp {}) -> Left (Trap "cannot compare host ops")
   (VRecord fs, VRecord gs) ->
     let fs' = Map.toList (Map.fromList fs)
         gs' = Map.toList (Map.fromList gs)

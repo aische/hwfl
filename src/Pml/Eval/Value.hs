@@ -7,6 +7,8 @@ module Pml.Eval.Value
     extendEnv,
     extendEnvMany,
     Builtin (..),
+    HostOpId (..),
+    hostOpName,
     renderValue,
   )
 where
@@ -50,6 +52,14 @@ data Builtin
   | BNot
   deriving stock (Eq, Show)
 
+-- | Host operation identity (runtime only). Typed stubs stay in Check.Prelude;
+-- this is the eval/runtime mirror, not a second API surface.
+data HostOpId
+  = HostFsRead
+  | HostFsWrite
+  | HostLlmChat
+  deriving stock (Eq, Ord, Show)
+
 data Value
   = VUnit
   | VBool Bool
@@ -63,6 +73,8 @@ data Value
   | -- | Closure over parameter names and body.
     VClosure [Param] Expr Env
   | VBuiltin Builtin
+  | -- | Host op callable (fs.read, llm.chat, …). Only the runtime driver applies these.
+    VHostOp HostOpId
   deriving stock (Eq, Show)
 
 -- | Text rendering for string interpolation (hwfi §3.2.1 / types §3.1 subset).
@@ -87,6 +99,14 @@ renderValue = \case
     pure (t <> "(" <> inner <> ")")
   VClosure {} -> Left "cannot render a closure as text"
   VBuiltin {} -> Left "cannot render a builtin as text"
+  VHostOp op -> Left ("cannot render host op as text: " <> hostOpName op)
+
+-- | Stable dotted name for spans / snapshots.
+hostOpName :: HostOpId -> Text
+hostOpName = \case
+  HostFsRead -> "fs.read"
+  HostFsWrite -> "fs.write"
+  HostLlmChat -> "llm.chat"
 
 renderJsonish :: Value -> Either Text Text
 renderJsonish = \case

@@ -4,15 +4,17 @@ Last updated: 2026-07-15
 
 ## Current focus
 
-**M3 complete** — effect lattice on load check; `pml check <module.md>`.
-Next: **M4** host runtime + `LlmProvider` + snapshots.
+**M4 complete** — host FS sandbox, `LlmProvider`, boundary snapshots, `pml run`.
+Next: **M5** `par` + `confirm` + resume / `--step`.
 
 ## Done recently
 
-- `Pml.Check.Effects`: infer residual effects; `effects:` ceiling (absent ⇒ pure)
-- Host stubs: `fs`/`llm`/`human`/`exec` use `TEffFun`; `par`/`join`/`confirm` typed + Parallel/Human
-- CLI: `pml check` single-module (project.json graph deferred; stderr note)
-- E12 reject + summarise `[Read, Net]` green; 52 tests
+- Workspace sandbox (`Pml.Runtime.Workspace`): lexical + canonicalize containment
+- Host runtime for `fs.read` / `fs.write` / `llm.chat` (same surface as check stubs)
+- `LlmProvider` + mock (tests) + `Pml.Llm.Simple` (llm-simple default); workflows isolated
+- Boundary snapshots after each host op under `.pml/runs/<id>/` (full kont JSON → M5)
+- CLI: `pml run <module.md> [--workspace] [--input k=v…] [--llm-provider mock|simple]`
+- E03/E04 mock path green; sandbox escape rejected; 66 tests
 
 ## Blockers
 
@@ -20,9 +22,8 @@ None.
 
 ## Next up
 
-1. **M4** — Host ops + `LlmProvider` + snapshots
-2. **M5** — `par` + `confirm` + resume / `--step`
-3. Later: Float/`==` polymorphism; project-wide `pml check` graph
+1. **M5** — `par` + `confirm` + resume / `--step` (full `machine_json`)
+2. Later: Float/`==` polymorphism; project-wide `pml check` graph; spans/`show` (M6)
 
 ## Open naming
 

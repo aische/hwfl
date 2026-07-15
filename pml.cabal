@@ -46,6 +46,10 @@ library
         Pml.Eval.Prelude
         Pml.Eval.Pure
         Pml.Eval.Value
+        Pml.Llm.Mock
+        Pml.Llm.Provider
+        Pml.Llm.Simple
+        Pml.Llm.Types
         Pml.Parse.Expr
         Pml.Parse.Frontmatter
         Pml.Parse.Lexer
@@ -55,19 +59,29 @@ library
         Pml.Parse.Pat
         Pml.Parse.Section
         Pml.Parse.Type
+        Pml.Runtime.Error
+        Pml.Runtime.Eval
+        Pml.Runtime.Host
+        Pml.Runtime.Run
+        Pml.Runtime.Snapshot
+        Pml.Runtime.Workspace
         Pml.Source
     build-depends:
         base                 ^>=4.18,
         aeson                >=2.0  && <2.3,
+        bytestring           >=0.11 && <0.13,
         commonmark           >=0.2  && <0.3,
         containers           ^>=0.6.7,
+        directory            >=1.3  && <1.4,
+        filepath             >=1.4  && <1.6,
+        llm-simple           ^>=0.1.0.1,
         megaparsec           >=9.0  && <10,
         parsec               >=3.1  && <3.2,
         parser-combinators   >=1.2  && <1.4,
         text                 >=1.2  && <2.2,
+        time                 >=1.11 && <1.15,
         vector               >=0.12 && <0.14,
-        yaml                 >=0.11 && <0.12,
-        bytestring           >=0.11 && <0.13
+        yaml                 >=0.11 && <0.12
 
 executable pml
     import:           opts
@@ -79,6 +93,7 @@ executable pml
         "-with-rtsopts=-N"
     build-depends:
         base,
+        directory,
         pml,
         text
 
@@ -97,17 +112,23 @@ test-suite pml-test
         Pml.Check.ModuleSpec
         Pml.Check.SchemaSpec
         Pml.Eval.PureSpec
+        Pml.Llm.ProviderSpec
         Pml.Parse.ExprSpec
         Pml.Parse.LoadSpec
         Pml.Parse.ModuleSpec
         Pml.Parse.SectionSpec
         Pml.Parse.TypeSpec
+        Pml.Runtime.RunSpec
+        Pml.Runtime.WorkspaceSpec
     build-depends:
         base,
         pml,
         aeson,
         containers,
+        directory,
+        filepath,
         hspec                >=2.10 && <2.12,
         megaparsec,
+        temporary            >=1.3  && <1.4,
         text,
         vector

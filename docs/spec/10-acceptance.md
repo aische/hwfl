@@ -31,10 +31,10 @@
 - [x] `pml check` usable
 
 ### M4 — Host + LLM + snapshots
-- [ ] Workspace FS ops + sandbox tests
-- [ ] `LlmProvider` + llm-simple adapter
-- [ ] Snapshots after host transitions
-- [ ] `pml run` end-to-end summarise example
+- [x] Workspace FS ops + sandbox tests
+- [x] `LlmProvider` + llm-simple adapter
+- [x] Snapshots after host transitions
+- [x] `pml run` end-to-end summarise example
 
 ### M5 — Concurrency & human
 - [ ] `par` with bound + ordered results

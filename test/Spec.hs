@@ -4,11 +4,14 @@ import Pml.Ast.PrettySpec
 import Pml.Check.ModuleSpec
 import Pml.Check.SchemaSpec
 import Pml.Eval.PureSpec
+import Pml.Llm.ProviderSpec
 import Pml.Parse.ExprSpec
 import Pml.Parse.LoadSpec
 import Pml.Parse.ModuleSpec
 import Pml.Parse.SectionSpec
 import Pml.Parse.TypeSpec
+import Pml.Runtime.RunSpec
+import Pml.Runtime.WorkspaceSpec
 import Test.Hspec
 
 main :: IO ()
@@ -22,3 +25,6 @@ main = hspec $ do
   Pml.Eval.PureSpec.spec
   Pml.Check.ModuleSpec.spec
   Pml.Check.SchemaSpec.spec
+  Pml.Llm.ProviderSpec.spec
+  Pml.Runtime.WorkspaceSpec.spec
+  Pml.Runtime.RunSpec.spec
