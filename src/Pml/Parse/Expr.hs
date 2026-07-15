@@ -234,6 +234,7 @@ primary =
   choice
     [ EInterp <$> try interpString,
       ESection <$> try sectionRef,
+      try schemaExpr,
       try qnameExpr,
       EVar <$> try pIdent,
       ELit <$> try literal,
@@ -241,6 +242,12 @@ primary =
       ERecord <$> recordLit,
       between (symbol "(") (symbol ")") expr
     ]
+
+-- | @schema(T)@ — type argument, not a value application.
+schemaExpr :: Parser Expr
+schemaExpr = do
+  _ <- symbol "schema"
+  ESchema <$> between (symbol "(") (symbol ")") typeExpr
 
 sectionRef :: Parser Slug
 sectionRef = lexeme $ do

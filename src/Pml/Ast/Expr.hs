@@ -67,4 +67,6 @@ data Expr
   | EJoin [Expr]
   | EConfirm Expr
   | ETry Expr Ident Expr
+  | -- | Check-time schema reflection: @schema(T)@ (types §4).
+    ESchema TypeExpr
   deriving stock (Eq, Show)

@@ -132,6 +132,7 @@ prettyExprPrec prec = \case
   ETry e n h ->
     parenIf (prec > 0) $
       "try " <> prettyExpr e <> " catch (" <> unIdent n <> ") => " <> prettyExpr h
+  ESchema t -> "schema(" <> prettyType t <> ")"
 
 prettyField :: Field -> Text
 prettyField = \case

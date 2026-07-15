@@ -1,6 +1,8 @@
 module Spec (main) where
 
 import Pml.Ast.PrettySpec
+import Pml.Check.ModuleSpec
+import Pml.Check.SchemaSpec
 import Pml.Eval.PureSpec
 import Pml.Parse.ExprSpec
 import Pml.Parse.LoadSpec
@@ -18,3 +20,5 @@ main = hspec $ do
   Pml.Parse.LoadSpec.spec
   Pml.Ast.PrettySpec.spec
   Pml.Eval.PureSpec.spec
+  Pml.Check.ModuleSpec.spec
+  Pml.Check.SchemaSpec.spec

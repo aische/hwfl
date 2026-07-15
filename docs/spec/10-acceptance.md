@@ -22,9 +22,9 @@
 - [x] Unit tests from example suite § pure
 
 ### M2 — Types
-- [ ] Check module I/O vs `main`
-- [ ] Local inference good enough for examples
-- [ ] `schema(T)` for records/lists
+- [x] Check module I/O vs `main`
+- [x] Local inference good enough for examples
+- [x] `schema(T)` for records/lists
 
 ### M3 — Effects + `check` CLI
 - [ ] Effect lattice enforced

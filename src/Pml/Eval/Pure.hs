@@ -59,6 +59,7 @@ eval env = \case
   EJoin {} -> Left (Unsupported "join is not pure")
   EConfirm {} -> Left (Unsupported "confirm is not pure")
   ETry {} -> Left (Unsupported "try/catch is not pure")
+  ESchema {} -> Left (Unsupported "schema(T) is check-time only")
 
 literalValue :: Literal -> Value
 literalValue = \case
