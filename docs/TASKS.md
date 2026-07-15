@@ -6,13 +6,22 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 - [ ] Full `pml check` project.json + import graph
 
+## Next
+
+After project-wide check lands:
+
+- [ ] Float / `==` polymorphism cleanup (replace M8 String/Float special-cases)
+- [ ] `llm.object` + schema reflection at runtime (E14)
+- [ ] `llm.agent-object` with synthetic `submit` tool (structured output + tools)
+
 ## Later
 
-- [x] Full kont / `machine_json` codec (M5)
-- [ ] Alternate `LlmProvider` (e.g. direct OpenAI/Anthropic SDK) as proof of swap
 - [ ] Streaming LLM spans
 - [ ] Optional DB-backed run store (hwfi M5 analogue)
 - [ ] Polymorphic `obs.span` check type (v0 approximates Unit→Unit)
+- [ ] Alternate `LlmProvider` (e.g. direct OpenAI/Anthropic SDK) — **low priority**;
+  `LlmProvider` interface is shipped; second adapter is swap proof only, not a
+  capability blocker
 
 ## Done
 
@@ -28,3 +37,5 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] M6 spans.jsonl + `pml show` + redaction (2026-07-15)
 - [x] M7 `llm.agent` loop + `tool(f)` typed tools (2026-07-15)
 - [x] M8 slim semantic-check dogfood + LOC/file delta vs hwfi (2026-07-15)
+- [x] M8 follow-up: valid JSON semantic report in run folder; `json.encode`; `ctx` (2026-07-15)
+- [x] Full kont / `machine_json` codec (M5)

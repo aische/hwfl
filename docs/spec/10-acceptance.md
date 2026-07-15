@@ -7,7 +7,7 @@
 | Author files for semantic-check-class workflow | ≪ hwfi’s ~70 tools; aim ≤ 15 modules |
 | Resume mid-LLM | Exact stack restore; at-most duplicate that call |
 | Failed-run comprehension | `pml show --tree` sufficient without reading JSON dumps |
-| Provider swap | Second adapter selectable; one test green |
+| Provider swap | Second adapter selectable; one test green — **low priority**; `LlmProvider` record already ships |
 
 ## 2. Milestones
 
@@ -56,12 +56,21 @@
 - [x] Compare file count / LOC to hwfi example
 - [x] Decision log entry with results
 
+### Post-M8 (not yet milestone-numbered)
+
+- [ ] **M9 (proposed)** — project-wide `pml check`: `project.json` + import graph
+- [ ] Float / `==` polymorphism cleanup
+- [ ] `llm.object` runtime (E14); `llm.agent-object` + submit tool
+- [ ] Alternate `LlmProvider` adapter — low priority swap proof
+
 ## 3. v0 release gate
 
-**Milestones M0–M8 are complete** (2026-07-15). Ongoing fitness metrics in
-§1 still apply — especially **provider swap** and **project-wide
-`pml check`** — before treating pml as the default substrate for all new
-agent work vs hwfi.
+**Milestones M0–M8 are complete** (2026-07-15). Before treating pml as the
+default substrate for all new agent work vs hwfi:
+
+- **Required next:** project-wide **`pml check`** (import graph, multi-module)
+- **Ongoing fitness:** resume, span comprehension, semantic-check-class ergonomics
+- **Deferred / low priority:** second LLM provider adapter (interface already exists)
 
 ## 4. Explicit non-acceptance
 
