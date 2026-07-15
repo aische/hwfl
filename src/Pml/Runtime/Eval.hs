@@ -67,6 +67,7 @@ import Pml.Runtime.Error (RuntimeError (..))
 import Pml.Runtime.Host (HostEnv (..), HostResult (..), runHostOp)
 import Pml.Runtime.Machine
 import Pml.Runtime.Snapshot (RunStore (..), persistTransition)
+import Data.Maybe (fromMaybe)
 
 data RunCtx = RunCtx
   { rcHost :: HostEnv,
@@ -134,7 +135,7 @@ applyIO ctx f args = case openApply ctx f args of
 resultOf :: Machine -> Either RuntimeError Value
 resultOf m = case m.mStatus of
   MsCompleted -> maybe (Left (EvalErr (Trap "completed without result"))) Right m.mLastResult
-  MsFailed -> Left (maybe (EvalErr (Trap "failed")) id m.mError)
+  MsFailed -> Left (fromMaybe (EvalErr (Trap "failed")) m.mError)
   MsPaused (PauseAwaitingConfirm _) ->
     Left (EvalErr (Unsupported "paused on confirm; use approve/resume"))
   other -> Left (EvalErr (Trap ("stopped: " <> T.pack (show other))))
@@ -509,7 +510,7 @@ stepAgentTool ctx mode m ag tr
             let bm' = sr.srMachine
              in case bm'.mStatus of
                   MsCompleted ->
-                    let v = maybe VUnit id bm'.mLastResult
+                    let v = fromMaybe VUnit bm'.mLastResult
                      in completeToolCall ctx mode m ag tr (valueToJsonText v)
                   MsFailed ->
                     recoverableTool
@@ -518,7 +519,7 @@ stepAgentTool ctx mode m ag tr
                       m
                       ag
                       tr
-                      (maybe (EvalErr (Trap "tool failed")) id bm'.mError)
+                      (fromMaybe (EvalErr (Trap "tool failed")) bm'.mError)
                   MsPaused (PauseAwaitingConfirm _) -> do
                     let tr' = tr {trActiveMachine = Just (mkBranch bm')}
                         ag' = ag {agToolRound = Just tr'}
@@ -911,7 +912,7 @@ approveMachine yes m = case m.mStatus of
 
 approvePar :: Bool -> ConfirmRequest -> ParJoinState -> [Frame] -> Machine -> Machine
 approvePar yes c pjs rest m =
-  let idx = maybe 0 id c.crBranchIndex
+  let idx = fromMaybe 0 c.crBranchIndex
       pjs' =
         pjs
           { pjsPhase = ParScheduling,
@@ -988,7 +989,7 @@ stepParWith ctx mode m pjs rest
                     ctx
                     mode
                     m
-                    (absorbDone pjs idx (maybe VUnit id bm'.mLastResult))
+                    (absorbDone pjs idx (fromMaybe VUnit bm'.mLastResult))
                     rest
                 MsFailed ->
                   handleAfterBranch

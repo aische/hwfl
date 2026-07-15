@@ -27,7 +27,7 @@ inferModuleEnv :: ModuleBody -> Either CheckError TypeEnv
 inferModuleEnv (ModuleBody decls _) = do
   checkDuplicateFuns decls
   env0 <- foldM addAlias preludeTypeEnv [(n, ty) | DType n ty <- decls]
-  mapM_ (\(n, ty) -> resolveAliasDef env0 n ty) [(n, ty) | DType n ty <- decls]
+  mapM_ (uncurry (resolveAliasDef env0)) [(n, ty) | DType n ty <- decls]
   foldM addFun env0 [(n, ps, mt) | DFun n ps mt _ <- decls]
   where
     addAlias env (n, ty) = insertAlias n ty env
@@ -40,7 +40,7 @@ resolveAliasDef :: TypeEnv -> TypeName -> TypeExpr -> Either CheckError TypeExpr
 resolveAliasDef env root = resolveTypeFrom env [root]
 
 resolveTypeFrom :: TypeEnv -> [TypeName] -> TypeExpr -> Either CheckError TypeExpr
-resolveTypeFrom env stack0 = go stack0
+resolveTypeFrom env = go
   where
     go stack = \case
       TName n
@@ -347,7 +347,7 @@ classifyArgs args
       _ -> False
 
 applyPositional :: TypeEnv -> TypeExpr -> [Expr] -> Either CheckError TypeExpr
-applyPositional env fty es = go fty es
+applyPositional env = go
   where
     go ty [] = Right ty
     go ty args = case funArrow ty of

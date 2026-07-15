@@ -21,7 +21,7 @@ newtype TypeName = TypeName {unTypeName :: Text}
 
 -- | Slash-separated module path (@lib/text@). Host paths like @fs.read@ are
 -- field projection on an identifier, not a 'QName'.
-data QName = QName
+newtype QName = QName
   { qnParts :: [Ident]
   }
   deriving stock (Eq, Ord, Show, Read)

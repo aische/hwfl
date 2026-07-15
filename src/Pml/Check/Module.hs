@@ -9,11 +9,12 @@ module Pml.Check.Module
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Pml.Ast.Decl (Decl (..), ModuleBody (..))
 import Pml.Ast.Expr (Param (..))
@@ -40,7 +41,7 @@ data CheckResult = CheckResult
   }
   deriving stock (Eq, Show)
 
-data ModuleCheckContext = ModuleCheckContext
+newtype ModuleCheckContext = ModuleCheckContext
   { mccImports :: Map Text ModuleExport
   }
   deriving stock (Eq, Show)
@@ -50,7 +51,7 @@ emptyModuleCheckContext = ModuleCheckContext Map.empty
 
 -- | Type-check a kernel module body (no frontmatter I/O or effects ceiling).
 checkModuleBody :: ModuleBody -> Either CheckError CheckResult
-checkModuleBody body = checkModuleBodyInContext emptyModuleCheckContext body
+checkModuleBody = checkModuleBodyInContext emptyModuleCheckContext
 
 checkModuleBodyInContext :: ModuleCheckContext -> ModuleBody -> Either CheckError CheckResult
 checkModuleBodyInContext ctx body@(ModuleBody decls mexpr) = do
@@ -96,8 +97,8 @@ checkLoadedModule loaded = do
   body <- elaborateMainIO fm body0
   result <- checkModuleBodyInContext ctx body
   checkMainIO fm body result.crEnv
-  let ceiling = Set.fromList (fromMaybe [] fm.fmEffects)
-  checkEffectsCeiling ceiling True result.crEffects
+  let ceiling_ = Set.fromList (fromMaybe [] fm.fmEffects)
+  checkEffectsCeiling ceiling_ True result.crEffects
   pure result
 
 checkLoadedModuleInContext ::
@@ -113,8 +114,8 @@ checkLoadedModuleInContext cfg execAllowed importExports loaded = do
   body <- elaborateMainIO fm body0
   result <- checkModuleBodyInContext ctx body
   checkMainIO fm body result.crEnv
-  let ceiling = effectiveEffects cfg fm
-  checkEffectsCeiling ceiling execAllowed result.crEffects
+  let ceiling_ = effectiveEffects cfg fm
+  checkEffectsCeiling ceiling_ execAllowed result.crEffects
   pure result
 
 effectiveEffects :: ProjectConfig -> Frontmatter -> Set Effect
@@ -131,7 +132,7 @@ elaborateMainIO fm body@(ModuleBody decls mexpr)
       (_, []) -> Left MissingMain
       (before, DFun n ps mt b : after) -> do
         ps' <- fillParams ps
-        let mt' = maybe (Just (TRecord fm.fmOutputs)) Just mt
+        let mt' = mt <|> Just (TRecord fm.fmOutputs)
         pure $ ModuleBody (before ++ DFun n ps' mt' b : after) mexpr
       _ -> Left MissingMain
   where
