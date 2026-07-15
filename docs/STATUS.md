@@ -4,17 +4,17 @@ Last updated: 2026-07-15
 
 ## Current focus
 
-**M4 complete** — host FS sandbox, `LlmProvider`, boundary snapshots, `pml run`.
-Next: **M5** `par` + `confirm` + resume / `--step`.
+**M5 complete** — `par` / `confirm` / `step` / `resume` / `approve` with full `machine_json`.
+Next: **M6** span observability + `pml show`.
 
 ## Done recently
 
-- Workspace sandbox (`Pml.Runtime.Workspace`): lexical + canonicalize containment
-- Host runtime for `fs.read` / `fs.write` / `llm.chat` (same surface as check stubs)
-- `LlmProvider` + mock (tests) + `Pml.Llm.Simple` (llm-simple default); workflows isolated
-- Boundary snapshots after each host op under `.pml/runs/<id>/` (full kont JSON → M5)
-- CLI: `pml run <module.md> [--workspace] [--input k=v…] [--llm-provider mock|simple]`
-- E03/E04 mock path green; sandbox escape rejected; 66 tests
+- Frame/CEK runtime (`Pml.Runtime.Machine` + step driver): pure crunch, host/par/confirm transitions
+- `par(max)` ordered results; cooperative freeze when confirm fires inside pool
+- `confirm` / `human.confirm` → `awaiting_confirm`; `pml approve --yes|--no`
+- Snapshots carry `machine_json`; `meta.json` stores entry path + project hash
+- CLI: `pml step|resume <workspace> <run-id>`, `pml approve … --yes|--no`, `pml run --step`
+- Exit 3 on pause; exit 4 on stale project hash; 71 tests
 
 ## Blockers
 
@@ -22,8 +22,8 @@ None.
 
 ## Next up
 
-1. **M5** — `par` + `confirm` + resume / `--step` (full `machine_json`)
-2. Later: Float/`==` polymorphism; project-wide `pml check` graph; spans/`show` (M6)
+1. **M6** — spans.jsonl + `pml show --tree` + redaction
+2. Later: Float/`==` polymorphism; project-wide `pml check` graph; `llm.agent` (M7)
 
 ## Open naming
 

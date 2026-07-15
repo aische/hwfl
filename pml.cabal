@@ -62,6 +62,7 @@ library
         Pml.Runtime.Error
         Pml.Runtime.Eval
         Pml.Runtime.Host
+        Pml.Runtime.Machine
         Pml.Runtime.Run
         Pml.Runtime.Snapshot
         Pml.Runtime.Workspace
@@ -118,6 +119,7 @@ test-suite pml-test
         Pml.Parse.ModuleSpec
         Pml.Parse.SectionSpec
         Pml.Parse.TypeSpec
+        Pml.Runtime.ConcurrentSpec
         Pml.Runtime.RunSpec
         Pml.Runtime.WorkspaceSpec
     build-depends:

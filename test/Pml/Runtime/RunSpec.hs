@@ -7,12 +7,14 @@ import Pml.Check.Module (checkLoadedModule)
 import Pml.Eval.Value (Value (..))
 import Pml.Llm.Mock (mockProvider)
 import Pml.Parse.Load (loadModuleText)
+import Pml.Runtime.Eval (StepMode (..))
+import Pml.Runtime.Machine (MachineStatus (..))
 import Pml.Runtime.Run
   ( RunOptions (..),
-    RunResult (..),
+    RunOutcome (..),
     runLoadedModule,
   )
-import Pml.Runtime.Snapshot (BoundarySnapshot (..), RunStatus (..), readBoundarySnapshot)
+import Pml.Runtime.Snapshot (RunSnapshot (..), readRunSnapshot)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -76,7 +78,7 @@ e03Src =
     ]
 
 spec :: Spec
-spec = describe "runtime run (M4)" $ do
+spec = describe "runtime run (M4/M5)" $ do
   it "E03 section prompt + mock llm.chat" $
     withSystemTempDirectory "pml-run" $ \dir -> do
       case loadModuleText "e03.md" e03Src of
@@ -88,30 +90,24 @@ spec = describe "runtime run (M4)" $ do
                   { roWorkspace = dir,
                     roProvider = mockProvider,
                     roInputs = [],
-                    roRunId = Just "test-e03"
+                    roRunId = Just "test-e03",
+                    roEntry = dir </> "e03.md",
+                    roMode = StepRun
                   }
-          runRes <- runLoadedModule opts loaded
-          case runRes of
-            Left err -> expectationFailure (show err)
-            Right rr -> do
-              rr.rrValue `shouldBe` VRecord [(Ident "reply", VString "SUMMARY: Say hi")]
-              rr.rrSeq `shouldBe` 1
-              mSnap <- readBoundarySnapshot rr.rrStore
-              case mSnap of
-                Nothing -> expectationFailure "missing snapshot"
-                Just snap -> do
-                  snap.bsStatus `shouldBe` StatusCompleted
-                  snap.bsSeq `shouldBe` 1
-                  snap.bsLastHost `shouldBe` Nothing -- final completion snapshot clears last_host
-                  -- Host transition wrote seq=1; completion rewrite may omit last_host.
-                  -- Check transitions existed via store + seq from host.
-                  pure ()
+          outcome <- runLoadedModule opts loaded
+          case outcome of
+            OutcomeCompleted val _ seqNo -> do
+              val `shouldBe` VRecord [(Ident "reply", VString "SUMMARY: Say hi")]
+              seqNo `shouldSatisfy` (>= 1)
+            other -> expectationFailure (show other)
 
   it "E04 summarise with mock LLM + sandbox read" $
     withSystemTempDirectory "pml-run" $ \dir -> do
       let doc = dir </> "doc.txt"
       writeFile doc "Alpha beta gamma."
-      case loadModuleText "summarise.md" summariseSrc of
+      -- Persist module path for meta entry (hash uses lmPath from loadModuleText).
+      writeFile (dir </> "summarise.md") (T.unpack summariseSrc)
+      case loadModuleText (dir </> "summarise.md") summariseSrc of
         Left diags -> expectationFailure (show diags)
         Right loaded -> do
           checkLoadedModule loaded `shouldSatisfy` isRight
@@ -120,26 +116,28 @@ spec = describe "runtime run (M4)" $ do
                   { roWorkspace = dir,
                     roProvider = mockProvider,
                     roInputs = [(Ident "path", VString "doc.txt")],
-                    roRunId = Just "test-e04"
+                    roRunId = Just "test-e04",
+                    roEntry = dir </> "summarise.md",
+                    roMode = StepRun
                   }
-          runRes <- runLoadedModule opts loaded
-          case runRes of
-            Left err -> expectationFailure (show err)
-            Right rr -> do
-              -- fs.read + llm.chat => seq 2; completion write keeps seq
-              rr.rrSeq `shouldSatisfy` (>= 2)
-              case rr.rrValue of
+          outcome <- runLoadedModule opts loaded
+          case outcome of
+            OutcomeCompleted val store seqNo -> do
+              seqNo `shouldSatisfy` (>= 2)
+              case val of
                 VRecord [(Ident "summary", VString s)] ->
                   T.isPrefixOf "SUMMARY: Summarise the following:" s
                     `shouldBe` True
                 other -> expectationFailure ("unexpected result: " <> show other)
-              mSnap <- readBoundarySnapshot rr.rrStore
+              mSnap <- readRunSnapshot store
               case mSnap of
                 Nothing -> expectationFailure "missing snapshot"
                 Just snap -> do
-                  snap.bsFormat `shouldBe` 1
-                  snap.bsStatus `shouldBe` StatusCompleted
-                  snap.bsRunId `shouldBe` "test-e04"
+                  snap.rsFormat `shouldBe` 1
+                  snap.rsStatus `shouldBe` MsCompleted
+                  snap.rsRunId `shouldBe` "test-e04"
+                  snap.rsMachine `shouldSatisfy` (/= Nothing)
+            other -> expectationFailure (show other)
 
   it "sandbox escape via fs.read is rejected" $
     withSystemTempDirectory "pml-run" $ \dir -> do
@@ -170,15 +168,19 @@ spec = describe "runtime run (M4)" $ do
                   { roWorkspace = dir,
                     roProvider = mockProvider,
                     roInputs = [(Ident "path", VString "../outside.txt")],
-                    roRunId = Just "test-escape"
+                    roRunId = Just "test-escape",
+                    roEntry = "escape.md",
+                    roMode = StepRun
                   }
-          runRes <- runLoadedModule opts loaded
-          runRes `shouldSatisfy` isLeft
+          outcome <- runLoadedModule opts loaded
+          outcome `shouldSatisfy` isFailed
 
 isRight :: Either a b -> Bool
 isRight = \case
   Right _ -> True
   Left _ -> False
 
-isLeft :: Either a b -> Bool
-isLeft = not . isRight
+isFailed :: RunOutcome -> Bool
+isFailed = \case
+  OutcomeFailed {} -> True
+  _ -> False

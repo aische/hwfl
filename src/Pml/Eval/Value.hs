@@ -50,7 +50,7 @@ data Builtin
   | BAnd
   | BOr
   | BNot
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)
 
 -- | Host operation identity (runtime only). Typed stubs stay in Check.Prelude;
 -- this is the eval/runtime mirror, not a second API surface.
@@ -58,6 +58,7 @@ data HostOpId
   = HostFsRead
   | HostFsWrite
   | HostLlmChat
+  | HostHumanConfirm
   deriving stock (Eq, Ord, Show)
 
 data Value
@@ -70,8 +71,10 @@ data Value
   | -- | Field order preserved for display; equality is by name.
     VRecord [(Ident, Value)]
   | VVariant TypeName (Maybe Value)
-  | -- | Closure over parameter names and body.
+  | -- | Closure over parameter names and body (local @fun@ / lambdas).
     VClosure [Param] Expr Env
+  | -- | Top-level module function by name (avoids cyclic env in snapshots).
+    VTopFun Ident
   | VBuiltin Builtin
   | -- | Host op callable (fs.read, llm.chat, …). Only the runtime driver applies these.
     VHostOp HostOpId
@@ -98,6 +101,7 @@ renderValue = \case
     inner <- renderJsonish v
     pure (t <> "(" <> inner <> ")")
   VClosure {} -> Left "cannot render a closure as text"
+  VTopFun (Ident n) -> Left ("cannot render top-level fun as text: " <> n)
   VBuiltin {} -> Left "cannot render a builtin as text"
   VHostOp op -> Left ("cannot render host op as text: " <> hostOpName op)
 
@@ -107,6 +111,7 @@ hostOpName = \case
   HostFsRead -> "fs.read"
   HostFsWrite -> "fs.write"
   HostLlmChat -> "llm.chat"
+  HostHumanConfirm -> "human.confirm"
 
 renderJsonish :: Value -> Either Text Text
 renderJsonish = \case

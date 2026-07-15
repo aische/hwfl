@@ -18,7 +18,7 @@ data Effect
   | EffParallel
   | EffHuman
   | EffMeta
-  deriving stock (Eq, Ord, Show, Enum, Bounded)
+  deriving stock (Eq, Ord, Show, Read, Enum, Bounded)
 
 effectName :: Effect -> Text
 effectName = \case
@@ -50,4 +50,4 @@ data TypeExpr
   | TRecord [(Ident, TypeExpr)]
   | TFun TypeExpr TypeExpr
   | TEffFun TypeExpr [Effect] TypeExpr
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)

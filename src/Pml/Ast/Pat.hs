@@ -15,7 +15,7 @@ data Literal
   | LInt Integer
   | LFloat Double
   | LString Text
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)
 
 data Pattern
   = PWild
@@ -24,4 +24,4 @@ data Pattern
   | PTag TypeName (Maybe Pattern)
   | PRecord [(Ident, Pattern)]
   | PList [Pattern]
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)

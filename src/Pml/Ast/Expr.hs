@@ -19,34 +19,34 @@ data Param = Param
   { paramName :: Ident,
     paramType :: Maybe TypeExpr
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)
 
 data StringPart
   = SLit Text
   | SInterp Expr
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)
 
 -- | Record field in a literal: @name = e@ or shorthand @name@.
 data Field
   = Field Ident Expr
   | FieldShorthand Ident
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)
 
 data Arg
   = ArgPos Expr
   | ArgNamed Ident Expr
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)
 
 data MatchArm = MatchArm
   { armPat :: Pattern,
     armBody :: Expr
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)
 
 data ParOpt
   = ParMax Integer
   | ParOnError Text
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)
 
 data Expr
   = ELit Literal
@@ -69,4 +69,4 @@ data Expr
   | ETry Expr Ident Expr
   | -- | Check-time schema reflection: @schema(T)@ (types §4).
     ESchema TypeExpr
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Read)

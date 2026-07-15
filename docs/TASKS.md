@@ -16,7 +16,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] **M2** — Type checker (signatures + local inference)
 - [x] **M3** — Effects lattice + `check` CLI
 - [x] **M4** — Host ops: fs + llm (via provider) + snapshots
-- [ ] **M5** — `par` + `confirm` + resume / `--step`
+- [x] **M5** — `par` + `confirm` + resume / `--step`
 - [ ] **M6** — Span observability + `show`
 - [ ] **M7** — Agent loop (`llm.agent`) + tool functions
 - [ ] **M8** — Dogfood: port a slim semantic-check in pml
@@ -24,7 +24,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 ## Later
 
 - [ ] Full `pml check` project.json + import graph (M3 shipped single-module)
-- [ ] Full kont / `machine_json` codec (M4 shipped boundary snapshots)
+- [x] Full kont / `machine_json` codec (M5)
 - [ ] Alternate `LlmProvider` (e.g. direct OpenAI/Anthropic SDK) as proof of swap
 - [ ] Streaming LLM spans
 - [ ] Optional DB-backed run store (hwfi M5 analogue)
@@ -37,3 +37,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] M2 type checker: I/O vs main, local inference, schema(T) (2026-07-15)
 - [x] M3 effects lattice + `pml check` single-module CLI (2026-07-15)
 - [x] M4 host runtime + LlmProvider + snapshots + `pml run` (2026-07-15)
+- [x] M5 `par` + `confirm` + step/resume/approve + machine_json (2026-07-15)

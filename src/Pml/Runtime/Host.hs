@@ -38,10 +38,16 @@ hostOpsEnv =
         VRecord
           [ (Ident "chat", VHostOp HostLlmChat)
           ]
+      ),
+      ( Ident "human",
+        VRecord
+          [ (Ident "confirm", VHostOp HostHumanConfirm)
+          ]
       )
     ]
 
 -- | Execute one host op (one transition / snapshot boundary).
+-- @human.confirm@ is handled by the machine driver (pause), not here.
 runHostOp ::
   HostEnv ->
   HostOpId ->
@@ -51,6 +57,8 @@ runHostOp env op args = case op of
   HostFsRead -> doFsRead env args
   HostFsWrite -> doFsWrite env args
   HostLlmChat -> doLlmChat env args
+  HostHumanConfirm ->
+    pure (Left (HostErr "human.confirm must be driven by the machine (approve gate)"))
 
 doFsRead :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError Value)
 doFsRead env args = case fileRefArg args of

@@ -90,6 +90,8 @@ valueEq :: Value -> Value -> Either EvalError Bool
 valueEq a b = case (a, b) of
   (VClosure {}, _) -> Left (Trap "cannot compare closures")
   (_, VClosure {}) -> Left (Trap "cannot compare closures")
+  (VTopFun {}, _) -> Left (Trap "cannot compare top-level funs")
+  (_, VTopFun {}) -> Left (Trap "cannot compare top-level funs")
   (VBuiltin {}, _) -> Left (Trap "cannot compare builtins")
   (_, VBuiltin {}) -> Left (Trap "cannot compare builtins")
   (VHostOp {}, _) -> Left (Trap "cannot compare host ops")

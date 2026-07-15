@@ -1,134 +1,580 @@
--- | Host-boundary snapshots (resume points). Full kont/@machine_json@ for
--- @pml resume@ is M5; M4 writes format-1 boundary records after each host op.
+-- | Run store: meta.json + snapshot.json with full @machine_json@ (M5).
 module Pml.Runtime.Snapshot
-  ( RunStatus (..),
-    BoundarySnapshot (..),
+  ( RunMeta (..),
+    RunSnapshot (..),
     RunStore (..),
     openRunStore,
-    writeBoundarySnapshot,
-    readBoundarySnapshot,
+    writeRunMeta,
+    readRunMeta,
+    writeRunSnapshot,
+    readRunSnapshot,
+    persistTransition,
     valueToJson,
-    mkBoundary,
+    valueFromJson,
+    machineToJson,
+    machineFromJson,
   )
 where
 
-import Data.Aeson (FromJSON (..), ToJSON (..), Value (..), object, withObject, (.:), (.:?), (.=))
+import Control.Applicative ((<|>))
+import Data.Aeson (Value (..), object, withObject, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
+import Data.Aeson.Types (Parser, parseEither, (.!=))
 import Data.ByteString.Lazy qualified as LBS
+import Data.IORef (IORef, modifyIORef', readIORef)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Pml.Ast.Name (Ident (..), TypeName (..))
-import Pml.Eval.Value (HostOpId, hostOpName)
+import Pml.Eval.Value (Env, HostOpId (..), hostOpName)
 import Pml.Eval.Value qualified as V
+import Pml.Runtime.Error (RuntimeError (..))
+import Pml.Runtime.Machine
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>))
+import Text.Read (readMaybe)
 
-data RunStatus
-  = StatusRunning
-  | StatusCompleted
-  | StatusFailed
-  deriving stock (Eq, Show)
-
-instance ToJSON RunStatus where
-  toJSON = \case
-    StatusRunning -> String "running"
-    StatusCompleted -> String "completed"
-    StatusFailed -> String "failed"
-
-instance FromJSON RunStatus where
-  parseJSON = Aeson.withText "RunStatus" $ \case
-    "running" -> pure StatusRunning
-    "completed" -> pure StatusCompleted
-    "failed" -> pure StatusFailed
-    other -> fail ("unknown status: " <> T.unpack other)
-
--- | Snapshot after a completed host transition (spec §06 §4 layout fields).
-data BoundarySnapshot = BoundarySnapshot
-  { bsFormat :: Int,
-    bsRunId :: Text,
-    bsSeq :: Int,
-    bsStatus :: RunStatus,
-    bsProjectHash :: Text,
-    bsLastHost :: Maybe Text,
-    bsLastResult :: Maybe Aeson.Value,
-    bsAt :: Text
+data RunMeta = RunMeta
+  { rmRunId :: Text,
+    rmProjectHash :: Text,
+    rmEntry :: FilePath,
+    rmStartedAt :: Text,
+    rmStatus :: Text
   }
   deriving stock (Eq, Show)
 
-instance ToJSON BoundarySnapshot where
-  toJSON s =
-    object
-      [ "snapshot_format" .= s.bsFormat,
-        "run_id" .= s.bsRunId,
-        "seq" .= s.bsSeq,
-        "status" .= s.bsStatus,
-        "project_hash" .= s.bsProjectHash,
-        "last_host" .= s.bsLastHost,
-        "last_result" .= s.bsLastResult,
-        "at" .= s.bsAt,
-        -- Placeholder for M5 full machine encoding; keeps the key stable.
-        "machine_json" .= object ["kind" .= String "boundary", "seq" .= s.bsSeq]
-      ]
-
-instance FromJSON BoundarySnapshot where
-  parseJSON = withObject "BoundarySnapshot" $ \o ->
-    BoundarySnapshot
-      <$> o .: "snapshot_format"
-      <*> o .: "run_id"
-      <*> o .: "seq"
-      <*> o .: "status"
-      <*> o .: "project_hash"
-      <*> o .:? "last_host"
-      <*> o .:? "last_result"
-      <*> o .: "at"
+data RunSnapshot = RunSnapshot
+  { rsFormat :: Int,
+    rsRunId :: Text,
+    rsSeq :: Int,
+    rsStatus :: MachineStatus,
+    rsProjectHash :: Text,
+    rsLastHost :: Maybe Text,
+    rsLastResult :: Maybe Aeson.Value,
+    rsAt :: Text,
+    rsMachine :: Maybe Machine
+  }
+  deriving stock (Eq, Show)
 
 data RunStore = RunStore
-  { rsRoot :: FilePath,
-    rsRunId :: Text
+  { storeRoot :: FilePath,
+    storeRunId :: Text
   }
   deriving stock (Eq, Show)
 
--- | @<workspace>/.pml/runs/<run-id>/@
 openRunStore :: FilePath -> Text -> IO RunStore
 openRunStore workspaceRoot runId = do
   let root = workspaceRoot </> ".pml" </> "runs" </> T.unpack runId
   createDirectoryIfMissing True root
   pure (RunStore root runId)
 
-snapshotPath :: RunStore -> FilePath
-snapshotPath store = store.rsRoot </> "snapshot.json"
+writeRunMeta :: RunStore -> RunMeta -> IO ()
+writeRunMeta store meta =
+  Aeson.encodeFile
+    (store.storeRoot </> "meta.json")
+    ( object
+        [ "run_id" .= meta.rmRunId,
+          "project_hash" .= meta.rmProjectHash,
+          "entry" .= meta.rmEntry,
+          "started_at" .= meta.rmStartedAt,
+          "status" .= meta.rmStatus
+        ]
+    )
 
-transitionsPath :: RunStore -> FilePath
-transitionsPath store = store.rsRoot </> "transitions.jsonl"
-
-writeBoundarySnapshot :: RunStore -> BoundarySnapshot -> IO ()
-writeBoundarySnapshot store snap = do
-  Aeson.encodeFile (snapshotPath store) snap
-  let line =
-        Aeson.encode $
-          object
-            [ "seq" .= snap.bsSeq,
-              "host" .= snap.bsLastHost,
-              "status" .= snap.bsStatus,
-              "at" .= snap.bsAt
-            ]
-  LBS.appendFile (transitionsPath store) (line <> "\n")
-
-readBoundarySnapshot :: RunStore -> IO (Maybe BoundarySnapshot)
-readBoundarySnapshot store = do
-  exists <- doesFileExist (snapshotPath store)
+readRunMeta :: RunStore -> IO (Maybe RunMeta)
+readRunMeta store = do
+  let path = store.storeRoot </> "meta.json"
+  exists <- doesFileExist path
   if not exists
     then pure Nothing
     else do
-      eresult <- Aeson.eitherDecodeFileStrict (snapshotPath store)
+      eresult <- Aeson.eitherDecodeFileStrict path
       pure $ case eresult of
         Left _ -> Nothing
-        Right s -> Just s
+        Right v -> case parseEither parseMeta v of
+          Left _ -> Nothing
+          Right m -> Just m
 
--- | Lightweight JSON for last_result (no closures beyond a tag).
+parseMeta :: Aeson.Value -> Parser RunMeta
+parseMeta = withObject "RunMeta" $ \o ->
+  RunMeta
+    <$> o .: "run_id"
+    <*> o .: "project_hash"
+    <*> o .: "entry"
+    <*> o .: "started_at"
+    <*> o .: "status"
+
+writeRunSnapshot :: RunStore -> RunSnapshot -> IO ()
+writeRunSnapshot store snap = do
+  Aeson.encodeFile (store.storeRoot </> "snapshot.json") (snapshotToJson snap)
+  let line =
+        Aeson.encode $
+          object
+            [ "seq" .= snap.rsSeq,
+              "host" .= snap.rsLastHost,
+              "status" .= statusText snap.rsStatus,
+              "at" .= snap.rsAt
+            ]
+  LBS.appendFile (store.storeRoot </> "transitions.jsonl") (line <> "\n")
+
+readRunSnapshot :: RunStore -> IO (Maybe RunSnapshot)
+readRunSnapshot store = do
+  let path = store.storeRoot </> "snapshot.json"
+  exists <- doesFileExist path
+  if not exists
+    then pure Nothing
+    else do
+      eresult <- Aeson.eitherDecodeFileStrict path
+      pure $ case eresult of
+        Left _ -> Nothing
+        Right v -> case parseEither parseSnapshot v of
+          Left _ -> Nothing
+          Right s -> Just s
+
+snapshotToJson :: RunSnapshot -> Aeson.Value
+snapshotToJson s =
+  object
+    [ "snapshot_format" .= s.rsFormat,
+      "run_id" .= s.rsRunId,
+      "seq" .= s.rsSeq,
+      "status" .= statusText s.rsStatus,
+      "project_hash" .= s.rsProjectHash,
+      "last_host" .= s.rsLastHost,
+      "last_result" .= s.rsLastResult,
+      "at" .= s.rsAt,
+      "machine_json" .= maybe (object ["kind" .= String "none"]) machineToJson s.rsMachine
+    ]
+
+parseSnapshot :: Aeson.Value -> Parser RunSnapshot
+parseSnapshot = withObject "RunSnapshot" $ \o -> do
+  fmt <- o .: "snapshot_format"
+  runId <- o .: "run_id"
+  seqNo <- o .: "seq"
+  stTxt <- o .: "status"
+  hash <- o .: "project_hash"
+  lastHost <- o .:? "last_host"
+  lastRes <- o .:? "last_result"
+  at <- o .: "at"
+  mMachVal <- o .:? "machine_json"
+  pauseVal <- case mMachVal of
+    Just (Object km) -> pure (KM.lookup "pause" km)
+    _ -> pure Nothing
+  status <- parseStatus stTxt pauseVal
+  machine <- case mMachVal of
+    Nothing -> pure Nothing
+    Just (Object km)
+      | KM.lookup "kind" km == Just (String "none") -> pure Nothing
+      | otherwise -> Just <$> parseMachine (Object km)
+    Just v -> Just <$> parseMachine v
+  pure (RunSnapshot fmt runId seqNo status hash lastHost lastRes at machine)
+
+persistTransition ::
+  RunStore ->
+  IORef Int ->
+  Text ->
+  Maybe HostOpId ->
+  Maybe V.Value ->
+  MachineStatus ->
+  Maybe Machine ->
+  IO ()
+persistTransition store seqRef projectHash mHost mVal status mMachine = do
+  modifyIORef' seqRef (+ 1)
+  seqNo <- readIORef seqRef
+  now <- getCurrentTime
+  let at = T.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now)
+      snap =
+        RunSnapshot
+          { rsFormat = 1,
+            rsRunId = store.storeRunId,
+            rsSeq = seqNo,
+            rsStatus = status,
+            rsProjectHash = projectHash,
+            rsLastHost = fmap hostOpName mHost,
+            rsLastResult = fmap valueToJson mVal,
+            rsAt = at,
+            rsMachine = mMachine
+          }
+  writeRunSnapshot store snap
+
+-------------------------------------------------------------------------------
+-- Status
+
+statusText :: MachineStatus -> Text
+statusText = \case
+  MsRunning -> "running"
+  MsDraining -> "draining"
+  MsPaused PauseExplicit -> "paused"
+  MsPaused (PauseAwaitingConfirm _) -> "awaiting_confirm"
+  MsPaused PauseCrashRecovery -> "paused"
+  MsCompleted -> "completed"
+  MsFailed -> "failed"
+
+parseStatus :: Text -> Maybe Aeson.Value -> Parser MachineStatus
+parseStatus txt pauseVal = case txt of
+  "running" -> pure MsRunning
+  "draining" -> pure MsDraining
+  "completed" -> pure MsCompleted
+  "failed" -> pure MsFailed
+  "paused" -> case pauseVal of
+    Just v -> MsPaused <$> parsePauseReason v
+    Nothing -> pure (MsPaused PauseExplicit)
+  "awaiting_confirm" -> case pauseVal of
+    Just v -> MsPaused <$> parsePauseReason v
+    Nothing ->
+      pure (MsPaused (PauseAwaitingConfirm (ConfirmRequest "" "" Nothing)))
+  other -> fail ("unknown status: " <> T.unpack other)
+
+parsePauseReason :: Aeson.Value -> Parser PauseReason
+parsePauseReason v =
+  withObject
+    "pause"
+    ( \o -> do
+        mReason <- o .:? "reason"
+        case mReason :: Maybe Text of
+          Just "explicit" -> pure PauseExplicit
+          Just "crash" -> pure PauseCrashRecovery
+          _ -> PauseAwaitingConfirm <$> parseConfirmObject o
+    )
+    v
+    <|> pure PauseExplicit
+
+-------------------------------------------------------------------------------
+-- Machine codec
+
+machineToJson :: Machine -> Aeson.Value
+machineToJson m =
+  object
+    [ "status" .= statusText m.mStatus,
+      "project_hash" .= m.mProjectHash,
+      "current" .= currentToJson m.mCurrent,
+      "frames" .= map frameToJson m.mFrames,
+      "last_result" .= fmap valueToJson m.mLastResult,
+      "error" .= fmap (T.pack . show) m.mError,
+      "pause" .= pauseToJson m.mStatus
+    ]
+
+machineFromJson :: Aeson.Value -> Either String Machine
+machineFromJson = parseEither parseMachine
+
+parseMachine :: Aeson.Value -> Parser Machine
+parseMachine = withObject "Machine" $ \o -> do
+  stTxt <- o .: "status"
+  pauseVal <- o .:? "pause"
+  status <- parseStatus stTxt pauseVal
+  hash <- o .: "project_hash"
+  cur <- o .: "current" >>= parseCurrent
+  frames <- o .: "frames" >>= mapM parseFrame
+  lastRes <- o .:? "last_result"
+  lastVal <- traverse parseValue lastRes
+  errTxt <- o .:? "error"
+  pure
+    Machine
+      { mStatus = status,
+        mProjectHash = hash,
+        mCurrent = cur,
+        mFrames = frames,
+        mLastResult = lastVal,
+        mError = fmap ConfigErr errTxt
+      }
+
+pauseToJson :: MachineStatus -> Aeson.Value
+pauseToJson = \case
+  MsPaused (PauseAwaitingConfirm c) -> confirmToJson c
+  MsPaused PauseExplicit -> object ["reason" .= String "explicit"]
+  MsPaused PauseCrashRecovery -> object ["reason" .= String "crash"]
+  _ -> Null
+
+currentToJson :: Current -> Aeson.Value
+currentToJson = \case
+  CurEval e env ->
+    object ["tag" .= String "eval", "expr" .= showText e, "env" .= envToJson env]
+  CurReturn v -> object ["tag" .= String "return", "v" .= valueToJson v]
+  CurHost op args ->
+    object
+      [ "tag" .= String "host",
+        "op" .= hostOpName op,
+        "args" .= map argValToJson args
+      ]
+  CurAwaitConfirm c ->
+    object ["tag" .= String "await_confirm", "confirm" .= confirmToJson c]
+  CurParPool -> object ["tag" .= String "par_pool"]
+
+parseCurrent :: Aeson.Value -> Parser Current
+parseCurrent = withObject "Current" $ \o -> do
+  tag <- o .: "tag"
+  case tag :: Text of
+    "eval" -> CurEval <$> (o .: "expr" >>= readText) <*> (o .: "env" >>= parseEnv)
+    "return" -> CurReturn <$> (o .: "v" >>= parseValue)
+    "host" ->
+      CurHost
+        <$> (o .: "op" >>= parseHostOp)
+        <*> (o .: "args" >>= mapM parseArgVal)
+    "await_confirm" -> CurAwaitConfirm <$> (o .: "confirm" >>= parseConfirm)
+    "par_pool" -> pure CurParPool
+    other -> fail ("unknown current: " <> T.unpack other)
+
+frameToJson :: Frame -> Aeson.Value
+frameToJson = \case
+  FrLet n env body ->
+    object
+      [ "tag" .= String "let",
+        "name" .= unIdent n,
+        "env" .= envToJson env,
+        "body" .= showText body
+      ]
+  FrAppFun env args ->
+    object ["tag" .= String "app_fun", "env" .= envToJson env, "args" .= showText args]
+  FrAppArgs f col env args ->
+    object
+      [ "tag" .= String "app_args",
+        "fun" .= valueToJson f,
+        "collected" .= map argValToJson col,
+        "env" .= envToJson env,
+        "args" .= showText args
+      ]
+  FrList acc env es ->
+    object
+      [ "tag" .= String "list",
+        "acc" .= map valueToJson acc,
+        "env" .= envToJson env,
+        "rest" .= showText es
+      ]
+  FrRecord acc env fs ->
+    object
+      [ "tag" .= String "record",
+        "acc" .= object [Key.fromText (unIdent k) .= valueToJson v | (k, v) <- acc],
+        "env" .= envToJson env,
+        "rest" .= showText fs
+      ]
+  FrInterp acc env parts ->
+    object
+      [ "tag" .= String "interp",
+        "acc" .= acc,
+        "env" .= envToJson env,
+        "rest" .= showText parts
+      ]
+  FrProj f -> object ["tag" .= String "proj", "field" .= unIdent f]
+  FrIndexE env ix ->
+    object ["tag" .= String "index_e", "env" .= envToJson env, "ix" .= showText ix]
+  FrIndexV v -> object ["tag" .= String "index_v", "v" .= valueToJson v]
+  FrIf env t e ->
+    object
+      [ "tag" .= String "if",
+        "env" .= envToJson env,
+        "then" .= showText t,
+        "else" .= showText e
+      ]
+  FrMatch env arms ->
+    object ["tag" .= String "match", "env" .= envToJson env, "arms" .= showText arms]
+  FrPar pjs -> object ["tag" .= String "par", "par" .= parToJson pjs]
+  FrConfirm c -> object ["tag" .= String "confirm", "confirm" .= confirmToJson c]
+  FrJoin acc env es ->
+    object
+      [ "tag" .= String "join",
+        "acc" .= map valueToJson acc,
+        "env" .= envToJson env,
+        "rest" .= showText es
+      ]
+
+parseFrame :: Aeson.Value -> Parser Frame
+parseFrame = withObject "Frame" $ \o -> do
+  tag <- o .: "tag"
+  case tag :: Text of
+    "let" ->
+      FrLet
+        <$> (Ident <$> o .: "name")
+        <*> (o .: "env" >>= parseEnv)
+        <*> (o .: "body" >>= readText)
+    "app_fun" ->
+      FrAppFun <$> (o .: "env" >>= parseEnv) <*> (o .: "args" >>= readText)
+    "app_args" ->
+      FrAppArgs
+        <$> (o .: "fun" >>= parseValue)
+        <*> (o .: "collected" >>= mapM parseArgVal)
+        <*> (o .: "env" >>= parseEnv)
+        <*> (o .: "args" >>= readText)
+    "list" ->
+      FrList
+        <$> (o .: "acc" >>= mapM parseValue)
+        <*> (o .: "env" >>= parseEnv)
+        <*> (o .: "rest" >>= readText)
+    "record" ->
+      FrRecord
+        <$> (o .: "acc" >>= parseRecordFields)
+        <*> (o .: "env" >>= parseEnv)
+        <*> (o .: "rest" >>= readText)
+    "interp" ->
+      FrInterp
+        <$> o .: "acc"
+        <*> (o .: "env" >>= parseEnv)
+        <*> (o .: "rest" >>= readText)
+    "proj" -> FrProj . Ident <$> o .: "field"
+    "index_e" ->
+      FrIndexE <$> (o .: "env" >>= parseEnv) <*> (o .: "ix" >>= readText)
+    "index_v" -> FrIndexV <$> (o .: "v" >>= parseValue)
+    "if" ->
+      FrIf
+        <$> (o .: "env" >>= parseEnv)
+        <*> (o .: "then" >>= readText)
+        <*> (o .: "else" >>= readText)
+    "match" ->
+      FrMatch <$> (o .: "env" >>= parseEnv) <*> (o .: "arms" >>= readText)
+    "par" -> FrPar <$> (o .: "par" >>= parsePar)
+    "confirm" -> FrConfirm <$> (o .: "confirm" >>= parseConfirm)
+    "join" ->
+      FrJoin
+        <$> (o .: "acc" >>= mapM parseValue)
+        <*> (o .: "env" >>= parseEnv)
+        <*> (o .: "rest" >>= readText)
+    other -> fail ("unknown frame: " <> T.unpack other)
+
+parToJson :: ParJoinState -> Aeson.Value
+parToJson p =
+  object
+    [ "var" .= unIdent p.pjsVar,
+      "body" .= showText p.pjsBody,
+      "max" .= p.pjsMax,
+      "on_error" .= onErrText p.pjsOnError,
+      "items" .= map valueToJson p.pjsItems,
+      "slots" .= map slotToJson p.pjsSlots,
+      "active"
+        .= object
+          [ Key.fromText (T.pack (show i)) .= machineToJson (unBranch b)
+            | (i, b) <- Map.toList p.pjsActive
+          ],
+      "next" .= p.pjsNextIndex,
+      "phase" .= phaseText p.pjsPhase,
+      "confirm_queue" .= map confirmToJson p.pjsConfirmQueue,
+      "parent_env" .= envToJson p.pjsParentEnv
+    ]
+
+onErrText :: ParOnError -> Text
+onErrText = \case
+  ParFail -> "fail"
+  ParCollect -> "collect"
+
+parsePar :: Aeson.Value -> Parser ParJoinState
+parsePar = withObject "ParJoinState" $ \o -> do
+  var <- Ident <$> o .: "var"
+  body <- o .: "body" >>= readText
+  mx <- o .: "max"
+  onE <- o .: "on_error"
+  items <- o .: "items" >>= mapM parseValue
+  slots <- o .: "slots" >>= mapM parseSlot
+  active <- o .: "active" >>= parseActive
+  next <- o .: "next"
+  phase <- o .: "phase" >>= parsePhase
+  cq <- o .: "confirm_queue" >>= mapM parseConfirm
+  penv <- o .: "parent_env" >>= parseEnv
+  let onErr = if onE == ("collect" :: Text) then ParCollect else ParFail
+  pure
+    ParJoinState
+      { pjsVar = var,
+        pjsBody = body,
+        pjsMax = mx,
+        pjsOnError = onErr,
+        pjsItems = items,
+        pjsSlots = slots,
+        pjsActive = active,
+        pjsNextIndex = next,
+        pjsPhase = phase,
+        pjsConfirmQueue = cq,
+        pjsParentEnv = penv
+      }
+
+parseActive :: Aeson.Value -> Parser (Map Int BranchMachine)
+parseActive = withObject "active" $ \km ->
+  fmap Map.fromList $
+    traverse
+      ( \(k, v) -> do
+          m <- parseMachine v
+          case readMaybe (T.unpack (Key.toText k)) of
+            Just i -> pure (i, mkBranch m)
+            Nothing -> fail "bad active key"
+      )
+      (KM.toList km)
+
+phaseText :: ParPoolPhase -> Text
+phaseText = \case
+  ParScheduling -> "scheduling"
+  ParDraining -> "draining"
+  ParPausedConfirm -> "paused_confirm"
+
+parsePhase :: Text -> Parser ParPoolPhase
+parsePhase = \case
+  "scheduling" -> pure ParScheduling
+  "draining" -> pure ParDraining
+  "paused_confirm" -> pure ParPausedConfirm
+  other -> fail ("bad phase: " <> T.unpack other)
+
+slotToJson :: ParSlot -> Aeson.Value
+slotToJson = \case
+  ParSlotPending -> object ["tag" .= String "pending"]
+  ParSlotRunning -> object ["tag" .= String "running"]
+  ParSlotDone v -> object ["tag" .= String "done", "v" .= valueToJson v]
+  ParSlotFailed t -> object ["tag" .= String "failed", "msg" .= t]
+  ParSlotAwaitingConfirm c ->
+    object ["tag" .= String "awaiting_confirm", "confirm" .= confirmToJson c]
+
+parseSlot :: Aeson.Value -> Parser ParSlot
+parseSlot = withObject "ParSlot" $ \o -> do
+  tag <- o .: "tag"
+  case tag :: Text of
+    "pending" -> pure ParSlotPending
+    "running" -> pure ParSlotRunning
+    "done" -> ParSlotDone <$> (o .: "v" >>= parseValue)
+    "failed" -> ParSlotFailed <$> o .: "msg"
+    "awaiting_confirm" -> ParSlotAwaitingConfirm <$> (o .: "confirm" >>= parseConfirm)
+    other -> fail ("bad slot: " <> T.unpack other)
+
+confirmToJson :: ConfirmRequest -> Aeson.Value
+confirmToJson c =
+  object
+    [ "title" .= c.crTitle,
+      "detail" .= c.crDetail,
+      "branch_index" .= c.crBranchIndex,
+      "reason" .= String "awaiting_confirm"
+    ]
+
+parseConfirm :: Aeson.Value -> Parser ConfirmRequest
+parseConfirm = withObject "ConfirmRequest" parseConfirmObject
+
+parseConfirmObject :: Aeson.Object -> Parser ConfirmRequest
+parseConfirmObject o =
+  ConfirmRequest
+    <$> o .: "title"
+    <*> (o .:? "detail" .!= "")
+    <*> o .:? "branch_index"
+
+envToJson :: Env -> Aeson.Value
+envToJson env =
+  object [Key.fromText (unIdent k) .= valueToJson v | (k, v) <- Map.toList env]
+
+parseEnv :: Aeson.Value -> Parser Env
+parseEnv = withObject "Env" $ \km ->
+  fmap Map.fromList $
+    traverse
+      (\(k, v) -> (Ident (Key.toText k),) <$> parseValue v)
+      (KM.toList km)
+
+argValToJson :: (Maybe Ident, V.Value) -> Aeson.Value
+argValToJson (mn, v) =
+  object ["name" .= fmap unIdent mn, "v" .= valueToJson v]
+
+parseArgVal :: Aeson.Value -> Parser (Maybe Ident, V.Value)
+parseArgVal = withObject "arg" $ \o -> do
+  mn <- o .:? "name"
+  v <- o .: "v" >>= parseValue
+  pure (fmap Ident mn, v)
+
+parseRecordFields :: Aeson.Value -> Parser [(Ident, V.Value)]
+parseRecordFields = withObject "record fields" $ \km ->
+  traverse (\(k, v) -> (Ident (Key.toText k),) <$> parseValue v) (KM.toList km)
+
 valueToJson :: V.Value -> Aeson.Value
 valueToJson = \case
   V.VUnit -> object ["tag" .= String "unit"]
@@ -140,39 +586,62 @@ valueToJson = \case
   V.VRecord fs ->
     object
       [ "tag" .= String "record",
-        "v"
-          .= Aeson.Object
-            ( KM.fromList
-                [(Key.fromText (unIdent k), valueToJson v) | (k, v) <- fs]
-            )
+        "v" .= object [Key.fromText (unIdent k) .= valueToJson v | (k, v) <- fs]
       ]
-  V.VVariant (TypeName t) Nothing ->
-    object ["tag" .= String "variant", "name" .= t]
+  V.VVariant (TypeName t) Nothing -> object ["tag" .= String "variant", "name" .= t]
   V.VVariant (TypeName t) (Just v) ->
     object ["tag" .= String "variant", "name" .= t, "v" .= valueToJson v]
-  V.VClosure {} -> object ["tag" .= String "closure"]
-  V.VBuiltin {} -> object ["tag" .= String "builtin"]
+  V.VClosure ps body env ->
+    object
+      [ "tag" .= String "closure",
+        "params" .= showText ps,
+        "body" .= showText body,
+        "env" .= envToJson env
+      ]
+  V.VTopFun (Ident n) -> object ["tag" .= String "topfun", "name" .= n]
+  V.VBuiltin b -> object ["tag" .= String "builtin", "op" .= showText b]
   V.VHostOp op -> object ["tag" .= String "host", "op" .= hostOpName op]
 
-mkBoundary ::
-  Text ->
-  Int ->
-  RunStatus ->
-  Text ->
-  Maybe HostOpId ->
-  Maybe V.Value ->
-  IO BoundarySnapshot
-mkBoundary runId seqNo status projectHash mHost mResult = do
-  now <- getCurrentTime
-  let at = T.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now)
-  pure
-    BoundarySnapshot
-      { bsFormat = 1,
-        bsRunId = runId,
-        bsSeq = seqNo,
-        bsStatus = status,
-        bsProjectHash = projectHash,
-        bsLastHost = fmap hostOpName mHost,
-        bsLastResult = fmap valueToJson mResult,
-        bsAt = at
-      }
+valueFromJson :: Aeson.Value -> Either String V.Value
+valueFromJson = parseEither parseValue
+
+parseValue :: Aeson.Value -> Parser V.Value
+parseValue = withObject "Value" $ \o -> do
+  tag <- o .: "tag"
+  case tag :: Text of
+    "unit" -> pure V.VUnit
+    "bool" -> V.VBool <$> o .: "v"
+    "int" -> V.VInt <$> o .: "v"
+    "float" -> V.VFloat <$> o .: "v"
+    "string" -> V.VString <$> o .: "v"
+    "list" -> V.VList <$> (o .: "v" >>= mapM parseValue)
+    "record" -> V.VRecord <$> (o .: "v" >>= parseRecordFields)
+    "variant" -> do
+      n <- TypeName <$> o .: "name"
+      mv <- o .:? "v"
+      V.VVariant n <$> traverse parseValue mv
+    "closure" ->
+      V.VClosure
+        <$> (o .: "params" >>= readText)
+        <*> (o .: "body" >>= readText)
+        <*> (o .: "env" >>= parseEnv)
+    "topfun" -> V.VTopFun . Ident <$> o .: "name"
+    "builtin" -> V.VBuiltin <$> (o .: "op" >>= readText)
+    "host" -> V.VHostOp <$> (o .: "op" >>= parseHostOp)
+    other -> fail ("unknown value tag: " <> T.unpack other)
+
+parseHostOp :: Text -> Parser HostOpId
+parseHostOp = \case
+  "fs.read" -> pure HostFsRead
+  "fs.write" -> pure HostFsWrite
+  "llm.chat" -> pure HostLlmChat
+  "human.confirm" -> pure HostHumanConfirm
+  other -> fail ("unknown host op: " <> T.unpack other)
+
+showText :: (Show a) => a -> Text
+showText = T.pack . show
+
+readText :: (Read a) => Text -> Parser a
+readText t = case readMaybe (T.unpack t) of
+  Just a -> pure a
+  Nothing -> fail ("read failed: " <> T.unpack (T.take 80 t))

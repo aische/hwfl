@@ -1,14 +1,17 @@
--- | Host-capable evaluator: big-step pure reduction with host/section support.
--- Snapshots fire only after completed host ops (no mid-pure).
+-- | Frame/CEK host runtime: big-step pure crunch, small-step host/par/confirm.
 module Pml.Runtime.Eval
   ( RunCtx (..),
+    StepMode (..),
+    StepResult (..),
+    stepMachine,
+    runUntilPause,
+    approveMachine,
     evalIO,
-    evalArgsIO,
     applyIO,
   )
 where
 
-import Data.IORef (IORef, modifyIORef', readIORef)
+import Data.IORef (IORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -22,90 +25,794 @@ import Pml.Eval.Pure (bindParams, matchPat)
 import Pml.Eval.Value
 import Pml.Runtime.Error (RuntimeError (..))
 import Pml.Runtime.Host (HostEnv (..), runHostOp)
-import Pml.Runtime.Snapshot
-  ( RunStatus (..),
-    RunStore (..),
-    mkBoundary,
-    writeBoundarySnapshot,
-  )
+import Pml.Runtime.Machine
+import Pml.Runtime.Snapshot (RunStore (..), persistTransition)
 
--- | Runtime context for one @pml run@.
 data RunCtx = RunCtx
   { rcHost :: HostEnv,
     rcSections :: Map Slug Text,
+    rcFuns :: FunTable,
+    rcBaseEnv :: Env,
     rcStore :: RunStore,
     rcProjectHash :: Text,
     rcSeq :: IORef Int
   }
 
-evalIO :: RunCtx -> Env -> Expr -> IO (Either RuntimeError Value)
-evalIO ctx env = \case
-  ELit lit -> pure (Right (literalValue lit))
-  EVar n ->
-    pure $
-      maybe
-        (Left (EvalErr (Trap ("unbound variable: " <> unIdent n))))
-        Right
-        (lookupEnv n env)
-  EQName q ->
-    pure (Left (EvalErr (Unsupported ("qname not elaborated: " <> qnameToText q))))
-  ESection s ->
-    pure $ case Map.lookup s ctx.rcSections of
-      Just t -> Right (VString t)
-      Nothing ->
-        Left (EvalErr (Trap ("unknown section: @" <> slugToText s)))
-  EList es -> do
-    rs <- traverse (evalIO ctx env) es
-    pure (VList <$> sequence rs)
-  ERecord fs -> do
-    rs <- evalFieldsIO ctx env fs
-    pure (VRecord <$> rs)
-  EInterp parts -> evalInterpIO ctx env parts
-  EApp f args -> do
-    fv <- evalIO ctx env f
-    case fv of
-      Left e -> pure (Left e)
-      Right fval -> do
-        vs <- evalArgsIO ctx env args
-        case vs of
-          Left e -> pure (Left e)
-          Right argv -> applyIO ctx fval argv
-  EProj e f -> do
-    v <- evalIO ctx env e
-    pure (v >>= \x -> mapEval (project x f))
-  EIndex e ix -> do
-    v <- evalIO ctx env e
-    case v of
-      Left err -> pure (Left err)
-      Right vv -> do
-        i <- evalIO ctx env ix
-        pure (i >>= \ii -> mapEval (indexList vv ii))
-  ELet n _ e1 e2 -> do
-    v1 <- evalIO ctx env e1
-    case v1 of
-      Left e -> pure (Left e)
-      Right val -> evalIO ctx (extendEnv n val env) e2
-  EFun ps _ body -> pure (Right (VClosure ps body env))
-  EIf c t e -> do
-    cv <- evalIO ctx env c
-    case cv of
-      Left err -> pure (Left err)
-      Right (VBool True) -> evalIO ctx env t
-      Right (VBool False) -> evalIO ctx env e
-      Right _ -> pure (Left (EvalErr (Trap "if condition is not Bool")))
-  EMatch scrut arms -> do
-    v <- evalIO ctx env scrut
-    case v of
-      Left err -> pure (Left err)
-      Right val -> matchArmsIO ctx env val arms
-  EPar {} -> pure (Left (EvalErr (Unsupported "par is not available until M5")))
-  EJoin {} -> pure (Left (EvalErr (Unsupported "join is not available until M5")))
-  EConfirm {} -> pure (Left (EvalErr (Unsupported "confirm is not available until M5")))
-  ETry {} -> pure (Left (EvalErr (Unsupported "try/catch is not available until M5")))
-  ESchema {} -> pure (Left (EvalErr (Unsupported "schema(T) is check-time only")))
+data StepMode = StepOnce | StepRun
+  deriving stock (Eq, Show)
+
+data StepResult = StepResult
+  { srMachine :: Machine,
+    srTransitioned :: Bool
+  }
+  deriving stock (Eq, Show)
 
 mapEval :: Either EvalError a -> Either RuntimeError a
 mapEval = either (Left . EvalErr) Right
+
+-------------------------------------------------------------------------------
+-- Compatibility
+
+evalIO :: RunCtx -> Env -> Expr -> IO (Either RuntimeError Value)
+evalIO ctx env expr = do
+  m1 <- runUntilPause ctx StepRun (initialMachine ctx.rcProjectHash (CurEval expr env))
+  pure (resultOf m1)
+
+applyIO ::
+  RunCtx ->
+  Value ->
+  [(Maybe Ident, Value)] ->
+  IO (Either RuntimeError Value)
+applyIO ctx f args = case openApply ctx f args of
+  Left e -> pure (Left e)
+  Right (CurEval body env) -> evalIO ctx env body
+  Right (CurReturn v) -> pure (Right v)
+  Right (CurHost op argv)
+    | op == HostHumanConfirm ->
+        pure (Left (EvalErr (Unsupported "human.confirm requires the machine driver")))
+    | otherwise -> do
+        result <- runHostOp ctx.rcHost op argv
+        case result of
+          Left e -> do
+            _ <- persist ctx (Just op) Nothing MsFailed Nothing
+            pure (Left e)
+          Right v -> do
+            _ <- persist ctx (Just op) (Just v) MsRunning Nothing
+            pure (Right v)
+  Right c ->
+    pure (Left (EvalErr (Trap ("applyIO: unexpected " <> T.pack (show c)))))
+
+resultOf :: Machine -> Either RuntimeError Value
+resultOf m = case m.mStatus of
+  MsCompleted -> maybe (Left (EvalErr (Trap "completed without result"))) Right m.mLastResult
+  MsFailed -> Left (maybe (EvalErr (Trap "failed")) id m.mError)
+  MsPaused (PauseAwaitingConfirm _) ->
+    Left (EvalErr (Unsupported "paused on confirm; use approve/resume"))
+  other -> Left (EvalErr (Trap ("stopped: " <> T.pack (show other))))
+
+openApply ::
+  RunCtx ->
+  Value ->
+  [(Maybe Ident, Value)] ->
+  Either RuntimeError Current
+openApply ctx fv argv = case fv of
+  VBuiltin b -> CurReturn <$> mapEval (applyBuiltin b (map snd argv))
+  VClosure params body cloEnv -> case bindParams params argv of
+    Left e -> Left (EvalErr e)
+    Right binds -> Right (CurEval body (extendEnvMany binds cloEnv))
+  VTopFun n -> case Map.lookup n ctx.rcFuns of
+    Nothing -> Left (EvalErr (Trap ("unknown top-level fun: " <> unIdent n)))
+    Just (params, body) -> case bindParams params argv of
+      Left e -> Left (EvalErr e)
+      Right binds -> Right (CurEval body (extendEnvMany binds ctx.rcBaseEnv))
+  VHostOp op -> Right (CurHost op argv)
+  _ -> Left (EvalErr (Trap "applied a non-function value"))
+
+-------------------------------------------------------------------------------
+-- Driver
+
+runUntilPause :: RunCtx -> StepMode -> Machine -> IO Machine
+runUntilPause ctx mode = go
+  where
+    go m = case m.mStatus of
+      MsCompleted -> pure m
+      MsFailed -> pure m
+      MsPaused _ -> pure m
+      _ -> do
+        er <- stepMachine ctx mode m
+        case er of
+          Left err -> pure m {mStatus = MsFailed, mError = Just err}
+          Right sr ->
+            let m' = sr.srMachine
+             in case mode of
+                  StepOnce
+                    | sr.srTransitioned || isTerminal m' -> pure m'
+                    | otherwise -> go m'
+                  StepRun
+                    | isTerminal m' -> pure m'
+                    | otherwise -> go m'
+
+isTerminal :: Machine -> Bool
+isTerminal m = case m.mStatus of
+  MsCompleted -> True
+  MsFailed -> True
+  MsPaused _ -> True
+  _ -> False
+
+stepMachine :: RunCtx -> StepMode -> Machine -> IO (Either RuntimeError StepResult)
+stepMachine ctx mode m = case m.mStatus of
+  MsCompleted -> pure (Right (StepResult m False))
+  MsFailed -> pure (Right (StepResult m False))
+  MsPaused _ -> pure (Right (StepResult m False))
+  MsRunning -> afterCrunch
+  MsDraining -> afterCrunch
+  where
+    afterCrunch = case crunch ctx m of
+      Left e -> pure (Left e)
+      Right m' -> case m'.mCurrent of
+        CurHost op args -> doHost ctx mode m' op args
+        CurAwaitConfirm c -> doConfirm ctx m' c
+        CurParPool -> stepPar ctx mode m'
+        CurReturn v | null m'.mFrames -> doComplete ctx mode m' v
+        _ -> pure (Right (StepResult m' False))
+
+doComplete ::
+  RunCtx -> StepMode -> Machine -> Value -> IO (Either RuntimeError StepResult)
+doComplete ctx mode m v = do
+  let m' = m {mStatus = MsCompleted, mLastResult = Just v}
+  persist ctx Nothing (Just v) MsCompleted (Just m')
+  pure (Right (StepResult (pauseIfStep mode m') True))
+
+doConfirm ::
+  RunCtx -> Machine -> ConfirmRequest -> IO (Either RuntimeError StepResult)
+doConfirm ctx m c = do
+  let m' = m {mStatus = MsPaused (PauseAwaitingConfirm c), mCurrent = CurAwaitConfirm c}
+  persist ctx (Just HostHumanConfirm) Nothing (MsPaused (PauseAwaitingConfirm c)) (Just m')
+  pure (Right (StepResult m' True))
+
+doHost ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  HostOpId ->
+  [(Maybe Ident, Value)] ->
+  IO (Either RuntimeError StepResult)
+doHost ctx mode m op args
+  | op == HostHumanConfirm = case confirmArgs args of
+      Left e -> pure (Left e)
+      Right c -> doConfirm ctx m c
+  | otherwise = do
+      result <- runHostOp ctx.rcHost op args
+      case result of
+        Left e -> do
+          let m' = m {mStatus = MsFailed, mError = Just e}
+          persist ctx (Just op) Nothing MsFailed (Just m')
+          pure (Left e)
+        Right v -> do
+          let m' = pauseIfStep mode (m {mCurrent = CurReturn v})
+          persist ctx (Just op) (Just v) m'.mStatus (Just m')
+          pure (Right (StepResult m' True))
+
+pauseIfStep :: StepMode -> Machine -> Machine
+pauseIfStep StepOnce m
+  | m.mStatus == MsRunning = m {mStatus = MsPaused PauseExplicit}
+  | otherwise = m
+pauseIfStep StepRun m = m
+
+-------------------------------------------------------------------------------
+-- Approve
+
+approveMachine :: Bool -> Machine -> Either RuntimeError Machine
+approveMachine yes m = case m.mStatus of
+  MsPaused (PauseAwaitingConfirm c) ->
+    case m.mFrames of
+      FrPar pjs : rest -> Right (approvePar yes c pjs rest m)
+      FrConfirm _ : rest ->
+        Right
+          m
+            { mStatus = MsRunning,
+              mCurrent = CurReturn (VBool yes),
+              mFrames = rest
+            }
+      _ ->
+        Right
+          m
+            { mStatus = MsRunning,
+              mCurrent = CurReturn (VBool yes)
+            }
+  _ -> Left (ConfigErr "run is not awaiting confirmation")
+
+approvePar :: Bool -> ConfirmRequest -> ParJoinState -> [Frame] -> Machine -> Machine
+approvePar yes c pjs rest m =
+  let idx = maybe 0 id c.crBranchIndex
+      pjs' =
+        pjs
+          { pjsPhase = ParScheduling,
+            pjsConfirmQueue = drop 1 pjs.pjsConfirmQueue,
+            pjsSlots = setSlot idx ParSlotRunning pjs.pjsSlots,
+            pjsActive =
+              Map.adjust
+                ( \(BranchMachine bm) ->
+                    mkBranch
+                      bm
+                        { mStatus = MsRunning,
+                          mCurrent = CurReturn (VBool yes),
+                          mFrames = dropConfirmFrame bm.mFrames
+                        }
+                )
+                idx
+                pjs.pjsActive
+          }
+   in m
+        { mStatus = MsRunning,
+          mCurrent = CurParPool,
+          mFrames = FrPar pjs' : rest
+        }
+
+dropConfirmFrame :: [Frame] -> [Frame]
+dropConfirmFrame = \case
+  FrConfirm _ : rest -> rest
+  frames -> frames
+
+-------------------------------------------------------------------------------
+-- Par
+
+stepPar :: RunCtx -> StepMode -> Machine -> IO (Either RuntimeError StepResult)
+stepPar ctx mode m = case m.mFrames of
+  FrPar pjs : rest -> stepParWith ctx mode m pjs rest
+  _ -> pure (Left (EvalErr (Trap "CurParPool without FrPar")))
+
+stepParWith ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  ParJoinState ->
+  [Frame] ->
+  IO (Either RuntimeError StepResult)
+stepParWith ctx mode m pjs rest
+  | pjs.pjsPhase == ParPausedConfirm = pure (Right (StepResult m False))
+  | canSpawn pjs = do
+      let idx = pjs.pjsNextIndex
+          item = pjs.pjsItems !! idx
+          branchEnv = extendEnv pjs.pjsVar item pjs.pjsParentEnv
+          branch = initialMachine m.mProjectHash (CurEval pjs.pjsBody branchEnv)
+          pjs' =
+            pjs
+              { pjsNextIndex = idx + 1,
+                pjsSlots = setSlot idx ParSlotRunning pjs.pjsSlots,
+                pjsActive = Map.insert idx (mkBranch branch) pjs.pjsActive
+              }
+          m' = m {mCurrent = CurParPool, mFrames = FrPar pjs' : rest}
+      finishParStep ctx mode m' True
+  | Just idx <- pickRunnable pjs = do
+      let BranchMachine bm0 = pjs.pjsActive Map.! idx
+          bm = case bm0.mStatus of
+            MsPaused PauseExplicit -> bm0 {mStatus = MsRunning}
+            _ -> bm0 {mStatus = MsRunning}
+      er <- stepMachine ctx StepOnce bm
+      case er of
+        Left e ->
+          handleAfterBranch ctx mode m (absorbFailed pjs idx (renderErr e)) rest
+        Right sr ->
+          let bm' = sr.srMachine
+           in case bm'.mStatus of
+                MsCompleted ->
+                  handleAfterBranch
+                    ctx
+                    mode
+                    m
+                    (absorbDone pjs idx (maybe VUnit id bm'.mLastResult))
+                    rest
+                MsFailed ->
+                  handleAfterBranch
+                    ctx
+                    mode
+                    m
+                    (absorbFailed pjs idx (maybe "branch failed" renderErr bm'.mError))
+                    rest
+                MsPaused (PauseAwaitingConfirm c) ->
+                  let c' = c {crBranchIndex = Just idx}
+                      pjs' = absorbConfirm pjs idx bm' c'
+                      m' =
+                        m
+                          { mStatus = MsDraining,
+                            mCurrent = CurParPool,
+                            mFrames = FrPar pjs' : rest
+                          }
+                   in tryFinishDrain ctx mode m' pjs' rest
+                MsPaused PauseExplicit -> do
+                  let pjs' = pjs {pjsActive = Map.insert idx (mkBranch bm') pjs.pjsActive}
+                      m' = m {mCurrent = CurParPool, mFrames = FrPar pjs' : rest}
+                  finishParStep ctx mode m' True
+                _ -> do
+                  let pjs' = pjs {pjsActive = Map.insert idx (mkBranch bm') pjs.pjsActive}
+                      m' = m {mCurrent = CurParPool, mFrames = FrPar pjs' : rest}
+                  if sr.srTransitioned
+                    then finishParStep ctx mode m' True
+                    else
+                      pure (Left (EvalErr (Trap ("par branch " <> T.pack (show idx) <> " made no progress"))))
+  | awaitingHuman pjs = tryFinishDrain ctx mode m pjs rest
+  | allTerminal pjs.pjsSlots = finishJoin ctx mode m pjs rest
+  | pjs.pjsPhase == ParDraining = tryFinishDrain ctx mode m pjs rest
+  | otherwise = pure (Left (EvalErr (Trap "par pool stuck")))
+
+awaitingHuman :: ParJoinState -> Bool
+awaitingHuman pjs =
+  not (null pjs.pjsConfirmQueue)
+    || any
+      ( \case
+          ParSlotAwaitingConfirm _ -> True
+          _ -> False
+      )
+      pjs.pjsSlots
+
+pickRunnable :: ParJoinState -> Maybe Int
+pickRunnable pjs =
+  let runnable =
+        [ i
+          | (i, bm) <- Map.toList pjs.pjsActive,
+            case (unBranch bm).mStatus of
+              MsPaused (PauseAwaitingConfirm _) -> False
+              MsCompleted -> False
+              MsFailed -> False
+              _ -> True
+        ]
+   in case runnable of
+        (i : _) -> Just i
+        [] -> Nothing
+
+handleAfterBranch ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  ParJoinState ->
+  [Frame] ->
+  IO (Either RuntimeError StepResult)
+handleAfterBranch ctx mode m pjs rest
+  | pjs.pjsPhase == ParDraining = tryFinishDrain ctx mode m pjs rest
+  | allTerminal pjs.pjsSlots = finishJoin ctx mode m pjs rest
+  | otherwise =
+      finishParStep ctx mode m {mCurrent = CurParPool, mFrames = FrPar pjs : rest} True
+
+tryFinishDrain ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  ParJoinState ->
+  [Frame] ->
+  IO (Either RuntimeError StepResult)
+tryFinishDrain ctx mode m pjs rest
+  | noRunnableActive pjs =
+      case confirmQueue pjs of
+        (c : cs) -> do
+          let pjs' = pjs {pjsPhase = ParPausedConfirm, pjsConfirmQueue = c : cs}
+              m' =
+                m
+                  { mStatus = MsPaused (PauseAwaitingConfirm c),
+                    mCurrent = CurAwaitConfirm c,
+                    mFrames = FrPar pjs' : rest
+                  }
+          persist ctx (Just HostHumanConfirm) Nothing (MsPaused (PauseAwaitingConfirm c)) (Just m')
+          pure (Right (StepResult m' True))
+        [] -> finishJoin ctx mode m pjs rest
+  | otherwise =
+      finishParStep
+        ctx
+        mode
+        m
+          { mStatus = MsDraining,
+            mCurrent = CurParPool,
+            mFrames = FrPar pjs : rest
+          }
+        True
+
+-- | Branches awaiting confirm are not runnable; drain completes when none remain.
+noRunnableActive :: ParJoinState -> Bool
+noRunnableActive pjs =
+  all
+    ( \bm -> case (unBranch bm).mStatus of
+        MsPaused (PauseAwaitingConfirm _) -> True
+        _ -> False
+    )
+    (Map.elems pjs.pjsActive)
+
+confirmQueue :: ParJoinState -> [ConfirmRequest]
+confirmQueue pjs
+  | not (null pjs.pjsConfirmQueue) = pjs.pjsConfirmQueue
+  | otherwise =
+      [ c
+        | ParSlotAwaitingConfirm c <- pjs.pjsSlots
+      ]
+
+finishJoin ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  ParJoinState ->
+  [Frame] ->
+  IO (Either RuntimeError StepResult)
+finishJoin ctx mode m pjs rest = case joinSlots pjs.pjsOnError pjs.pjsSlots of
+  Left err -> do
+    let m' = m {mStatus = MsFailed, mError = Just (EvalErr (Trap err)), mFrames = rest}
+    persist ctx Nothing Nothing MsFailed (Just m')
+    pure (Left (EvalErr (Trap err)))
+  Right vs -> do
+    let m' =
+          pauseIfStep
+            mode
+            m
+              { mStatus = MsRunning,
+                mCurrent = CurReturn (VList vs),
+                mFrames = rest
+              }
+    persist ctx Nothing (Just (VList vs)) m'.mStatus (Just m')
+    pure (Right (StepResult m' True))
+
+finishParStep ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  Bool ->
+  IO (Either RuntimeError StepResult)
+finishParStep ctx mode m transitioned = do
+  let m' = if transitioned then pauseIfStep mode m else m
+  when transitioned (persist ctx Nothing Nothing m'.mStatus (Just m'))
+  pure (Right (StepResult m' transitioned))
+
+when :: Bool -> IO () -> IO ()
+when b a = if b then a else pure ()
+
+canSpawn :: ParJoinState -> Bool
+canSpawn pjs =
+  pjs.pjsPhase == ParScheduling
+    && pjs.pjsNextIndex < length pjs.pjsItems
+    && Map.size pjs.pjsActive < pjs.pjsMax
+
+allTerminal :: [ParSlot] -> Bool
+allTerminal = all $ \case
+  ParSlotDone {} -> True
+  ParSlotFailed {} -> True
+  _ -> False
+
+absorbDone :: ParJoinState -> Int -> Value -> ParJoinState
+absorbDone pjs idx v =
+  pjs
+    { pjsSlots = setSlot idx (ParSlotDone v) pjs.pjsSlots,
+      pjsActive = Map.delete idx pjs.pjsActive
+    }
+
+absorbFailed :: ParJoinState -> Int -> Text -> ParJoinState
+absorbFailed pjs idx msg =
+  let pjs' =
+        pjs
+          { pjsSlots = setSlot idx (ParSlotFailed msg) pjs.pjsSlots,
+            pjsActive = Map.delete idx pjs.pjsActive
+          }
+   in case pjs.pjsOnError of
+        ParFail -> pjs' {pjsPhase = ParDraining}
+        ParCollect -> pjs'
+
+absorbConfirm :: ParJoinState -> Int -> Machine -> ConfirmRequest -> ParJoinState
+absorbConfirm pjs idx bm c =
+  pjs
+    { pjsSlots = setSlot idx (ParSlotAwaitingConfirm c) pjs.pjsSlots,
+      pjsActive = Map.insert idx (mkBranch bm) pjs.pjsActive,
+      pjsPhase = ParDraining,
+      pjsConfirmQueue = pjs.pjsConfirmQueue ++ [c]
+    }
+
+setSlot :: Int -> ParSlot -> [ParSlot] -> [ParSlot]
+setSlot idx slot slots =
+  [ if i == idx then slot else s
+    | (i, s) <- zip [0 ..] slots
+  ]
+
+joinSlots :: ParOnError -> [ParSlot] -> Either Text [Value]
+joinSlots ParFail slots =
+  case [msg | ParSlotFailed msg <- slots] of
+    (msg : _) -> Left msg
+    [] -> Right [v | ParSlotDone v <- slots]
+joinSlots ParCollect slots =
+  Right
+    [ case s of
+        ParSlotDone v ->
+          VRecord [(Ident "ok", VBool True), (Ident "value", v)]
+        ParSlotFailed msg ->
+          VRecord [(Ident "ok", VBool False), (Ident "error", VString msg)]
+        _ ->
+          VRecord [(Ident "ok", VBool False), (Ident "error", VString "incomplete")]
+      | s <- slots
+    ]
+
+renderErr :: RuntimeError -> Text
+renderErr = T.pack . show
+
+-------------------------------------------------------------------------------
+-- Pure crunch
+
+crunch :: RunCtx -> Machine -> Either RuntimeError Machine
+crunch ctx = go (0 :: Int)
+  where
+    go n m
+      | n > 100000 = Left (EvalErr (Trap "pure crunch limit exceeded"))
+      | otherwise = case crunchOnce ctx m of
+          Left e -> Left e
+          Right Nothing -> Right m
+          Right (Just m') -> go (n + 1) m'
+
+crunchOnce :: RunCtx -> Machine -> Either RuntimeError (Maybe Machine)
+crunchOnce ctx m = case m.mStatus of
+  MsRunning -> body
+  MsDraining -> body
+  _ -> Right Nothing
+  where
+    body = case m.mCurrent of
+      CurHost {} -> Right Nothing
+      CurAwaitConfirm {} -> Right Nothing
+      CurParPool -> Right Nothing
+      CurEval e env -> crunchEval ctx m e env
+      CurReturn v -> crunchReturn ctx m v
+
+crunchEval :: RunCtx -> Machine -> Expr -> Env -> Either RuntimeError (Maybe Machine)
+crunchEval ctx m e env = case e of
+  ELit lit -> ret m (literalValue lit)
+  EVar n -> case lookupEnv n env of
+    Nothing -> Left (EvalErr (Trap ("unbound variable: " <> unIdent n)))
+    Just v -> ret m v
+  EQName q -> Left (EvalErr (Unsupported ("qname not elaborated: " <> qnameToText q)))
+  ESection s -> case Map.lookup s ctx.rcSections of
+    Just t -> ret m (VString t)
+    Nothing -> Left (EvalErr (Trap ("unknown section: @" <> slugToText s)))
+  EFun ps _ body -> ret m (VClosure ps body env)
+  ESchema {} -> Left (EvalErr (Unsupported "schema(T) is check-time only"))
+  ETry {} -> Left (EvalErr (Unsupported "try/catch is not available yet"))
+  EList [] -> ret m (VList [])
+  EList (x : xs) ->
+    Right (Just m {mCurrent = CurEval x env, mFrames = FrList [] env xs : m.mFrames})
+  ERecord fs -> pushRecord m env [] fs
+  EInterp parts -> pushInterp m env [] parts
+  EApp f args ->
+    Right (Just m {mCurrent = CurEval f env, mFrames = FrAppFun env args : m.mFrames})
+  EProj e0 f ->
+    Right (Just m {mCurrent = CurEval e0 env, mFrames = FrProj f : m.mFrames})
+  EIndex e0 ix ->
+    Right (Just m {mCurrent = CurEval e0 env, mFrames = FrIndexE env ix : m.mFrames})
+  ELet n _ e1 e2 ->
+    Right (Just m {mCurrent = CurEval e1 env, mFrames = FrLet n env e2 : m.mFrames})
+  EIf c t el ->
+    Right (Just m {mCurrent = CurEval c env, mFrames = FrIf env t el : m.mFrames})
+  EMatch scrut arms ->
+    Right (Just m {mCurrent = CurEval scrut env, mFrames = FrMatch env arms : m.mFrames})
+  EPar opts n xs body ->
+    Right
+      ( Just
+          m
+            { mCurrent = CurEval xs env,
+              mFrames = FrPar (pendingPar opts n body env) : m.mFrames
+            }
+      )
+  EJoin [] -> Left (EvalErr (Trap "empty join"))
+  EJoin (t0 : ts) ->
+    Right (Just m {mCurrent = CurEval t0 env, mFrames = FrJoin [] env ts : m.mFrames})
+  EConfirm e0 ->
+    Right
+      ( Just
+          m
+            { mCurrent = CurEval e0 env,
+              mFrames = FrConfirm (ConfirmRequest "" "" Nothing) : m.mFrames
+            }
+      )
+
+ret :: Machine -> Value -> Either RuntimeError (Maybe Machine)
+ret m v = Right (Just m {mCurrent = CurReturn v})
+
+pendingPar :: [ParOpt] -> Ident -> Expr -> Env -> ParJoinState
+pendingPar opts var body env =
+  ParJoinState
+    { pjsVar = var,
+      pjsBody = body,
+      pjsMax = parMaxOf opts,
+      pjsOnError = parOnErrorOf opts,
+      pjsItems = [],
+      pjsSlots = [],
+      pjsActive = Map.empty,
+      pjsNextIndex = 0,
+      pjsPhase = ParScheduling,
+      pjsConfirmQueue = [],
+      pjsParentEnv = env
+    }
+
+parMaxOf :: [ParOpt] -> Int
+parMaxOf opts = case [n | ParMax n <- opts] of
+  (n : _) -> max 1 (fromIntegral n)
+  [] -> 4
+
+parOnErrorOf :: [ParOpt] -> ParOnError
+parOnErrorOf opts = case [e | ParOnError e <- opts] of
+  ("collect" : _) -> ParCollect
+  _ -> ParFail
+
+pushRecord ::
+  Machine -> Env -> [(Ident, Value)] -> [Field] -> Either RuntimeError (Maybe Machine)
+pushRecord m env acc = \case
+  [] -> ret m (VRecord (reverse acc))
+  FieldShorthand n : fs -> case lookupEnv n env of
+    Nothing -> Left (EvalErr (Trap ("unbound shorthand field: " <> unIdent n)))
+    Just v -> pushRecord m env ((n, v) : acc) fs
+  Field n e : fs ->
+    Right
+      ( Just
+          m
+            { mCurrent = CurEval e env,
+              mFrames = FrRecord acc env (Field n e : fs) : m.mFrames
+            }
+      )
+
+pushInterp ::
+  Machine -> Env -> [Text] -> [StringPart] -> Either RuntimeError (Maybe Machine)
+pushInterp m env acc = \case
+  [] -> ret m (VString (T.concat (reverse acc)))
+  SLit t : rest -> pushInterp m env (t : acc) rest
+  SInterp e : rest ->
+    Right
+      ( Just
+          m
+            { mCurrent = CurEval e env,
+              mFrames = FrInterp acc env (SInterp e : rest) : m.mFrames
+            }
+      )
+
+crunchReturn :: RunCtx -> Machine -> Value -> Either RuntimeError (Maybe Machine)
+crunchReturn ctx m v = case m.mFrames of
+  [] -> Right Nothing
+  fr : rest -> case fr of
+    FrLet n env body ->
+      Right (Just m {mCurrent = CurEval body (extendEnv n v env), mFrames = rest})
+    FrAppFun env args -> applyOrArgs ctx m v [] env args rest
+    FrAppArgs f collected env args ->
+      -- `args` head is the Arg we just finished evaluating.
+      case args of
+        [] -> Left (EvalErr (Trap "FrAppArgs with empty remaining"))
+        (a : as) ->
+          let collected' = (argName a, v) : collected
+           in applyOrArgs ctx m f collected' env as rest
+    FrList acc env es -> case es of
+      [] -> ret m {mFrames = rest} (VList (reverse (v : acc)))
+      e : es' ->
+        Right
+          ( Just
+              m
+                { mCurrent = CurEval e env,
+                  mFrames = FrList (v : acc) env es' : rest
+                }
+          )
+    FrRecord acc env fs -> case fs of
+      Field n _ : fs' -> pushRecord m {mFrames = rest} env ((n, v) : acc) fs'
+      _ -> Left (EvalErr (Trap "FrRecord invariant"))
+    FrInterp acc env parts -> case parts of
+      SInterp _ : restParts -> case renderValue v of
+        Left msg -> Left (EvalErr (Trap msg))
+        Right t -> pushInterp m {mFrames = rest} env (t : acc) restParts
+      _ -> Left (EvalErr (Trap "FrInterp invariant"))
+    FrProj f -> case project v f of
+      Left e -> Left (EvalErr e)
+      Right v' -> ret m {mFrames = rest} v'
+    FrIndexE env ix ->
+      Right (Just m {mCurrent = CurEval ix env, mFrames = FrIndexV v : rest})
+    FrIndexV lst -> case indexList lst v of
+      Left e -> Left (EvalErr e)
+      Right v' -> ret m {mFrames = rest} v'
+    FrIf env t el -> case v of
+      VBool True -> Right (Just m {mCurrent = CurEval t env, mFrames = rest})
+      VBool False -> Right (Just m {mCurrent = CurEval el env, mFrames = rest})
+      _ -> Left (EvalErr (Trap "if condition is not Bool"))
+    FrMatch env arms -> matchReturn m env v arms rest
+    FrPar pjs
+      | null pjs.pjsSlots -> case v of
+          VList items ->
+            let pjs' =
+                  pjs
+                    { pjsItems = items,
+                      pjsSlots = replicate (length items) ParSlotPending
+                    }
+             in if null items
+                  then ret m {mFrames = rest} (VList [])
+                  else
+                    Right
+                      ( Just
+                          m
+                            { mCurrent = CurParPool,
+                              mFrames = FrPar pjs' : rest
+                            }
+                      )
+          _ -> Left (EvalErr (Trap "par source is not a list"))
+      | otherwise -> Left (EvalErr (Trap "unexpected return into active FrPar"))
+    FrConfirm _ -> case confirmFromValue v of
+      Left e -> Left e
+      Right c ->
+        Right
+          ( Just
+              m
+                { mCurrent = CurAwaitConfirm c,
+                  mFrames = FrConfirm c : rest
+                }
+          )
+    FrJoin acc env es -> case es of
+      [] -> ret m {mFrames = rest} (VList (reverse (v : acc)))
+      e : es' ->
+        Right
+          ( Just
+              m
+                { mCurrent = CurEval e env,
+                  mFrames = FrJoin (v : acc) env es' : rest
+                }
+          )
+
+applyOrArgs ::
+  RunCtx ->
+  Machine ->
+  Value ->
+  [(Maybe Ident, Value)] ->
+  Env ->
+  [Arg] ->
+  [Frame] ->
+  Either RuntimeError (Maybe Machine)
+applyOrArgs ctx m f collected env args rest = case args of
+  [] -> case openApply ctx f (reverse collected) of
+    Left e -> Left e
+    Right c -> Right (Just m {mCurrent = c, mFrames = rest})
+  (a : as) ->
+    Right
+      ( Just
+          m
+            { mCurrent = CurEval (argExpr a) env,
+              mFrames = FrAppArgs f collected env (a : as) : rest
+            }
+      )
+
+argExpr :: Arg -> Expr
+argExpr = \case
+  ArgPos e -> e
+  ArgNamed _ e -> e
+
+argName :: Arg -> Maybe Ident
+argName = \case
+  ArgPos _ -> Nothing
+  ArgNamed n _ -> Just n
+
+matchReturn ::
+  Machine ->
+  Env ->
+  Value ->
+  [MatchArm] ->
+  [Frame] ->
+  Either RuntimeError (Maybe Machine)
+matchReturn m env v arms rest = case arms of
+  [] -> Left (EvalErr (Trap "non-exhaustive match"))
+  MatchArm p body : more -> case matchPat p v of
+    Nothing -> matchReturn m env v more rest
+    Just binds ->
+      Right
+        ( Just
+            m
+              { mCurrent = CurEval body (extendEnvMany binds env),
+                mFrames = rest
+              }
+        )
+
+project :: Value -> Ident -> Either EvalError Value
+project v f = case v of
+  VRecord fs ->
+    maybe (Left (Trap ("missing field: " <> unIdent f))) Right (lookup f fs)
+  _ -> Left (Trap ("projection on non-record: " <> unIdent f))
+
+indexList :: Value -> Value -> Either EvalError Value
+indexList v ix = case (v, ix) of
+  (VList xs, VInt i)
+    | i < 0 || i >= fromIntegral (length xs) -> Left (Trap "list index out of bounds")
+    | otherwise -> Right (xs !! fromIntegral i)
+  (VList _, _) -> Left (Trap "list index is not Int")
+  _ -> Left (Trap "index on non-list")
 
 literalValue :: Literal -> Value
 literalValue = \case
@@ -115,106 +822,46 @@ literalValue = \case
   LFloat d -> VFloat d
   LString t -> VString t
 
-evalFieldsIO :: RunCtx -> Env -> [Field] -> IO (Either RuntimeError [(Ident, Value)])
-evalFieldsIO ctx env = go []
-  where
-    go acc [] = pure (Right (reverse acc))
-    go acc (Field n e : rest) = do
-      r <- evalIO ctx env e
-      case r of
-        Left err -> pure (Left err)
-        Right v -> go ((n, v) : acc) rest
-    go acc (FieldShorthand n : rest) =
-      case lookupEnv n env of
-        Nothing ->
-          pure (Left (EvalErr (Trap ("unbound shorthand field: " <> unIdent n))))
-        Just v -> go ((n, v) : acc) rest
-
-evalInterpIO :: RunCtx -> Env -> [StringPart] -> IO (Either RuntimeError Value)
-evalInterpIO ctx env parts = go [] parts
-  where
-    go acc [] = pure (Right (VString (T.concat (reverse acc))))
-    go acc (SLit t : rest) = go (t : acc) rest
-    go acc (SInterp e : rest) = do
-      r <- evalIO ctx env e
-      case r of
-        Left err -> pure (Left err)
-        Right v -> case renderValue v of
-          Left msg -> pure (Left (EvalErr (Trap msg)))
-          Right t -> go (t : acc) rest
-
-evalArgsIO :: RunCtx -> Env -> [Arg] -> IO (Either RuntimeError [(Maybe Ident, Value)])
-evalArgsIO ctx env = go []
-  where
-    go acc [] = pure (Right (reverse acc))
-    go acc (ArgPos e : rest) = do
-      r <- evalIO ctx env e
-      case r of
-        Left err -> pure (Left err)
-        Right v -> go ((Nothing, v) : acc) rest
-    go acc (ArgNamed n e : rest) = do
-      r <- evalIO ctx env e
-      case r of
-        Left err -> pure (Left err)
-        Right v -> go ((Just n, v) : acc) rest
-
--- | Apply a value; host ops are one transition (snapshot afterwards).
-applyIO ::
-  RunCtx ->
-  Value ->
-  [(Maybe Ident, Value)] ->
-  IO (Either RuntimeError Value)
-applyIO ctx f args = case f of
-  VBuiltin b -> pure (mapEval (applyBuiltin b (map snd args)))
-  VClosure params body cloEnv -> case bindParams params args of
-    Left e -> pure (Left (EvalErr e))
-    Right binds -> evalIO ctx (extendEnvMany binds cloEnv) body
-  VHostOp op -> do
-    result <- runHostOp ctx.rcHost op args
-    case result of
-      Left e -> do
-        _ <- recordBoundary ctx op Nothing StatusFailed
-        pure (Left e)
-      Right v -> do
-        _ <- recordBoundary ctx op (Just v) StatusRunning
-        pure (Right v)
-  _ -> pure (Left (EvalErr (Trap "applied a non-function value")))
-
-recordBoundary :: RunCtx -> HostOpId -> Maybe Value -> RunStatus -> IO ()
-recordBoundary ctx op mVal status = do
-  modifyIORef' ctx.rcSeq (+ 1)
-  seqNo <- readIORef ctx.rcSeq
-  snap <-
-    mkBoundary
-      ctx.rcStore.rsRunId
-      seqNo
-      status
-      ctx.rcProjectHash
-      (Just op)
-      mVal
-  writeBoundarySnapshot ctx.rcStore snap
-
-matchArmsIO :: RunCtx -> Env -> Value -> [MatchArm] -> IO (Either RuntimeError Value)
-matchArmsIO ctx env v = \case
-  [] -> pure (Left (EvalErr (Trap "non-exhaustive match")))
-  MatchArm p body : rest -> case matchPat p v of
-    Nothing -> matchArmsIO ctx env v rest
-    Just binds -> evalIO ctx (extendEnvMany binds env) body
-
-project :: Value -> Ident -> Either EvalError Value
-project v f = case v of
+confirmFromValue :: Value -> Either RuntimeError ConfirmRequest
+confirmFromValue = \case
   VRecord fs ->
-    maybe
-      (Left (Trap ("missing field: " <> unIdent f)))
-      Right
-      (lookup f fs)
-  _ -> Left (Trap ("projection on non-record: " <> unIdent f))
+    Right
+      ConfirmRequest
+        { crTitle = stringField (Ident "title") fs,
+          crDetail = stringField (Ident "detail") fs,
+          crBranchIndex = Nothing
+        }
+  _ -> Left (HostErr "confirm expects a record { title, detail }")
 
-indexList :: Value -> Value -> Either EvalError Value
-indexList v ix = case (v, ix) of
-  (VList xs, VInt i)
-    | i < 0 || i >= fromIntegral (length xs) ->
-        Left (Trap "list index out of bounds")
-    | otherwise -> Right (xs !! fromIntegral i)
-  (VList _, _) -> Left (Trap "list index is not Int")
-  _ -> Left (Trap "index on non-list")
+stringField :: Ident -> [(Ident, Value)] -> Text
+stringField n fs = case lookup n fs of
+  Just (VString t) -> t
+  _ -> ""
+
+confirmArgs :: [(Maybe Ident, Value)] -> Either RuntimeError ConfirmRequest
+confirmArgs args = case lookup (Just (Ident "title")) args of
+  Just (VString title) ->
+    let detail = case lookup (Just (Ident "detail")) args of
+          Just (VString d) -> d
+          _ -> ""
+     in Right (ConfirmRequest title detail Nothing)
+  _ -> case args of
+    [(Nothing, v)] -> confirmFromValue v
+    _ -> Left (HostErr "human.confirm expects title: String (and optional detail)")
+
+persist ::
+  RunCtx ->
+  Maybe HostOpId ->
+  Maybe Value ->
+  MachineStatus ->
+  Maybe Machine ->
+  IO ()
+persist ctx mHost mVal status mMachine = do
+  persistTransition
+    ctx.rcStore
+    ctx.rcSeq
+    ctx.rcProjectHash
+    mHost
+    mVal
+    status
+    mMachine

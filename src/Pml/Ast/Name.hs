@@ -14,20 +14,20 @@ import Data.Text (Text)
 import Data.Text qualified as T
 
 newtype Ident = Ident {unIdent :: Text}
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Read)
 
 newtype TypeName = TypeName {unTypeName :: Text}
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Read)
 
 -- | Slash-separated module path (@lib/text@). Host paths like @fs.read@ are
 -- field projection on an identifier, not a 'QName'.
 data QName = QName
   { qnParts :: [Ident]
   }
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Read)
 
 newtype Slug = Slug {unSlug :: Text}
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Read)
 
 qnameFromParts :: [Text] -> QName
 qnameFromParts = QName . map Ident

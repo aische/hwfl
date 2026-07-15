@@ -10,6 +10,7 @@ import Pml.Parse.LoadSpec
 import Pml.Parse.ModuleSpec
 import Pml.Parse.SectionSpec
 import Pml.Parse.TypeSpec
+import Pml.Runtime.ConcurrentSpec
 import Pml.Runtime.RunSpec
 import Pml.Runtime.WorkspaceSpec
 import Test.Hspec
@@ -28,3 +29,4 @@ main = hspec $ do
   Pml.Llm.ProviderSpec.spec
   Pml.Runtime.WorkspaceSpec.spec
   Pml.Runtime.RunSpec.spec
+  Pml.Runtime.ConcurrentSpec.spec

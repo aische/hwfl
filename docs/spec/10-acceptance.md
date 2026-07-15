@@ -37,10 +37,10 @@
 - [x] `pml run` end-to-end summarise example
 
 ### M5 — Concurrency & human
-- [ ] `par` with bound + ordered results
-- [ ] `confirm` + `approve`
-- [ ] Cooperative freeze in `par`
-- [ ] `step` / `resume`
+- [x] `par` with bound + ordered results
+- [x] `confirm` + `approve`
+- [x] Cooperative freeze in `par`
+- [x] `step` / `resume`
 
 ### M6 — Observability
 - [ ] spans.jsonl + tree show
