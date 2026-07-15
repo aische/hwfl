@@ -3,14 +3,9 @@
 Provisional working name: **pml** (Prose ML) — rename freely when the
 greenfield repo is created.
 
-This folder is meant to become **`docs/`** in the new repository. After you
-copy it:
-
-1. Rename `new-project/` → `docs/`
-2. Copy `cursor-scaffold/` → `.cursor/` at the **repo root** (not under `docs/`)
-3. Adjust path references in `.cursor/rules` if needed (they already say `docs/`)
-4. Keep the existing **hwfi** repo nearby as a behavioural / design reference
-   (see [hwfi-reference.md](hwfi-reference.md))
+This folder is **`docs/`** in the pml repository. Keep the **hwfi** repo
+nearby as a behavioural / design reference (see [hwfi-reference.md](hwfi-reference.md)).
+Start sessions from [STATUS.md](STATUS.md) and [TASKS.md](TASKS.md).
 
 ## Doc map
 

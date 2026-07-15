@@ -42,5 +42,6 @@ Be explicit:
 ## Semantic-check dogfood
 
 hwfi’s `examples/semantic-check` is the regression oracle for **author
-ergonomics**: the pml port should be dramatically fewer files. Use that
-delta as a design fitness score ([spec/10-acceptance.md](spec/10-acceptance.md)).
+ergonomics**. The pml port lives at `examples/semantic-check/` (M8): **1**
+module vs hwfi’s **74** tools — see [examples/semantic-check/README.md](../examples/semantic-check/README.md).
+Use that delta as a design fitness score ([spec/10-acceptance.md](spec/10-acceptance.md)).

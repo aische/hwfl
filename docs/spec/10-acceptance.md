@@ -58,8 +58,10 @@
 
 ## 3. v0 release gate
 
-All of M0–M7 required; M8 strongly expected before calling the language
-“good enough to retire hwfi for new work.”
+**Milestones M0–M8 are complete** (2026-07-15). Ongoing fitness metrics in
+§1 still apply — especially **provider swap** and **project-wide
+`pml check`** — before treating pml as the default substrate for all new
+agent work vs hwfi.
 
 ## 4. Explicit non-acceptance
 

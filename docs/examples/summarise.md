@@ -1,7 +1,7 @@
 # Example: summarise (informative)
 
-Illustrative module for the greenfield repo’s `examples/hello`-class demo.
-Not executable until the engine exists.
+Reference contract for the summarise workflow (E04). Runnable via
+`examples/summarise.md` with `pml run` and a mock or real provider.
 
 ````markdown
 ---

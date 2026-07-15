@@ -2,28 +2,12 @@
 
 Active work only. Archive completed sections to `log/archive/` weekly.
 
-## Now — bootstrap (after greenfield repo)
+## Now
 
-- [x] Create Cabal/Haskell package (GHC2021)
-- [x] Wire `llm-simple` as default provider behind `LlmProvider` (M4)
-- [x] **M0** — AST + parser + pretty for kernel (no host ops yet)
-- [x] **M0b** — Markdown module loader (frontmatter + fence extraction)
-- [x] Move this docs pack to `docs/`; install Cursor scaffold
-
-## Next — milestones (see [spec/10-acceptance.md](spec/10-acceptance.md))
-
-- [x] **M1** — Pure evaluator (CEK / frames) + unit tests
-- [x] **M2** — Type checker (signatures + local inference)
-- [x] **M3** — Effects lattice + `check` CLI
-- [x] **M4** — Host ops: fs + llm (via provider) + snapshots
-- [x] **M5** — `par` + `confirm` + resume / `--step`
-- [x] **M6** — Span observability + `show`
-- [x] **M7** — Agent loop (`llm.agent`) + tool functions
-- [x] **M8** — Dogfood: port a slim semantic-check in pml
+- [ ] Full `pml check` project.json + import graph
 
 ## Later
 
-- [ ] Full `pml check` project.json + import graph (M3 shipped single-module)
 - [x] Full kont / `machine_json` codec (M5)
 - [ ] Alternate `LlmProvider` (e.g. direct OpenAI/Anthropic SDK) as proof of swap
 - [ ] Streaming LLM spans
@@ -32,6 +16,8 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Done
 
+- [x] Bootstrap: Cabal package, docs pack, Cursor scaffold (2026-07-15)
+- [x] Milestones M0–M8 (see [spec/10-acceptance.md](spec/10-acceptance.md))
 - [x] Initial multi-file language/runtime specification (2026-07-15)
 - [x] M0 syntax skeleton: parser + AST + pretty + markdown loader (2026-07-15)
 - [x] M1 pure evaluator: values, prelude builtins, module funs, E01/E02 (2026-07-15)

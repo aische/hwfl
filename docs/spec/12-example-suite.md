@@ -117,8 +117,12 @@ Change module source; resume refuses with exit code 4.
 
 ## E20 — Mini semantic gate **H**
 
-Single project approximating hwfi review-gate: map/filter/unique in-language,
-optional one llm call. File budget: ≤ 5 modules.
+**Shipped (M8):** `examples/semantic-check/workflows/main.md` — layers 0–2b
+deterministic review (structural, prose refs, corpus, speech-act hints) +
+bounded `review_gate`. One module (~300 LOC); uses `meta.check_module`,
+`fs.find`, and pure `list` / `text` / `md` prelude helpers. No LLM in the
+check path (layer 3 pragmatic review deferred). Fixture:
+`test/fixtures/semantic-target`.
 
 ---
 

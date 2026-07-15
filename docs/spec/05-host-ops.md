@@ -90,23 +90,47 @@ as long as host ops inside are correct.
 
 | Op | Notes |
 |----|-------|
-| `meta.invoke` | run another module with inputs (nested frames) |
-| `meta.check_project` | run checker on a path (dogfood) |
-| `meta.list_runs` | |
-| `meta.read_spans` | query spans for a run |
-| `meta.read_snapshot` | **careful** — may expose secrets; redact |
+| `meta.invoke` | run another module with inputs (nested frames) **[defer]** |
+| `meta.check_module` | check one markdown module; `{ ok, error, name }` (recoverable; M8) |
+| `meta.check_project` | whole-project graph check **[defer]** — use `meta.check_module` per file for now |
+| `meta.list_runs` | **[defer]** |
+| `meta.read_spans` | query spans for a run **[defer]** |
+| `meta.read_snapshot` | **careful** — may expose secrets; redact **[defer]** |
 
-## 7. JSON / data
+`meta.check_module` signature (sketch):
+
+```text
+(path: FileRef) -[Meta, Read]-> { ok: Bool, error: String, name: String }
+```
+
+## 7. Pure prelude (not host ops)
+
+Shipped in v0 as prelude record projections — **no snapshot boundary**.
+Prefer migrating to `lib/*` modules once the import graph exists.
+
+| Module | Op | Signature (sketch) |
+|--------|-----|-------------------|
+| `list` | `length` | `List<T> -> Int` |
+| `list` | `concat` | `List<T> -> List<T> -> List<T>` |
+| `text` | `metrics` | `String -> { chars, tokens, lines, entropy, uniqueness }` |
+| `text` | `similarity` | `String -> String -> Float` (Jaccard on words) |
+| `text` | `contains` | `String -> String -> Bool` |
+| `text` | `split_sentences` | `String -> List<String>` |
+| `text` | `words` | `String -> List<String>` |
+| `text` | `strip_suffix` | `String -> String -> String` |
+| `md` | `sections` | `String -> List<{ slug, title, body }>` |
+
+## 8. JSON / data
 
 **Not host ops.** Implement in `lib/json` etc. Exception: if performance
 forces a host `json.parse`, document it — still prefer in-language.
 
-## 8. Prelude stability
+## 9. Prelude stability
 
 Breaking host op signatures requires a logged decision and usually a
 major/minor bump. Prefer adding new ops over overloading silently.
 
-## 9. Naming
+## 10. Naming
 
 Surface: dotted modules `fs`, `llm`, `exec`, `human`, `obs`, `meta`.  
 Internal Haskell: match hwfi’s `builtin/*` only if porting tests — not

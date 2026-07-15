@@ -73,5 +73,7 @@ the computation substrate.** See [hwfi-reference.md](hwfi-reference.md).
 An author (human or agent) can write a non-trivial multi-step agent
 pipeline — including parallelism, human gates, and structured LLM JSON —
 in a handful of markdown modules, resume after crash mid-LLM-call, and
-inspect a span tree of what ran. Porting hwfi’s `semantic-check` should
-collapse tens of micro-tools into a small library written *in* pml.
+inspect a span tree of what ran. **M8 showed this:** hwfi’s
+`semantic-check` (~74 tool files) collapsed to **one** pml module
+(`examples/semantic-check`) with the same layered review policy — proof
+the GP language replaces micro-tool fan-out.
