@@ -19,6 +19,7 @@ import LLM.Generate
     generateTextWithFallbacks,
     llmHooks,
     noHooks,
+    defaultDebugHooks,
   )
 import LLM.Load (loadModelOrThrow)
 import Pml.Llm.Provider (LlmProvider (..))
@@ -61,7 +62,7 @@ chatWithCatalog catalogPath req = do
                 grMessages = turns,
                 grTools = map toLLMTool req.chatTools,
                 grAbortSignal = Nothing,
-                grLLMHooks = llmHooks noHooks,
+                grLLMHooks = llmHooks defaultDebugHooks,
                 grHooks = noHooks
               }
           models = ModelWithFallbacks model []

@@ -29,7 +29,9 @@ preludeTypeEnv =
                  (Ident "meta", metaType),
                  (Ident "list", listType),
                  (Ident "text", textType),
-                 (Ident "md", mdType)
+                 (Ident "md", mdType),
+                 (Ident "json", jsonType),
+                 (Ident "ctx", ctxType)
                ],
       teAliases = Map.empty
     }
@@ -247,6 +249,26 @@ mdType =
                   ]
               )
           )
+      )
+    ]
+
+jsonType :: TypeExpr
+jsonType =
+  TRecord
+    [ ( Ident "encode",
+        -- Accept any JSON-encodable value; Infer special-cases @json.encode@.
+        TFun (t "Json") (t "String")
+      )
+    ]
+
+ctxType :: TypeExpr
+ctxType =
+  TRecord
+    [ ( Ident "run",
+        TRecord
+          [ (Ident "id", t "String"),
+            (Ident "started_at", t "String")
+          ]
       )
     ]
 

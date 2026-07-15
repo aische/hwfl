@@ -107,6 +107,7 @@ infer env = \case
     | isListConcat f -> inferListConcatApp env args
     | isEqOp f -> inferEqApp env args
     | isOrdOp f -> inferOrdApp env args
+    | isJsonEncode f -> inferJsonEncodeApp env args
     | isArithOp f -> inferArithApp env args
     | otherwise -> do
         ft <- infer env f
@@ -501,6 +502,22 @@ inferListConcatApp env args = case classifyArgs args of
     b <- maybe (Left (MissingNamedArg (Ident "right"))) pure (lookup (Ident "right") nes)
     inferListConcatApp env [ArgPos a, ArgPos b]
   _ -> Left (ArityMismatch 2 (length args))
+
+isJsonEncode :: Expr -> Bool
+isJsonEncode = \case
+  EProj (EVar (Ident "json")) (Ident "encode") -> True
+  _ -> False
+
+inferJsonEncodeApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferJsonEncodeApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Positional [e]) -> do
+    ty <- infer env e
+    ty' <- resolveType env ty
+    unless (isRenderable ty') $
+      Left (TypeMismatchMsg "json.encode requires a JSON-encodable value" ty' tString)
+    pure tString
+  _ -> Left (ArityMismatch 1 (length args))
 
 isEqOp :: Expr -> Bool
 isEqOp = \case

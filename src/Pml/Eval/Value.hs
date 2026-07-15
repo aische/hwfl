@@ -63,6 +63,7 @@ data Builtin
   | BTextWords
   | BTextStripSuffix
   | BMdSections
+  | BJsonEncode
   deriving stock (Eq, Show, Read)
 
 -- | Host operation identity (runtime only). Typed stubs stay in Check.Prelude;

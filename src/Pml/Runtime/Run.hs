@@ -78,6 +78,22 @@ loadRunEnv (ModuleBody decls _) =
           (Map.union hostOpsEnv preludeEnv)
    in (env, table)
 
+-- | Ambient run context (spec §01 §4) injected at runtime only.
+mkCtxValue :: Text -> Text -> Value
+mkCtxValue runId started =
+  VRecord
+    [ ( Ident "run",
+        VRecord
+          [ (Ident "id", VString runId),
+            (Ident "started_at", VString started)
+          ]
+      )
+    ]
+
+withRunCtx :: Text -> Text -> Env -> Env
+withRunCtx runId started env =
+  extendEnv (Ident "ctx") (mkCtxValue runId started) env
+
 sectionMap :: LoadedModule -> Map Slug Text
 sectionMap loaded =
   Map.fromList
@@ -102,7 +118,8 @@ runLoadedModule opts loaded = do
       }
   seqRef <- newIORef (0 :: Int)
   spans <- newSpanState
-  let (baseEnv, funs) = loadRunEnv (lmBody loaded)
+  let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
+      baseEnv = withRunCtx runId started baseEnv0
       host =
         HostEnv
           { heWorkspace = ws,
@@ -194,12 +211,15 @@ mkCtx ::
   LoadedModule ->
   RunStore ->
   Text ->
+  Text ->
+  Text ->
   IORef Int ->
   SpanState ->
   IO RunCtx
-mkCtx provider wsRoot loaded store hash seqRef spans = do
+mkCtx provider wsRoot loaded store hash runId started seqRef spans = do
   ws <- newWorkspace wsRoot
-  let (baseEnv, funs) = loadRunEnv (lmBody loaded)
+  let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
+      baseEnv = withRunCtx runId started baseEnv0
       host =
         HostEnv
           { heWorkspace = ws,
@@ -244,7 +264,7 @@ loadExisting workspace runId provider = do
                 spans <- newSpanState
                 writeIORef spans.ssCounter snap.rsSpanCounter
                 setSpanStack spans snap.rsSpanStack
-                ctx <- mkCtx provider workspace loaded store hash seqRef spans
+                ctx <- mkCtx provider workspace loaded store hash meta.rmRunId meta.rmStartedAt seqRef spans
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 

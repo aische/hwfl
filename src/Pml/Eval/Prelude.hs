@@ -24,6 +24,7 @@ import Pml.Text.Corpus
     textSimilarity,
   )
 import Pml.Text.Markdown (MdSection (..), extractSections)
+import Pml.Json.Encode (valueToJsonText)
 
 preludeEnv :: Env
 preludeEnv =
@@ -62,6 +63,11 @@ preludeEnv =
         VRecord
           [ (Ident "sections", VBuiltin BMdSections)
           ]
+      ),
+      ( Ident "json",
+        VRecord
+          [ (Ident "encode", VBuiltin BJsonEncode)
+          ]
       )
     ]
 
@@ -96,6 +102,7 @@ applyBuiltin b args = case (b, args) of
   (BMdSections, [VString s]) -> case extractSections s of
     Left err -> Left (Trap ("md.sections: " <> err))
     Right secs -> Right (VList (map sectionValue secs))
+  (BJsonEncode, [v]) -> Right (VString (valueToJsonText v))
   (BAnd, _) -> arityOrType "&&" 2 args
   (BOr, _) -> arityOrType "||" 2 args
   (BNot, _) -> arityOrType "not" 1 args
@@ -108,6 +115,7 @@ applyBuiltin b args = case (b, args) of
   (BTextWords, _) -> arityOrType "text.words" 1 args
   (BTextStripSuffix, _) -> arityOrType "text.strip_suffix" 2 args
   (BMdSections, _) -> arityOrType "md.sections" 1 args
+  (BJsonEncode, _) -> arityOrType "json.encode" 1 args
   (_, _) -> Left (Trap ("wrong arity for builtin: " <> T.pack (show b)))
 
 metricsValue :: TextMetrics -> Value

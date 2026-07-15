@@ -57,10 +57,11 @@ spec = describe "semantic-check dogfood (M8 / E20)" $ do
               case lookup (Ident "finding_count") fs of
                 Just (VInt n) -> n `shouldSatisfy` (> 0)
                 other -> expectationFailure ("finding_count: " <> show other)
-              doesFileExist (tmp </> "semantic-report.json") `shouldReturn` True
-              report <- TIO.readFile (tmp </> "semantic-report.json")
-              report `shouldSatisfy` T.isInfixOf "structural"
+              doesFileExist (tmp </> ".pml/runs/e20/semantic-report.json") `shouldReturn` True
+              report <- TIO.readFile (tmp </> ".pml/runs/e20/semantic-report.json")
+              report `shouldSatisfy` T.isInfixOf "\"schema\""
               report `shouldSatisfy` T.isInfixOf "workflows/missing"
+              report `shouldSatisfy` T.isInfixOf "\"review_gate\""
             other -> expectationFailure ("expected completed run, got: " <> show other)
 
 copyTree :: FilePath -> FilePath -> IO ()

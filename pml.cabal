@@ -54,6 +54,7 @@ library
         Pml.Obs.Show
         Pml.Obs.Span
         Pml.Obs.Trace
+        Pml.Json.Encode
         Pml.Text.Corpus
         Pml.Text.Markdown
         Pml.Parse.Expr

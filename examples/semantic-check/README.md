@@ -15,8 +15,9 @@ directory and is executed with `--workspace` pointed at the project to scan.
 | 2 | `text.metrics` / `text.similarity` → entropy outliers + redundancy pairs |
 | 2b | `text.split_sentences` + directive heuristics → speech-act hints |
 
-Always writes `semantic-report.json` in the workspace and returns
-`{ report_path, ok, finding_count }`. No API keys required.
+Always writes `.pml/runs/<run-id>/semantic-report.json` in the workspace
+(valid JSON via `json.encode`) and returns `{ report_path, ok, finding_count }`.
+No API keys required.
 
 ## Run
 

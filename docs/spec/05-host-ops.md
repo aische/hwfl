@@ -119,6 +119,7 @@ Prefer migrating to `lib/*` modules once the import graph exists.
 | `text` | `words` | `String -> List<String>` |
 | `text` | `strip_suffix` | `String -> String -> String` |
 | `md` | `sections` | `String -> List<{ slug, title, body }>` |
+| `json` | `encode` | encodable value → JSON `String` (pure; M8 reports) |
 
 ## 8. JSON / data
 

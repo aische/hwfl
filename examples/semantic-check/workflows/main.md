@@ -264,14 +264,6 @@ fun take_findings(xs: List<Finding>, k: Int, i: Int, n: Int): List<Finding> =
   if i >= n || k <= 0 then []
   else list.concat([xs[i]], take_findings(xs, k - 1, i + 1, n))
 
-fun render_findings(xs: List<Finding>, i: Int, n: Int): String =
-  if i >= n then "end"
-  else
-    let f = xs[i]
-    let row = $"item:{f.severity}:{f.category}:{f.file}:{f.claim}:{f.evidence}:{f.suggestion}"
-    let sep = if i + 1 >= n then "" else "|"
-    $"{row}{sep}{render_findings(xs, i + 1, n)}"
-
 fun all_ok(rows: List<CheckRow>, i: Int, n: Int): Bool =
   if i >= n then true
   else if not(rows[i].ok) then false
@@ -295,11 +287,19 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
   let findings = concat4(structural, entry, prose, list.concat(corpus, speech))
   let gate = take_findings(findings, 8, 0, list.length(findings))
   let okv = all_ok(rows, 0, list.length(rows))
-  let report =
-    $"schema=semantic-report/v1;mode=deterministic;entry={inputs.entry};ok={okv};gate={render_findings(gate, 0, list.length(gate))};findings={render_findings(findings, 0, list.length(findings))}\n"
-  let _ = fs.write(path = "semantic-report.json", text = report)
+  let report_obj = {
+    schema = "semantic-report/v1",
+    mode = "deterministic",
+    entry = inputs.entry,
+    ok = okv,
+    review_gate = gate,
+    findings = findings
+  }
+  let report = json.encode(report_obj)
+  let report_path = $".pml/runs/{ctx.run.id}/semantic-report.json"
+  let _ = fs.write(path = report_path, text = report)
   {
-    report_path = "semantic-report.json",
+    report_path = report_path,
     ok = okv,
     finding_count = list.length(findings)
   }
