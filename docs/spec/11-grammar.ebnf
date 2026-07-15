@@ -1,0 +1,90 @@
+(* pml kernel grammar sketch — provisional, informative for M0.
+   Not frozen; adjust during parser implementation but keep coverage. *)
+
+(* --- Modules (body of ```pml fence) --- *)
+
+ModuleBody   = Decl* Expr? ;
+Decl         = TypeDecl | FunDecl ;
+TypeDecl     = "type" TypeName "=" TypeExpr ;
+FunDecl      = "fun" Ident ParamList (":" TypeExpr)? "=" Expr ;
+
+ParamList    = "(" Param ("," Param)* ")" | "(" ")" ;
+Param        = Ident (":" TypeExpr)? ;
+
+(* --- Types --- *)
+
+TypeExpr     = TypeAtom ("->" TypeExpr)?
+             | TypeAtom "-[" EffectList "]->" TypeExpr ;
+TypeAtom     = TypeName
+             | "List" "<" TypeExpr ">"
+             | "Option" "<" TypeExpr ">"
+             | "Result" "<" TypeExpr "," TypeExpr ">"
+             | "Secret" "<" TypeExpr ">"
+             | RecordType
+             | "(" TypeExpr ")" ;
+RecordType   = "{" (FieldType ("," FieldType)*)? "}" ;
+FieldType    = Ident ":" TypeExpr ;
+EffectList   = Effect ("," Effect)* ;
+Effect       = "Read" | "Write" | "Net" | "Exec" | "Parallel" | "Human" | "Meta" ;
+
+(* --- Expressions --- *)
+
+Expr         = LetExpr | FunExpr | IfExpr | MatchExpr | ParExpr | JoinExpr
+             | TryExpr | ConfirmExpr | CmpExpr ;
+
+LetExpr      = "let" Ident (":" TypeExpr)? "=" Expr "in" Expr
+             | "let" Ident (":" TypeExpr)? "=" Expr LetExpr ;
+FunExpr      = "fun" ParamList (":" TypeExpr)? "=>" Expr
+             | "fun" ParamList (":" TypeExpr)? "=" Expr ;
+
+IfExpr       = "if" Expr "then" Expr "else" Expr ;
+MatchExpr    = "match" Expr "with" MatchArm+ ;
+MatchArm     = "|" Pattern "=>" Expr ;
+
+ParExpr      = "par" ("(" ParOpt ("," ParOpt)* ")")? "for" Ident "in" Expr Block ;
+JoinExpr     = "join" "{" Task+ "}" ;
+Task         = "task" Block ;
+ConfirmExpr  = "confirm" RecordLit ;
+TryExpr      = "try" Expr "catch" "(" Ident ")" "=>" Expr ;
+
+ParOpt       = "max" "=" Nat | "on_error" "=" StringLit ;
+Block        = "{" Expr "}" ;
+
+CmpExpr      = PipeExpr ;
+PipeExpr     = AppExpr ;   (* optional `|>` sugar [defer] *)
+
+AppExpr      = Primary (AppTail)* ;
+AppTail      = "(" ArgList? ")" | "." Ident | "[" Expr "]" ;
+ArgList      = Arg ("," Arg)* ;
+Arg          = Ident "=" Expr | Expr ;
+
+Primary      = Ident | QName | Literal | ListLit | RecordLit
+             | SectionRef | InterpString | "(" Expr ")" ;
+
+QName        = Ident ("/" Ident)+ ;   (* after elaboration; surface may use imports *)
+SectionRef   = "@" Slug ;
+Slug         = Ident ;                (* see modules spec for slugify *)
+
+ListLit      = "[" (Expr ("," Expr)*)? "]" ;
+RecordLit    = "{" (Field ("," Field)*)? "}" ;
+Field        = Ident "=" Expr ;
+
+(* --- Patterns --- *)
+
+Pattern      = "_" | Ident | Literal | TagPat | RecordPat | ListPat ;
+TagPat       = TypeName ("(" Pattern ")")? ;
+RecordPat    = "{" (FieldPat ("," FieldPat)*)? "}" ;
+FieldPat     = Ident "=" Pattern ;
+ListPat      = "[" (Pattern ("," Pattern)*)? "]" ;
+
+(* --- Literals --- *)
+
+Literal      = StringLit | Nat | FloatLit | "true" | "false" | "()" ;
+InterpString = "$\"" InterpPart* "\"" ;
+InterpPart   = EscapeChar | "{" Expr "}" | plain text ;
+
+StringLit    = "\"" … "\"" | "\"\"\"" … "\"\"\"" ;
+Nat          = [0-9]+ ;
+FloatLit     = [0-9]+ "." [0-9]+ ;
+TypeName     = [A-Z][A-Za-z0-9_]* ;
+Ident        = [a-z_][A-Za-z0-9_]* ;
