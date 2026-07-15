@@ -62,6 +62,7 @@
 - [x] Float / `==` polymorphism cleanup
 - [x] `llm.object` runtime (E14)
 - [x] `llm.agent_object` + submit tool
+- [x] Polymorphic `obs.span` check type (E16)
 - [ ] Alternate `LlmProvider` adapter — low priority swap proof
 
 ## 3. v0 release gate

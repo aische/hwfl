@@ -188,7 +188,8 @@ obsType =
           (t "Unit")
       ),
       ( Ident "span",
-        -- Region wrapper; polymorphic result deferred — body typed as Unit->Unit for v0.
+        -- Stub for bare / partial @obs.span@; Infer special-cases full apps to
+        -- @(name, fun () -> a) -> a@ (E16) so the result is the body type.
         TFun (t "String") (TFun (TFun (t "Unit") (t "Unit")) (t "Unit"))
       )
     ]

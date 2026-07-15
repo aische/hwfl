@@ -4,15 +4,17 @@ Last updated: 2026-07-15
 
 ## Current focus
 
-**`llm.agent_object` complete** (structured agent + synthetic `submit` tool).
+**Polymorphic `obs.span` complete** (check return type = body type; E16).
 
 ## Done recently
 
+- Polymorphic `obs.span`: Infer special-cases `(name, fun () -> a) -> a`
+  (curried or two-arg); runtime region/span unchanged; empty `fun ()`
+  bindings fixed; 102 tests
 - `llm.agent_object`: multi-transition agent loop with `schema = schema(Out)` →
   `{ value: Out, rounds: Int }`; injects terminating `submit` tool; plain-text
   finish is fatal; mixed submit rounds recover without running tools
 - Surface name uses underscore (`agent_object`) — kernel idents disallow `-`
-- 100 tests; semantic-check + project-check green
 
 ## Blockers
 
@@ -22,7 +24,6 @@ None.
 
 1. Streaming LLM spans
 2. Optional DB-backed run store
-3. Polymorphic `obs.span` check type
 
 **Deprioritized:** alternate `LlmProvider` backends — interface is stable; llm-simple
 + mock suffice until much later.

@@ -17,6 +17,7 @@ import Data.Aeson.Key qualified as Key
 import Data.IORef (IORef, readIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Pml.Ast.Expr
@@ -67,7 +68,6 @@ import Pml.Runtime.Error (RuntimeError (..))
 import Pml.Runtime.Host (HostEnv (..), HostResult (..), runHostOp)
 import Pml.Runtime.Machine
 import Pml.Runtime.Snapshot (RunStore (..), persistTransition)
-import Data.Maybe (fromMaybe)
 
 data RunCtx = RunCtx
   { rcHost :: HostEnv,
@@ -252,7 +252,20 @@ doHost ctx mode m op args
   | op == HostHumanConfirm = case confirmArgs args of
       Left e -> pure (Left e)
       Right c -> doConfirm ctx m c
-  | op == HostObsSpan = doObsSpan ctx mode m args
+  | op == HostObsSpan = case parseObsSpan args of
+      Right _ -> doObsSpan ctx mode m args
+      Left e ->
+        -- Curried surface @obs.span(name)(thunk)@: first app yields CurHost with
+        -- only the name while FrAppFun still holds the thunk — collect it.
+        case m.mFrames of
+          FrAppFun env more : rest
+            | obsSpanNeedsBody args,
+              not (null more) ->
+                case applyOrArgs ctx m (VHostOp HostObsSpan) args env more rest of
+                  Left err -> pure (Left err)
+                  Right (Just m') -> pure (Right (StepResult m' False))
+                  Right Nothing -> pure (Right (StepResult m False))
+          _ -> pure (Left e)
   | op == HostObsLog = doObsLog ctx mode m args
   | op == HostLlmAgent = startAgent ctx mode m args Nothing
   | op == HostLlmAgentObject = case parseAgentObjectArgs args of
@@ -549,10 +562,6 @@ stepAgentTool ctx mode m ag tr
       Nothing -> case tr.trPending of
         [] -> finishToolRound ctx mode m ag tr
         tc : rest -> startToolCall ctx mode m ag (tr {trPending = rest}) tc
-  where
-    isNothing = \case
-      Nothing -> True
-      Just _ -> False
 
 handleMixedSubmit ::
   RunCtx ->
@@ -844,29 +853,44 @@ parseObsLog args = do
       _ -> Aeson.Null
 
 parseObsSpan :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Value)
-parseObsSpan args = case (nameArg, bodyArg) of
+parseObsSpan args = case (obsSpanNameArg args, obsSpanBodyArg args) of
   (Just (VString name), Just thunk)
-    | isThunk thunk -> Right (name, thunk)
+    | isObsSpanThunk thunk -> Right (name, thunk)
     | otherwise -> Left (HostErr "obs.span body must be a function")
   _ -> Left (HostErr "obs.span expects name: String and a thunk")
+
+-- | True when @obs.span@ has a name but not yet a body (curried first app).
+obsSpanNeedsBody :: [(Maybe Ident, Value)] -> Bool
+obsSpanNeedsBody args =
+  isJust (obsSpanNameArg args) && isNothing (obsSpanBodyArg args)
+
+obsSpanNameArg :: [(Maybe Ident, Value)] -> Maybe Value
+obsSpanNameArg args =
+  lookup (Just (Ident "name")) args
+    <|> case [v | (Nothing, v) <- args] of
+      (v : _) -> Just v
+      [] -> Nothing
   where
-    nameArg =
-      lookup (Just (Ident "name")) args
-        <|> case [v | (Nothing, v) <- args] of
-          (v : _) -> Just v
-          [] -> Nothing
-    bodyArg =
-      lookup (Just (Ident "body")) args
-        <|> case [v | (Nothing, v) <- args] of
-          (_ : v : _) -> Just v
-          _ -> Nothing
-    isThunk = \case
-      VClosure {} -> True
-      VTopFun {} -> True
-      _ -> False
     (<|>) :: Maybe a -> Maybe a -> Maybe a
     (<|>) (Just x) _ = Just x
     (<|>) Nothing y = y
+
+obsSpanBodyArg :: [(Maybe Ident, Value)] -> Maybe Value
+obsSpanBodyArg args =
+  lookup (Just (Ident "body")) args
+    <|> case [v | (Nothing, v) <- args] of
+      (_ : v : _) -> Just v
+      _ -> Nothing
+  where
+    (<|>) :: Maybe a -> Maybe a -> Maybe a
+    (<|>) (Just x) _ = Just x
+    (<|>) Nothing y = y
+
+isObsSpanThunk :: Value -> Bool
+isObsSpanThunk = \case
+  VClosure {} -> True
+  VTopFun {} -> True
+  _ -> False
 
 pauseIfStep :: StepMode -> Machine -> Machine
 pauseIfStep StepOnce m

@@ -6,7 +6,6 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 - [ ] Streaming LLM spans
 - [ ] Optional DB-backed run store (hwfi M5 analogue)
-- [ ] Polymorphic `obs.span` check type (v0 approximates Unit→Unit)
 
 ## Next
 
@@ -38,3 +37,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] Float / `==` polymorphism cleanup (2026-07-15)
 - [x] `llm.object` + schema reflection at runtime (E14) (2026-07-15)
 - [x] `llm.agent_object` + synthetic `submit` tool (2026-07-15)
+- [x] Polymorphic `obs.span` check type (E16) (2026-07-15)

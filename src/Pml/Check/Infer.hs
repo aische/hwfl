@@ -118,6 +118,8 @@ infer env = \case
     | isJsonEncode f -> inferJsonEncodeApp env args
     | isLlmObject f -> inferLlmObjectApp env args
     | isLlmAgentObject f -> inferLlmAgentObjectApp env args
+    | isObsSpan f -> inferObsSpanApp env args
+    | isObsSpanPartial f -> inferObsSpanThunkApp env args
     | EVar (Ident n) <- f,
       Just cls <- classifyOp n ->
         inferOverloadedApp env cls infer args
@@ -393,6 +395,9 @@ paramBindings :: TypeEnv -> [Param] -> TypeExpr -> Either CheckError [(Ident, Ty
 paramBindings env ps domain = do
   domain' <- resolveType env domain
   case ps of
+    [] -> do
+      unify domain' tUnit
+      pure []
     [Param n mty] -> do
       case mty of
         Just ann -> do
@@ -554,6 +559,54 @@ schemaArgExpr :: [Arg] -> Maybe Expr
 schemaArgExpr as = case classifyArgs as of
   Right (Named nes) -> lookup (Ident "schema") nes
   _ -> Nothing
+
+-- | @obs.span@: @(name, fun () -> a) -> a@ (E16). Prelude stub is Unit→Unit;
+-- Infer peels the thunk result (effects of @a@ still flow via Effects on the body).
+isObsSpan :: Expr -> Bool
+isObsSpan = \case
+  EProj (EVar (Ident "obs")) (Ident "span") -> True
+  _ -> False
+
+-- | Curried second application: @obs.span(name)(thunk)@.
+isObsSpanPartial :: Expr -> Bool
+isObsSpanPartial = \case
+  EApp f _ -> isObsSpan f
+  _ -> False
+
+inferObsSpanApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferObsSpanApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Positional [nameE, bodyE]) -> do
+    check env nameE tString
+    inferObsSpanThunk env bodyE
+  Right (Positional [nameE]) -> do
+    -- Partial application keeps the prelude stub until the thunk is applied.
+    check env nameE tString
+    ft <- infer env (EProj (EVar (Ident "obs")) (Ident "span"))
+    applyType env ft [ArgPos nameE]
+  Right (Named nes) -> do
+    nameE <- maybe (Left (MissingNamedArg (Ident "name"))) pure (lookup (Ident "name") nes)
+    bodyE <- maybe (Left (MissingNamedArg (Ident "body"))) pure (lookup (Ident "body") nes)
+    check env nameE tString
+    inferObsSpanThunk env bodyE
+  _ -> Left (ArityMismatch 2 (length args))
+
+inferObsSpanThunkApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferObsSpanThunkApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Positional [bodyE]) -> inferObsSpanThunk env bodyE
+  Right (Named [(Ident "body", bodyE)]) -> inferObsSpanThunk env bodyE
+  _ -> Left (ArityMismatch 1 (length args))
+
+inferObsSpanThunk :: TypeEnv -> Expr -> Either CheckError TypeExpr
+inferObsSpanThunk env bodyE = do
+  te <- infer env bodyE
+  te' <- resolveType env te
+  case funArrow te' of
+    Just (domain, ret) -> do
+      unify domain tUnit
+      pure ret
+    Nothing -> Left (ExpectedFunction te')
 
 tUnit, tBool, tInt, tFloat, tString, tToolSpec :: TypeExpr
 tUnit = TName (TypeName "Unit")

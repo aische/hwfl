@@ -116,7 +116,16 @@ Model gathers with tools then must call synthetic `submit` alone. Fixture:
 
 ## E16 — `obs.span` region **H**
 
-User span wraps pure clustering; children host ops nest correctly.
+User span wraps a thunk; result type is the body type (not forced to Unit).
+Children host ops nest under the region span. Fixture in
+`test/Pml/Obs/SpanSpec.hs`; example `examples/obs-span.md`.
+
+Surface (either form):
+
+```text
+obs.span("cluster")(fun () => e)   -- curried
+obs.span("cluster", fun () => e)   -- two-arg / named name+body
+```
 
 ## E17 — Secret redaction **H**
 
@@ -152,6 +161,7 @@ check path (layer 3 pragmatic review deferred). Fixture:
 | E14 | ✓ | ✓ | — | llm.object |
 | E15 | ✓ | ✓ | mid-tool | agent tree |
 | E15b | ✓ | ✓ | mid-tool | agent_object + submit |
+| E16 | ✓ | ✓ | — | region `obs.span` |
 | E20 | ✓ | ✓ | optional | library spans |
 
 ## Using the suite

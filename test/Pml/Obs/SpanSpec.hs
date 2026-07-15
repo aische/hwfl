@@ -4,14 +4,20 @@ import Data.Aeson (encode, object, (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString.Lazy.Char8 qualified as LBS8
+import Data.Either (isRight)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Pml.Ast.Name (Ident (..))
+import Pml.Ast.Name (Ident (..), TypeName (..))
+import Pml.Ast.Type (TypeExpr (..))
+import Pml.Check.Infer (infer)
+import Pml.Check.Module (checkLoadedModule)
+import Pml.Check.Prelude (preludeTypeEnv)
 import Pml.Eval.Value (HostOpId (..), Value (..))
 import Pml.Llm.Mock (mockProvider)
 import Pml.Obs.Redact (hostOpenAttrs, redactJson, redactMarker, redactValue)
 import Pml.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Pml.Obs.Trace (SpanNode (..), buildSpanForest, readSpanRecords)
+import Pml.Parse.Expr (parseExprText)
 import Pml.Parse.Load (loadModuleText)
 import Pml.Runtime.Eval (StepMode (..))
 import Pml.Runtime.Run
@@ -24,6 +30,7 @@ import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
+import Text.Megaparsec (errorBundlePretty)
 
 e03Src :: Text
 e03Src =
@@ -52,6 +59,35 @@ e03Src =
       "  { reply }",
       "```"
     ]
+
+-- | E16 — polymorphic @obs.span@ returns the body value (not Unit).
+e16Src :: Text
+e16Src =
+  T.unlines
+    [ "---",
+      "name: workflows/e16-span",
+      "inputs: {}",
+      "outputs:",
+      "  n: Int",
+      "  label: String",
+      "effects: []",
+      "---",
+      "",
+      "## body",
+      "",
+      "```pml",
+      "fun main(_): { n: Int, label: String } =",
+      "  let clustered = obs.span(\"cluster\")(fun () =>",
+      "    { n = 3, label = \"ok\" }",
+      "  )",
+      "  clustered",
+      "```"
+    ]
+
+inferE :: Text -> Either String TypeExpr
+inferE src = case parseExprText "e" src of
+  Left err -> Left (errorBundlePretty err)
+  Right e -> either (Left . show) Right (infer preludeTypeEnv e)
 
 spec :: Spec
 spec = describe "observability (M6)" $ do
@@ -82,6 +118,46 @@ spec = describe "observability (M6)" $ do
           KM.lookup "prompt_len" km
             `shouldBe` Just (Aeson.Number (fromIntegral (T.length "TOP SECRET PROMPT BODY")))
         _ -> expectationFailure "expected attrs object"
+
+  describe "polymorphic obs.span (E16)" $ do
+    it "infers obs.span(name)(fun () => e) as the type of e" $ do
+      inferE "obs.span(\"cluster\")(fun () => 42)"
+        `shouldBe` Right (TName (TypeName "Int"))
+      inferE "obs.span(\"cluster\", fun () => \"hi\")"
+        `shouldBe` Right (TName (TypeName "String"))
+
+    it "checks and runs a non-Unit value through a region span" $
+      withSystemTempDirectory "pml-e16" $ \dir -> do
+        let path = dir </> "e16.md"
+        writeFile path (T.unpack e16Src)
+        case loadModuleText path e16Src of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            outcome <-
+              runLoadedModule
+                RunOptions
+                  { roWorkspace = dir,
+                    roProvider = mockProvider,
+                    roInputs = [],
+                    roRunId = Just "e16",
+                    roEntry = path,
+                    roMode = StepRun,
+                    roProjectHash = Nothing
+                  }
+                loaded
+            case outcome of
+              OutcomeCompleted (VRecord fs) store _ -> do
+                lookup (Ident "n") fs `shouldBe` Just (VInt 3)
+                lookup (Ident "label") fs `shouldBe` Just (VString "ok")
+                records <- readSpanRecords store
+                let forest = buildSpanForest records
+                case forest of
+                  [root] -> do
+                    T.isPrefixOf "module:" root.snName `shouldBe` True
+                    map (.snName) root.snChildren `shouldBe` ["cluster"]
+                  other -> expectationFailure ("expected one root, got " <> show (length other))
+              other -> expectationFailure (show other)
 
   describe "spans.jsonl + show" $ do
     it "emits nested module/host spans and tree show" $
