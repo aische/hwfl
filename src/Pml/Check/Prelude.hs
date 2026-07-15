@@ -17,6 +17,10 @@ preludeTypeEnv =
         Map.fromList $
           binOps
             ++ [ (Ident "not", TFun (t "Bool") (t "Bool")),
+                 -- Domain is a placeholder; Infer special-cases @tool(f)@ for any function.
+                 ( Ident "tool",
+                   TFun (TFun (t "Json") (t "Json")) (t "ToolSpec")
+                 ),
                  (Ident "fs", fsType),
                  (Ident "llm", llmType),
                  (Ident "human", humanType),
@@ -98,6 +102,23 @@ llmType =
           )
           [EffNet]
           (t "Json")
+      ),
+      ( Ident "agent",
+        TEffFun
+          ( TRecord
+              [ (Ident "system", t "String"),
+                (Ident "prompt", t "String"),
+                (Ident "tools", TList (t "ToolSpec")),
+                (Ident "model", t "String"),
+                (Ident "max_rounds", t "Int")
+              ]
+          )
+          [EffNet]
+          ( TRecord
+              [ (Ident "text", t "String"),
+                (Ident "rounds", t "Int")
+              ]
+          )
       )
     ]
 

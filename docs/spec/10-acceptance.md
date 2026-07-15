@@ -48,8 +48,8 @@
 - [x] No full-trace rebuild per step
 
 ### M7 — Agent
-- [ ] `llm.agent` multi-transition loop
-- [ ] Typed tools from functions
+- [x] `llm.agent` multi-transition loop
+- [x] Typed tools from functions
 
 ### M8 — Dogfood
 - [ ] Port slim semantic-check (layers 0–2 style) in pml

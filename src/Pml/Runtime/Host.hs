@@ -18,6 +18,14 @@ import Pml.Ast.Name (Ident (..))
 import Pml.Eval.Value
 import Pml.Llm.Provider (LlmProvider (..))
 import Pml.Llm.Types
+  ( ChatRequest (..),
+    Message (..),
+    ProviderResult (..),
+    Role (..),
+    TokenUsage (..),
+    emptyChatRequest,
+    renderProviderError,
+  )
 import Pml.Runtime.Error (RuntimeError (..))
 import Pml.Runtime.Workspace (Workspace, readTextFile, writeTextFile)
 
@@ -46,7 +54,8 @@ hostOpsEnv =
       ),
       ( Ident "llm",
         VRecord
-          [ (Ident "chat", VHostOp HostLlmChat)
+          [ (Ident "chat", VHostOp HostLlmChat),
+            (Ident "agent", VHostOp HostLlmAgent)
           ]
       ),
       ( Ident "human",
@@ -63,7 +72,7 @@ hostOpsEnv =
     ]
 
 -- | Execute one host op (one transition / snapshot boundary).
--- @human.confirm@ / @obs.span@ / @obs.log@ are handled by the machine driver.
+-- @human.confirm@ / @obs.span@ / @obs.log@ / @llm.agent@ are handled by the machine driver.
 runHostOp ::
   HostEnv ->
   HostOpId ->
@@ -73,6 +82,8 @@ runHostOp env op args = case op of
   HostFsRead -> doFsRead env args
   HostFsWrite -> doFsWrite env args
   HostLlmChat -> doLlmChat env args
+  HostLlmAgent ->
+    pure (Left (HostErr "llm.agent must be driven by the machine (agent loop)"))
   HostObsLog ->
     pure (Left (HostErr "obs.log must be driven by the machine (span state)"))
   HostHumanConfirm ->
@@ -119,13 +130,12 @@ doLlmChat env args = case parseChatArgs args of
   Right (system, prompt, model) -> do
     env.heLog ("llm.chat model=" <> model)
     let req =
-          ChatRequest
+          (emptyChatRequest model)
             { chatMessages =
                 [ Message RoleSystem system,
                   Message RoleUser prompt
                 ],
-              chatModel = model,
-              chatResponseFormat = Nothing
+              chatSystem = Just system
             }
     result <- env.heProvider.llmChat req
     pure $ case result of

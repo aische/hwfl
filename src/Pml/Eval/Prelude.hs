@@ -31,7 +31,8 @@ preludeEnv =
       (Ident ">=", VBuiltin BGe),
       (Ident "&&", VBuiltin BAnd),
       (Ident "||", VBuiltin BOr),
-      (Ident "not", VBuiltin BNot)
+      (Ident "not", VBuiltin BNot),
+      (Ident "tool", VBuiltin BTool)
     ]
 
 applyBuiltin :: Builtin -> [Value] -> Either EvalError Value
@@ -49,6 +50,8 @@ applyBuiltin b args = case (b, args) of
   (BAnd, [VBool x, VBool y]) -> Right (VBool (x && y))
   (BOr, [VBool x, VBool y]) -> Right (VBool (x || y))
   (BNot, [VBool x]) -> Right (VBool (not x))
+  (BTool, _) ->
+    Left (Trap "tool() requires the host runtime (typed ToolSpec)")
   (BAnd, _) -> arityOrType "&&" 2 args
   (BOr, _) -> arityOrType "||" 2 args
   (BNot, _) -> arityOrType "not" 1 args
@@ -96,6 +99,8 @@ valueEq a b = case (a, b) of
   (_, VBuiltin {}) -> Left (Trap "cannot compare builtins")
   (VHostOp {}, _) -> Left (Trap "cannot compare host ops")
   (_, VHostOp {}) -> Left (Trap "cannot compare host ops")
+  (VToolSpec {}, _) -> Left (Trap "cannot compare tool specs")
+  (_, VToolSpec {}) -> Left (Trap "cannot compare tool specs")
   (VSecret {}, _) -> Left (Trap "cannot compare secrets")
   (_, VSecret {}) -> Left (Trap "cannot compare secrets")
   (VRecord fs, VRecord gs) ->

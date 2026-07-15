@@ -3,19 +3,25 @@ module Pml.Llm.ProviderSpec (spec) where
 import Pml.Llm.Mock (mockProvider, mockProviderWith)
 import Pml.Llm.Provider (LlmProvider (..))
 import Pml.Llm.Types
+  ( ChatRequest (..),
+    FinishReason (..),
+    Message (..),
+    ProviderResult (..),
+    Role (..),
+    emptyChatRequest,
+  )
 import Test.Hspec
 
 spec :: Spec
 spec = describe "LlmProvider" $ do
   it "mock provider returns a SUMMARY reply" $ do
     let req =
-          ChatRequest
+          (emptyChatRequest "gpt-5")
             { chatMessages =
                 [ Message RoleSystem "sys",
                   Message RoleUser "hello world document"
                 ],
-              chatModel = "gpt-5",
-              chatResponseFormat = Nothing
+              chatSystem = Just "sys"
             }
     result <- mockProvider.llmChat req
     case result of
@@ -30,20 +36,20 @@ spec = describe "LlmProvider" $ do
             Right
               ProviderResult
                 { prContent = "alt",
+                  prToolCalls = [],
                   prUsage = Nothing,
                   prFinishReason = FinishStop
                 }
     result <-
       alt.llmChat
-        ChatRequest
-          { chatMessages = [Message RoleUser "x"],
-            chatModel = "m",
-            chatResponseFormat = Nothing
+        (emptyChatRequest "m")
+          { chatMessages = [Message RoleUser "x"]
           }
     result
       `shouldBe` Right
         ProviderResult
           { prContent = "alt",
+            prToolCalls = [],
             prUsage = Nothing,
             prFinishReason = FinishStop
           }

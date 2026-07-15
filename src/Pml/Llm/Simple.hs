@@ -9,7 +9,7 @@ where
 import Control.Exception (SomeException, try)
 import Data.Text (Text)
 import Data.Text qualified as T
-import LLM.Core.Types (ChatResponse (..))
+import LLM.Core.Types (ChatResponse (..), ContentBlock (..), ToolDef (..))
 import LLM.Core.Types qualified as LLM
 import LLM.Core.Usage qualified as LLMUsage
 import LLM.Generate
@@ -54,12 +54,12 @@ chatWithCatalog catalogPath req = do
     Left (ex :: SomeException) ->
       pure (Left (OtherProviderError (T.pack (show ex))))
     Right model -> do
-      let (systemMsg, turns) = splitSystem req.chatMessages
+      let (systemMsg, turns) = requestToTurns req
           gr =
             GenRequest
               { grSystemPrompt = systemMsg,
                 grMessages = turns,
-                grTools = [],
+                grTools = map toLLMTool req.chatTools,
                 grAbortSignal = Nothing,
                 grLLMHooks = llmHooks noHooks,
                 grHooks = noHooks
@@ -69,25 +69,71 @@ chatWithCatalog catalogPath req = do
       pure $ case result of
         Left genErr -> Left (mapGenerateError genErr)
         Right resp ->
-          Right
-            ProviderResult
-              { prContent = resp.respText,
-                prUsage = fmap mapUsage resp.respUsage,
-                prFinishReason = FinishStop
-              }
+          let toolCalls = [fromLLMToolCall tc | ToolCallBlock tc <- resp.respContent]
+              finish =
+                if null toolCalls
+                  then FinishStop
+                  else FinishToolCalls
+           in Right
+                ProviderResult
+                  { prContent = resp.respText,
+                    prToolCalls = toolCalls,
+                    prUsage = fmap mapUsage resp.respUsage,
+                    prFinishReason = finish
+                  }
 
-splitSystem :: [Message] -> (Maybe Text, [LLM.Turn])
-splitSystem ms =
-  let systems = [m.msgContent | m <- ms, m.msgRole == RoleSystem]
-      rest =
-        [ case m.msgRole of
-            RoleUser -> LLM.UserTurn m.msgContent
-            RoleAssistant -> LLM.AssistantTurn m.msgContent Nothing []
-            RoleSystem -> LLM.UserTurn m.msgContent
-          | m <- ms,
-            m.msgRole /= RoleSystem
-        ]
-   in (case systems of [] -> Nothing; (s : _) -> Just s, rest)
+requestToTurns :: ChatRequest -> (Maybe Text, [LLM.Turn])
+requestToTurns req
+  | not (null req.chatTurns) =
+      ( req.chatSystem,
+        map toLLMTurn req.chatTurns
+      )
+  | otherwise =
+      let systems =
+            case req.chatSystem of
+              Just s -> [s]
+              Nothing -> [m.msgContent | m <- req.chatMessages, m.msgRole == RoleSystem]
+          rest =
+            [ case m.msgRole of
+                RoleUser -> LLM.UserTurn m.msgContent
+                RoleAssistant -> LLM.AssistantTurn m.msgContent Nothing []
+                RoleSystem -> LLM.UserTurn m.msgContent
+              | m <- req.chatMessages,
+                m.msgRole /= RoleSystem
+            ]
+       in (case systems of [] -> Nothing; (s : _) -> Just s, rest)
+
+toLLMTurn :: Turn -> LLM.Turn
+toLLMTurn = \case
+  TurnUser t -> LLM.UserTurn t
+  TurnAssistant t calls ->
+    LLM.AssistantTurn t Nothing (map toLLMToolCall calls)
+  TurnTool results ->
+    LLM.ToolTurn
+      [ LLM.ToolResult r.trCallId r.trName r.trContent
+        | r <- results
+      ]
+
+toLLMTool :: ToolSpec -> LLM.ToolDef
+toLLMTool ts =
+  LLM.ToolDef
+    { toolName = ts.tsName,
+      toolDescription = ts.tsDescription,
+      toolParameters = ts.tsParameters,
+      toolReadonly = True
+    }
+
+toLLMToolCall :: ToolCall -> LLM.ToolCall
+toLLMToolCall tc =
+  LLM.mkToolCall tc.tcId tc.tcName tc.tcArguments
+
+fromLLMToolCall :: LLM.ToolCall -> ToolCall
+fromLLMToolCall tc =
+  ToolCall
+    { tcId = tc.tcId,
+      tcName = tc.tcName,
+      tcArguments = tc.tcArguments
+    }
 
 mapUsage :: LLMUsage.Usage -> TokenUsage
 mapUsage u =

@@ -26,6 +26,17 @@ import Pml.Eval.Error (EvalError (..))
 import Pml.Eval.Prelude (applyBuiltin)
 import Pml.Eval.Pure (bindParams, matchPat)
 import Pml.Eval.Value
+import Pml.Llm.Provider (LlmProvider (..))
+import Pml.Llm.Types
+  ( ChatRequest (..),
+    ProviderResult (..),
+    TokenUsage (..),
+    ToolCall (..),
+    ToolResult (..),
+    Turn (..),
+    emptyChatRequest,
+    renderProviderError,
+  )
 import Pml.Obs.Redact (hostOpenAttrs)
 import Pml.Obs.Span (SpanKind (..), SpanStatus (..))
 import Pml.Obs.Trace
@@ -34,6 +45,15 @@ import Pml.Obs.Trace
     closeSpan,
     getSpanStack,
     openSpan,
+  )
+import Pml.Runtime.Agent
+  ( buildToolSpec,
+    coerceToolArgs,
+    initAgentState,
+    lookupTool,
+    parseAgentArgs,
+    providerToolSpecs,
+    valueToJsonText,
   )
 import Pml.Runtime.Error (RuntimeError (..))
 import Pml.Runtime.Host (HostEnv (..), HostResult (..), runHostOp)
@@ -85,6 +105,8 @@ applyIO ctx f args = case openApply ctx f args of
         pure (Left (EvalErr (Unsupported "human.confirm requires the machine driver")))
     | op == HostObsSpan ->
         pure (Left (EvalErr (Unsupported "obs.span requires the machine driver")))
+    | op == HostLlmAgent ->
+        pure (Left (EvalErr (Unsupported "llm.agent requires the machine driver")))
     | otherwise -> do
         result <- runHostOp ctx.rcHost op argv
         case result of
@@ -111,6 +133,9 @@ openApply ::
   [(Maybe Ident, Value)] ->
   Either RuntimeError Current
 openApply ctx fv argv = case fv of
+  VBuiltin BTool -> case map snd argv of
+    [callee] -> CurReturn <$> buildToolSpec ctx.rcFuns callee
+    _ -> Left (HostErr "tool() expects one function argument")
   VBuiltin b -> CurReturn <$> mapEval (applyBuiltin b (map snd argv))
   VClosure params body cloEnv -> case bindParams params argv of
     Left e -> Left (EvalErr e)
@@ -169,6 +194,7 @@ stepMachine ctx mode m = case m.mStatus of
         CurAwaitConfirm c -> doConfirm ctx m' c
         CurParPool -> stepPar ctx mode m'
         CurCloseRegion sid v -> doCloseRegion ctx mode m' sid v
+        CurAgent ag -> stepAgent ctx mode m' ag
         CurReturn v | null m'.mFrames -> doComplete ctx mode m' v
         _ -> pure (Right (StepResult m' False))
 
@@ -215,6 +241,7 @@ doHost ctx mode m op args
       Right c -> doConfirm ctx m c
   | op == HostObsSpan = doObsSpan ctx mode m args
   | op == HostObsLog = doObsLog ctx mode m args
+  | op == HostLlmAgent = startAgent ctx mode m args
   | otherwise = do
       sid <-
         openSpan
@@ -235,6 +262,347 @@ doHost ctx mode m op args
           seqNo <- persist ctx (Just op) (Just hr.hrValue) m'.mStatus (Just m')
           closeSpan ctx.rcStore ctx.rcSpans sid SsOk hr.hrCloseAttrs (Just seqNo)
           pure (Right (StepResult m' True))
+
+-------------------------------------------------------------------------------
+-- Agent loop (llm.agent)
+
+startAgent ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  [(Maybe Ident, Value)] ->
+  IO (Either RuntimeError StepResult)
+startAgent ctx mode m args = case parseAgentArgs args of
+  Left e -> pure (Left e)
+  Right (system, prompt, tools, model, maxRounds) -> do
+    sid <-
+      openSpan
+        ctx.rcStore
+        ctx.rcSpans
+        "llm.agent"
+        SkHost
+        (hostOpenAttrs HostLlmAgent args)
+    let ag = initAgentState system prompt tools model maxRounds sid
+        m' = pauseIfStep mode (m {mCurrent = CurAgent ag})
+    _ <- persist ctx (Just HostLlmAgent) Nothing m'.mStatus (Just m')
+    pure (Right (StepResult m' True))
+
+stepAgent ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  IO (Either RuntimeError StepResult)
+stepAgent ctx mode m ag = case ag.agToolRound of
+  Nothing -> stepAgentModel ctx mode m ag
+  Just tr -> stepAgentTool ctx mode m ag tr
+
+stepAgentModel ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  IO (Either RuntimeError StepResult)
+stepAgentModel ctx mode m ag
+  | ag.agRound >= ag.agMaxRounds = do
+      let err =
+            ProviderErr
+              ( "agent reached max_rounds ("
+                  <> T.pack (show ag.agMaxRounds)
+                  <> ") without terminating"
+              )
+      failAgent ctx m ag err
+  | otherwise = do
+      roundSid <-
+        openSpan
+          ctx.rcStore
+          ctx.rcSpans
+          ("agent_round:" <> T.pack (show ag.agRound))
+          SkAgentRound
+          (object ["round" .= ag.agRound, "model" .= ag.agModel])
+      let ag' = ag {agRoundSpanId = Just roundSid}
+          req =
+            (emptyChatRequest ag.agModel)
+              { chatSystem = Just ag.agSystem,
+                chatTurns = ag.agHistory,
+                chatTools = providerToolSpecs ag.agTools
+              }
+      ctx.rcHost.heLog ("llm.agent model round=" <> T.pack (show ag.agRound))
+      result <- ctx.rcHost.heProvider.llmChat req
+      case result of
+        Left pe -> do
+          closeSpan ctx.rcStore ctx.rcSpans roundSid SsError (object ["error" .= renderProviderError pe]) Nothing
+          failAgent ctx m ag' (ProviderErr (renderProviderError pe))
+        Right pr
+          | null pr.prToolCalls -> finishAgentText ctx mode m ag' pr
+          | otherwise -> do
+              closeSpan
+                ctx.rcStore
+                ctx.rcSpans
+                roundSid
+                SsOk
+                (llmRoundCloseAttrs pr)
+                Nothing
+              let tr =
+                    ToolRound
+                      { trPending = pr.prToolCalls,
+                        trCompleted = [],
+                        trActiveCall = Nothing,
+                        trActiveMachine = Nothing
+                      }
+                  ag'' =
+                    ag'
+                      { agHistory =
+                          ag.agHistory
+                            <> [TurnAssistant pr.prContent pr.prToolCalls],
+                        agToolRound = Just tr,
+                        agRoundSpanId = Nothing
+                      }
+                  m' = pauseIfStep mode (m {mCurrent = CurAgent ag''})
+              _ <- persist ctx (Just HostLlmAgent) Nothing m'.mStatus (Just m')
+              pure (Right (StepResult m' True))
+
+finishAgentText ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ProviderResult ->
+  IO (Either RuntimeError StepResult)
+finishAgentText ctx mode m ag pr = do
+  mapM_
+    ( \sid ->
+        closeSpan
+          ctx.rcStore
+          ctx.rcSpans
+          sid
+          SsOk
+          (llmRoundCloseAttrs pr)
+          Nothing
+    )
+    ag.agRoundSpanId
+  let result =
+        VRecord
+          [ (Ident "text", VString pr.prContent),
+            (Ident "rounds", VInt (fromIntegral (ag.agRound + 1)))
+          ]
+  closeSpan
+    ctx.rcStore
+    ctx.rcSpans
+    ag.agSpanId
+    SsOk
+    ( object
+        [ "rounds" .= (ag.agRound + 1),
+          "reply_len" .= T.length pr.prContent
+        ]
+    )
+    Nothing
+  let m' = pauseIfStep mode (m {mCurrent = CurReturn result})
+  _ <- persist ctx (Just HostLlmAgent) (Just result) m'.mStatus (Just m')
+  pure (Right (StepResult m' True))
+
+stepAgentTool ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ToolRound ->
+  IO (Either RuntimeError StepResult)
+stepAgentTool ctx mode m ag tr = case tr.trActiveMachine of
+  Just (BranchMachine bm0) -> do
+    let bm = case bm0.mStatus of
+          MsPaused PauseExplicit -> bm0 {mStatus = MsRunning}
+          _ -> bm0 {mStatus = MsRunning}
+    er <- stepMachine ctx StepOnce bm
+    case er of
+      Left e -> recoverableTool ctx mode m ag tr e
+      Right sr ->
+        let bm' = sr.srMachine
+         in case bm'.mStatus of
+              MsCompleted ->
+                let v = maybe VUnit id bm'.mLastResult
+                 in completeToolCall ctx mode m ag tr (valueToJsonText v)
+              MsFailed ->
+                recoverableTool
+                  ctx
+                  mode
+                  m
+                  ag
+                  tr
+                  (maybe (EvalErr (Trap "tool failed")) id bm'.mError)
+              MsPaused (PauseAwaitingConfirm _) -> do
+                let tr' = tr {trActiveMachine = Just (mkBranch bm')}
+                    ag' = ag {agToolRound = Just tr'}
+                    m' =
+                      m
+                        { mStatus = MsPaused (PauseAwaitingConfirm (confirmOf bm')),
+                          mCurrent = CurAgent ag'
+                        }
+                _ <- persist ctx (Just HostLlmAgent) Nothing m'.mStatus (Just m')
+                pure (Right (StepResult m' True))
+              MsPaused PauseExplicit -> do
+                let tr' = tr {trActiveMachine = Just (mkBranch bm')}
+                    ag' = ag {agToolRound = Just tr'}
+                    m' = pauseIfStep mode (m {mCurrent = CurAgent ag'})
+                _ <- persist ctx (Just HostLlmAgent) Nothing m'.mStatus (Just m')
+                pure (Right (StepResult m' True))
+              _ ->
+                if sr.srTransitioned
+                  then do
+                    let tr' = tr {trActiveMachine = Just (mkBranch bm')}
+                        ag' = ag {agToolRound = Just tr'}
+                        m' = pauseIfStep mode (m {mCurrent = CurAgent ag'})
+                    _ <- persist ctx (Just HostLlmAgent) Nothing m'.mStatus (Just m')
+                    pure (Right (StepResult m' True))
+                  else
+                    pure (Left (EvalErr (Trap "agent tool machine made no progress")))
+  Nothing -> case tr.trPending of
+    [] -> finishToolRound ctx mode m ag tr
+    tc : rest -> startToolCall ctx mode m ag (tr {trPending = rest}) tc
+
+confirmOf :: Machine -> ConfirmRequest
+confirmOf bm = case bm.mCurrent of
+  CurAwaitConfirm c -> c
+  _ -> ConfirmRequest "confirm" "" Nothing
+
+startToolCall ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ToolRound ->
+  ToolCall ->
+  IO (Either RuntimeError StepResult)
+startToolCall ctx mode m ag tr tc =
+  case lookupTool ag.agTools tc.tcName of
+    Nothing ->
+      completeToolCall
+        ctx
+        mode
+        m
+        ag
+        tr {trActiveCall = Just tc}
+        ("unknown tool '" <> tc.tcName <> "'")
+    Just tool -> case coerceToolArgs tool tc.tcArguments of
+      Left reason ->
+        completeToolCall
+          ctx
+          mode
+          m
+          ag
+          tr {trActiveCall = Just tc}
+          ("invalid arguments: " <> reason)
+      Right argv -> case openApply ctx tool.tvsCallee argv of
+        Left e ->
+          completeToolCall
+            ctx
+            mode
+            m
+            ag
+            tr {trActiveCall = Just tc}
+            ("tool open failed: " <> renderErr e)
+        Right current -> do
+          let nested = initialMachine m.mProjectHash current
+              tr' =
+                tr
+                  { trActiveCall = Just tc,
+                    trActiveMachine = Just (mkBranch nested)
+                  }
+              ag' = ag {agToolRound = Just tr'}
+              m' = m {mCurrent = CurAgent ag'}
+          -- Continue into the nested machine this step.
+          stepAgentTool ctx mode m' ag' tr'
+
+completeToolCall ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ToolRound ->
+  Text ->
+  IO (Either RuntimeError StepResult)
+completeToolCall ctx mode m ag tr content = case tr.trActiveCall of
+  Nothing -> pure (Left (EvalErr (Trap "completeToolCall without active call")))
+  Just tc -> do
+    let result = ToolResult tc.tcId tc.tcName content
+        tr' =
+          tr
+            { trCompleted = tr.trCompleted <> [result],
+              trActiveCall = Nothing,
+              trActiveMachine = Nothing
+            }
+    if null tr'.trPending
+      then finishToolRound ctx mode m ag tr'
+      else do
+        let ag' = ag {agToolRound = Just tr'}
+            m' = pauseIfStep mode (m {mCurrent = CurAgent ag'})
+        _ <- persist ctx (Just HostLlmAgent) Nothing m'.mStatus (Just m')
+        pure (Right (StepResult m' True))
+
+finishToolRound ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ToolRound ->
+  IO (Either RuntimeError StepResult)
+finishToolRound ctx mode m ag tr = do
+  let ag' =
+        ag
+          { agHistory = ag.agHistory <> [TurnTool tr.trCompleted],
+            agRound = ag.agRound + 1,
+            agToolRound = Nothing
+          }
+      m' = pauseIfStep mode (m {mCurrent = CurAgent ag'})
+  _ <- persist ctx (Just HostLlmAgent) Nothing m'.mStatus (Just m')
+  pure (Right (StepResult m' True))
+
+recoverableTool ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ToolRound ->
+  RuntimeError ->
+  IO (Either RuntimeError StepResult)
+recoverableTool ctx mode m ag tr err =
+  completeToolCall ctx mode m ag tr ("tool error: " <> renderErr err)
+
+failAgent ::
+  RunCtx ->
+  Machine ->
+  AgentState ->
+  RuntimeError ->
+  IO (Either RuntimeError StepResult)
+failAgent ctx m ag err = do
+  mapM_
+    ( \sid ->
+        closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr err]) Nothing
+    )
+    ag.agRoundSpanId
+  closeSpan
+    ctx.rcStore
+    ctx.rcSpans
+    ag.agSpanId
+    SsError
+    (object ["error" .= renderErr err])
+    Nothing
+  let m' = m {mStatus = MsFailed, mError = Just err}
+  _ <- persist ctx (Just HostLlmAgent) Nothing MsFailed (Just m')
+  pure (Left err)
+
+llmRoundCloseAttrs :: ProviderResult -> Aeson.Value
+llmRoundCloseAttrs pr =
+  object $
+    [ "reply_len" .= T.length pr.prContent,
+      "tool_calls" .= length pr.prToolCalls
+    ]
+      ++ case pr.prUsage of
+        Nothing -> []
+        Just u ->
+          [ "token_in" .= u.usageInputTokens,
+            "token_out" .= u.usageOutputTokens
+          ]
 
 doObsLog ::
   RunCtx -> StepMode -> Machine -> [(Maybe Ident, Value)] -> IO (Either RuntimeError StepResult)
@@ -341,15 +709,28 @@ pauseIfStep StepRun m = m
 approveMachine :: Bool -> Machine -> Either RuntimeError Machine
 approveMachine yes m = case m.mStatus of
   MsPaused (PauseAwaitingConfirm c) ->
-    case m.mFrames of
-      FrPar pjs : rest -> Right (approvePar yes c pjs rest m)
-      FrConfirm _ : rest ->
+    case (m.mFrames, m.mCurrent) of
+      (FrPar pjs : rest, _) -> Right (approvePar yes c pjs rest m)
+      (FrConfirm _ : rest, _) ->
         Right
           m
             { mStatus = MsRunning,
               mCurrent = CurReturn (VBool yes),
               mFrames = rest
             }
+      (_, CurAgent ag)
+        | Just tr <- ag.agToolRound,
+          Just (BranchMachine bm) <- tr.trActiveMachine ->
+            case approveMachine yes bm of
+              Left e -> Left e
+              Right bm' ->
+                let tr' = tr {trActiveMachine = Just (mkBranch bm')}
+                    ag' = ag {agToolRound = Just tr'}
+                 in Right
+                      m
+                        { mStatus = MsRunning,
+                          mCurrent = CurAgent ag'
+                        }
       _ ->
         Right
           m
@@ -696,6 +1077,7 @@ crunchOnce ctx m = case m.mStatus of
       CurAwaitConfirm {} -> Right Nothing
       CurParPool -> Right Nothing
       CurCloseRegion {} -> Right Nothing
+      CurAgent {} -> Right Nothing
       CurEval e env -> crunchEval ctx m e env
       CurReturn v -> crunchReturn ctx m v
 

@@ -18,7 +18,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] **M4** — Host ops: fs + llm (via provider) + snapshots
 - [x] **M5** — `par` + `confirm` + resume / `--step`
 - [x] **M6** — Span observability + `show`
-- [ ] **M7** — Agent loop (`llm.agent`) + tool functions
+- [x] **M7** — Agent loop (`llm.agent`) + tool functions
 - [ ] **M8** — Dogfood: port a slim semantic-check in pml
 
 ## Later
@@ -40,3 +40,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] M4 host runtime + LlmProvider + snapshots + `pml run` (2026-07-15)
 - [x] M5 `par` + `confirm` + step/resume/approve + machine_json (2026-07-15)
 - [x] M6 spans.jsonl + `pml show` + redaction (2026-07-15)
+- [x] M7 `llm.agent` loop + `tool(f)` typed tools (2026-07-15)

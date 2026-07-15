@@ -1,6 +1,7 @@
 -- | Runtime values for the pure evaluator (spec §02 §3).
 module Pml.Eval.Value
   ( Value (..),
+    ToolSpecValue (..),
     Env,
     emptyEnv,
     lookupEnv,
@@ -13,6 +14,7 @@ module Pml.Eval.Value
   )
 where
 
+import Data.Aeson qualified as Aeson
 import Data.Foldable (foldl')
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -50,6 +52,8 @@ data Builtin
   | BAnd
   | BOr
   | BNot
+  | -- | Wrap a typed callable as an agent 'ToolSpecValue'.
+    BTool
   deriving stock (Eq, Show, Read)
 
 -- | Host operation identity (runtime only). Typed stubs stay in Check.Prelude;
@@ -58,10 +62,20 @@ data HostOpId
   = HostFsRead
   | HostFsWrite
   | HostLlmChat
+  | HostLlmAgent
   | HostHumanConfirm
   | HostObsLog
   | HostObsSpan
   deriving stock (Eq, Ord, Show)
+
+-- | Runtime tool advertisement: schema + callable (host op / fun / closure).
+data ToolSpecValue = ToolSpecValue
+  { tvsName :: Text,
+    tvsDescription :: Text,
+    tvsParameters :: Aeson.Value,
+    tvsCallee :: Value
+  }
+  deriving stock (Eq, Show)
 
 data Value
   = VUnit
@@ -82,6 +96,8 @@ data Value
   | VBuiltin Builtin
   | -- | Host op callable (fs.read, llm.chat, …). Only the runtime driver applies these.
     VHostOp HostOpId
+  | -- | Agent tool spec from @tool(f)@.
+    VToolSpec ToolSpecValue
   deriving stock (Eq, Show)
 
 -- | Text rendering for string interpolation (hwfi §3.2.1 / types §3.1 subset).
@@ -109,6 +125,7 @@ renderValue = \case
   VTopFun (Ident n) -> Left ("cannot render top-level fun as text: " <> n)
   VBuiltin {} -> Left "cannot render a builtin as text"
   VHostOp op -> Left ("cannot render host op as text: " <> hostOpName op)
+  VToolSpec ts -> Left ("cannot render tool spec as text: " <> ts.tvsName)
 
 -- | Stable dotted name for spans / snapshots.
 hostOpName :: HostOpId -> Text
@@ -116,6 +133,7 @@ hostOpName = \case
   HostFsRead -> "fs.read"
   HostFsWrite -> "fs.write"
   HostLlmChat -> "llm.chat"
+  HostLlmAgent -> "llm.agent"
   HostHumanConfirm -> "human.confirm"
   HostObsLog -> "obs.log"
   HostObsSpan -> "obs.span"

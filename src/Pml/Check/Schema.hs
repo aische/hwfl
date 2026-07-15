@@ -96,5 +96,6 @@ baseSchema = \case
   "Json" -> Right $ Object mempty
   "FileRef" -> Right $ object ["type" .= String "string"]
   "Schema" -> Right $ object ["type" .= String "object"]
+  "ToolSpec" -> Right $ object ["type" .= String "object"]
   "Error" -> Right $ object ["type" .= String "string"]
   other -> Left (SchemaUnsupported (TName (TypeName other)))

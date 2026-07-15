@@ -2,15 +2,21 @@
 module Pml.Llm.Types
   ( Role (..),
     Message (..),
+    ToolSpec (..),
+    ToolCall (..),
+    ToolResult (..),
+    Turn (..),
     ChatRequest (..),
     TokenUsage (..),
     FinishReason (..),
     ProviderResult (..),
     ProviderError (..),
     renderProviderError,
+    emptyChatRequest,
   )
 where
 
+import Data.Aeson (Value)
 import Data.Text (Text)
 
 data Role
@@ -25,14 +31,61 @@ data Message = Message
   }
   deriving stock (Eq, Show)
 
--- | Provider-agnostic chat request (host builds this from @llm.chat@ args).
-data ChatRequest = ChatRequest
-  { chatMessages :: [Message],
-    chatModel :: Text,
-    -- | Optional JSON Schema for structured object mode (M4 chat may leave Nothing).
-    chatResponseFormat :: Maybe Text
+-- | Provider-advertised tool schema (host builds from typed function refs).
+data ToolSpec = ToolSpec
+  { tsName :: Text,
+    tsDescription :: Text,
+    tsParameters :: Value
   }
   deriving stock (Eq, Show)
+
+data ToolCall = ToolCall
+  { tcId :: Text,
+    tcName :: Text,
+    tcArguments :: Value
+  }
+  deriving stock (Eq, Show)
+
+data ToolResult = ToolResult
+  { trCallId :: Text,
+    trName :: Text,
+    trContent :: Text
+  }
+  deriving stock (Eq, Show)
+
+-- | Multi-turn agent / chat history (mirrors provider Turns).
+data Turn
+  = TurnUser Text
+  | TurnAssistant Text [ToolCall]
+  | TurnTool [ToolResult]
+  deriving stock (Eq, Show)
+
+-- | Provider-agnostic chat request (host builds this from @llm.chat@ / agent rounds).
+data ChatRequest = ChatRequest
+  { -- | Simple @llm.chat@ path (system/user Messages). Ignored when 'chatTurns' is non-empty.
+    chatMessages :: [Message],
+    -- | Agent conversation (preferred when non-empty).
+    chatTurns :: [Turn],
+    -- | System prompt for agent rounds (or override for message path).
+    chatSystem :: Maybe Text,
+    chatModel :: Text,
+    -- | Optional JSON Schema for structured object mode.
+    chatResponseFormat :: Maybe Text,
+    -- | Tools advertised for this request (agent model rounds).
+    chatTools :: [ToolSpec]
+  }
+  deriving stock (Eq, Show)
+
+emptyChatRequest :: Text -> ChatRequest
+emptyChatRequest model =
+  ChatRequest
+    { chatMessages = [],
+      chatTurns = [],
+      chatSystem = Nothing,
+      chatModel = model,
+      chatResponseFormat = Nothing,
+      chatTools = []
+    }
 
 data TokenUsage = TokenUsage
   { usageInputTokens :: Int,
@@ -49,6 +102,7 @@ data FinishReason
 
 data ProviderResult = ProviderResult
   { prContent :: Text,
+    prToolCalls :: [ToolCall],
     prUsage :: Maybe TokenUsage,
     prFinishReason :: FinishReason
   }

@@ -31,8 +31,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Pml.Ast.Name (Ident (..), TypeName (..))
-import Pml.Eval.Value (Env, HostOpId (..), hostOpName)
+import Pml.Eval.Value (Env, HostOpId (..), ToolSpecValue (..), hostOpName)
 import Pml.Eval.Value qualified as V
+import Pml.Llm.Types (ToolCall (..), ToolResult (..), Turn (..))
 import Pml.Runtime.Error (RuntimeError (..))
 import Pml.Runtime.Machine
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -316,6 +317,7 @@ currentToJson = \case
   CurParPool -> object ["tag" .= String "par_pool"]
   CurCloseRegion sid v ->
     object ["tag" .= String "close_region", "span_id" .= sid, "v" .= valueToJson v]
+  CurAgent ag -> object ["tag" .= String "agent", "agent" .= agentToJson ag]
 
 parseCurrent :: Aeson.Value -> Parser Current
 parseCurrent = withObject "Current" $ \o -> do
@@ -331,7 +333,117 @@ parseCurrent = withObject "Current" $ \o -> do
     "par_pool" -> pure CurParPool
     "close_region" ->
       CurCloseRegion <$> o .: "span_id" <*> (o .: "v" >>= parseValue)
+    "agent" -> CurAgent <$> (o .: "agent" >>= parseAgent)
     other -> fail ("unknown current: " <> T.unpack other)
+
+agentToJson :: AgentState -> Aeson.Value
+agentToJson ag =
+  object
+    [ "system" .= ag.agSystem,
+      "prompt" .= ag.agPrompt,
+      "model" .= ag.agModel,
+      "max_rounds" .= ag.agMaxRounds,
+      "tools" .= map toolSpecToJson ag.agTools,
+      "history" .= map turnToJson ag.agHistory,
+      "round" .= ag.agRound,
+      "tool_round" .= fmap toolRoundToJson ag.agToolRound,
+      "span_id" .= ag.agSpanId,
+      "round_span_id" .= ag.agRoundSpanId
+    ]
+
+parseAgent :: Aeson.Value -> Parser AgentState
+parseAgent = withObject "AgentState" $ \o ->
+  AgentState
+    <$> o .: "system"
+    <*> o .: "prompt"
+    <*> o .: "model"
+    <*> o .: "max_rounds"
+    <*> (o .: "tools" >>= mapM parseToolSpec)
+    <*> (o .: "history" >>= mapM parseTurn)
+    <*> o .: "round"
+    <*> (o .:? "tool_round" >>= traverse parseToolRound)
+    <*> o .: "span_id"
+    <*> o .:? "round_span_id"
+
+toolRoundToJson :: ToolRound -> Aeson.Value
+toolRoundToJson tr =
+  object
+    [ "pending" .= map toolCallToJson tr.trPending,
+      "completed" .= map toolResultToJson tr.trCompleted,
+      "active_call" .= fmap toolCallToJson tr.trActiveCall,
+      "active_machine" .= fmap (machineToJson . unBranch) tr.trActiveMachine
+    ]
+
+parseToolRound :: Aeson.Value -> Parser ToolRound
+parseToolRound = withObject "ToolRound" $ \o ->
+  ToolRound
+    <$> (o .: "pending" >>= mapM parseToolCall)
+    <*> (o .: "completed" >>= mapM parseToolResult)
+    <*> (o .:? "active_call" >>= traverse parseToolCall)
+    <*> (o .:? "active_machine" >>= traverse (fmap mkBranch . parseMachine))
+
+toolSpecToJson :: ToolSpecValue -> Aeson.Value
+toolSpecToJson ts =
+  object
+    [ "name" .= ts.tvsName,
+      "description" .= ts.tvsDescription,
+      "parameters" .= ts.tvsParameters,
+      "callee" .= valueToJson ts.tvsCallee
+    ]
+
+parseToolSpec :: Aeson.Value -> Parser ToolSpecValue
+parseToolSpec = withObject "ToolSpec" $ \o ->
+  ToolSpecValue
+    <$> o .: "name"
+    <*> o .: "description"
+    <*> o .: "parameters"
+    <*> (o .: "callee" >>= parseValue)
+
+turnToJson :: Turn -> Aeson.Value
+turnToJson = \case
+  TurnUser t -> object ["tag" .= String "user", "text" .= t]
+  TurnAssistant t calls ->
+    object
+      [ "tag" .= String "assistant",
+        "text" .= t,
+        "calls" .= map toolCallToJson calls
+      ]
+  TurnTool results ->
+    object ["tag" .= String "tool", "results" .= map toolResultToJson results]
+
+parseTurn :: Aeson.Value -> Parser Turn
+parseTurn = withObject "Turn" $ \o -> do
+  tag <- o .: "tag"
+  case tag :: Text of
+    "user" -> TurnUser <$> o .: "text"
+    "assistant" ->
+      TurnAssistant <$> o .: "text" <*> (o .: "calls" >>= mapM parseToolCall)
+    "tool" -> TurnTool <$> (o .: "results" >>= mapM parseToolResult)
+    other -> fail ("unknown turn: " <> T.unpack other)
+
+toolCallToJson :: ToolCall -> Aeson.Value
+toolCallToJson tc =
+  object
+    [ "id" .= tc.tcId,
+      "name" .= tc.tcName,
+      "arguments" .= tc.tcArguments
+    ]
+
+parseToolCall :: Aeson.Value -> Parser ToolCall
+parseToolCall = withObject "ToolCall" $ \o ->
+  ToolCall <$> o .: "id" <*> o .: "name" <*> o .: "arguments"
+
+toolResultToJson :: ToolResult -> Aeson.Value
+toolResultToJson tr =
+  object
+    [ "call_id" .= tr.trCallId,
+      "name" .= tr.trName,
+      "content" .= tr.trContent
+    ]
+
+parseToolResult :: Aeson.Value -> Parser ToolResult
+parseToolResult = withObject "ToolResult" $ \o ->
+  ToolResult <$> o .: "call_id" <*> o .: "name" <*> o .: "content"
 
 frameToJson :: Frame -> Aeson.Value
 frameToJson = \case
@@ -621,6 +733,7 @@ valueToJson = \case
   V.VTopFun (Ident n) -> object ["tag" .= String "topfun", "name" .= n]
   V.VBuiltin b -> object ["tag" .= String "builtin", "op" .= showText b]
   V.VHostOp op -> object ["tag" .= String "host", "op" .= hostOpName op]
+  V.VToolSpec ts -> object ["tag" .= String "tool_spec", "tool" .= toolSpecToJson ts]
 
 valueFromJson :: Aeson.Value -> Either String V.Value
 valueFromJson = parseEither parseValue
@@ -649,6 +762,7 @@ parseValue = withObject "Value" $ \o -> do
     "topfun" -> V.VTopFun . Ident <$> o .: "name"
     "builtin" -> V.VBuiltin <$> (o .: "op" >>= readText)
     "host" -> V.VHostOp <$> (o .: "op" >>= parseHostOp)
+    "tool_spec" -> V.VToolSpec <$> (o .: "tool" >>= parseToolSpec)
     other -> fail ("unknown value tag: " <> T.unpack other)
 
 parseHostOp :: Text -> Parser HostOpId
@@ -656,6 +770,7 @@ parseHostOp = \case
   "fs.read" -> pure HostFsRead
   "fs.write" -> pure HostFsWrite
   "llm.chat" -> pure HostLlmChat
+  "llm.agent" -> pure HostLlmAgent
   "human.confirm" -> pure HostHumanConfirm
   "obs.log" -> pure HostObsLog
   "obs.span" -> pure HostObsSpan

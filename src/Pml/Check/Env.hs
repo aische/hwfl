@@ -62,6 +62,7 @@ primitiveNames =
       "Json",
       "FileRef",
       "Schema",
+      "ToolSpec",
       "Error"
     ]
 

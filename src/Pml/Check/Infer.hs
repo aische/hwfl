@@ -101,9 +101,11 @@ infer env = \case
   EInterp parts -> do
     mapM_ (checkInterpPart env) parts
     pure tString
-  EApp f args -> do
-    ft <- infer env f
-    applyType env ft args
+  EApp f args
+    | isToolBuiltin f -> inferToolApp env args
+    | otherwise -> do
+        ft <- infer env f
+        applyType env ft args
   EProj e f -> do
     te <- infer env e
     te' <- resolveType env te
@@ -418,9 +420,27 @@ literalType = \case
   LFloat _ -> tFloat
   LString _ -> tString
 
-tUnit, tBool, tInt, tFloat, tString :: TypeExpr
+-- | @tool(f)@: accept any function / effectful function, produce ToolSpec.
+isToolBuiltin :: Expr -> Bool
+isToolBuiltin = \case
+  EVar (Ident "tool") -> True
+  _ -> False
+
+inferToolApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferToolApp env args = case args of
+  [ArgPos e] -> do
+    te <- infer env e
+    te' <- resolveType env te
+    case te' of
+      TFun {} -> Right tToolSpec
+      TEffFun {} -> Right tToolSpec
+      _ -> Left (ExpectedFunction te')
+  _ -> Left (ArityMismatch 1 (length args))
+
+tUnit, tBool, tInt, tFloat, tString, tToolSpec :: TypeExpr
 tUnit = TName (TypeName "Unit")
 tBool = TName (TypeName "Bool")
 tInt = TName (TypeName "Int")
 tFloat = TName (TypeName "Float")
 tString = TName (TypeName "String")
+tToolSpec = TName (TypeName "ToolSpec")

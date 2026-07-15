@@ -15,7 +15,7 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.Text (Text)
 import Data.Text qualified as T
 import Pml.Ast.Name (Ident (..))
-import Pml.Eval.Value (HostOpId (..), Value (..), hostOpName)
+import Pml.Eval.Value (HostOpId (..), ToolSpecValue (..), Value (..), hostOpName)
 
 redactMarker :: Text
 redactMarker = "[REDACTED]"
@@ -27,6 +27,8 @@ redactValue = \case
   VList xs -> VList (map redactValue xs)
   VRecord fs -> VRecord [(k, redactValue v) | (k, v) <- fs]
   VVariant n (Just v) -> VVariant n (Just (redactValue v))
+  VToolSpec ts ->
+    VToolSpec ts {tvsCallee = redactValue ts.tvsCallee}
   v -> v
 
 -- | JSON tree redaction: secret tags + sensitive object keys.
@@ -105,6 +107,14 @@ hostOpenAttrs op args = case op of
         "system_len" .= textLenAttr (Ident "system") args,
         "prompt_len" .= textLenAttr (Ident "prompt") args
       ]
+  HostLlmAgent ->
+    object
+      [ "op" .= hostOpName op,
+        "model" .= stringAttr (Ident "model") args,
+        "system_len" .= textLenAttr (Ident "system") args,
+        "prompt_len" .= textLenAttr (Ident "prompt") args,
+        "tools" .= toolsLenAttr args
+      ]
   HostHumanConfirm ->
     object
       [ "op" .= hostOpName op,
@@ -145,6 +155,11 @@ textLenAttr n args = case lookupNamed n args of
 regionNameAttr :: [(Maybe Ident, Value)] -> Aeson.Value
 regionNameAttr args = case lookupNamed (Ident "name") args `orElse` lookupPos 0 args of
   Just (VString t) -> Aeson.String t
+  _ -> Aeson.Null
+
+toolsLenAttr :: [(Maybe Ident, Value)] -> Aeson.Value
+toolsLenAttr args = case lookupNamed (Ident "tools") args of
+  Just (VList xs) -> Aeson.Number (fromIntegral (length xs))
   _ -> Aeson.Null
 
 lookupNamed :: Ident -> [(Maybe Ident, Value)] -> Maybe Value

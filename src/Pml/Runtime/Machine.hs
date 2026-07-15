@@ -10,6 +10,8 @@ module Pml.Runtime.Machine
     ParSlot (..),
     ParPoolPhase (..),
     ParOnError (..),
+    AgentState (..),
+    ToolRound (..),
     Machine (..),
     BranchMachine (..),
     unBranch,
@@ -24,7 +26,8 @@ import Data.Map.Strict (Map)
 import Data.Text (Text)
 import Pml.Ast.Expr (Arg, Expr, Field, MatchArm, Param, StringPart)
 import Pml.Ast.Name (Ident)
-import Pml.Eval.Value (Env, HostOpId, Value (..))
+import Pml.Eval.Value (Env, HostOpId, ToolSpecValue, Value (..))
+import Pml.Llm.Types (ToolCall, ToolResult, Turn)
 import Pml.Runtime.Error (RuntimeError)
 
 -- | Top-level module functions (params + body), reloaded on resume.
@@ -65,6 +68,34 @@ data Current
     CurParPool
   | -- | Close an @obs.span@ region then return @Value@ into the kont.
     CurCloseRegion Text Value
+  | -- | @llm.agent@ multi-transition loop (model / tool rounds).
+    CurAgent AgentState
+  deriving stock (Eq, Show)
+
+-- | Serializable agent loop state (spec §06 §6 / hwfi MachineAgent).
+data AgentState = AgentState
+  { agSystem :: Text,
+    agPrompt :: Text,
+    agModel :: Text,
+    agMaxRounds :: Int,
+    agTools :: [ToolSpecValue],
+    agHistory :: [Turn],
+    agRound :: Int,
+    agToolRound :: Maybe ToolRound,
+    -- | Open @llm.agent@ host span id (closed on finish).
+    agSpanId :: Text,
+    -- | Open @agent_round@ span for the current model/tool round, if any.
+    agRoundSpanId :: Maybe Text
+  }
+  deriving stock (Eq, Show)
+
+-- | In-progress tool round: pending calls + optional nested tool machine.
+data ToolRound = ToolRound
+  { trPending :: [ToolCall],
+    trCompleted :: [ToolResult],
+    trActiveCall :: Maybe ToolCall,
+    trActiveMachine :: Maybe BranchMachine
+  }
   deriving stock (Eq, Show)
 
 data Frame

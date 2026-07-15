@@ -63,6 +63,7 @@ library
         Pml.Parse.Pat
         Pml.Parse.Section
         Pml.Parse.Type
+        Pml.Runtime.Agent
         Pml.Runtime.Error
         Pml.Runtime.Eval
         Pml.Runtime.Host
@@ -124,6 +125,7 @@ test-suite pml-test
         Pml.Parse.ModuleSpec
         Pml.Parse.SectionSpec
         Pml.Parse.TypeSpec
+        Pml.Runtime.AgentSpec
         Pml.Runtime.ConcurrentSpec
         Pml.Runtime.RunSpec
         Pml.Runtime.WorkspaceSpec
