@@ -14,7 +14,10 @@ import Data.Aeson qualified as Aeson
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Pml.Ast.Name (Ident (..))
+import Pml.Ast.Module (Frontmatter (..), LoadedModule (..))
+import Pml.Ast.Name (Ident (..), qnameToText)
+import Pml.Check.Error (renderCheckError)
+import Pml.Check.Module (checkLoadedModule)
 import Pml.Eval.Value
 import Pml.Llm.Provider (LlmProvider (..))
 import Pml.Llm.Types
@@ -26,8 +29,10 @@ import Pml.Llm.Types
     emptyChatRequest,
     renderProviderError,
   )
+import Pml.Parse.Load (loadModuleText)
 import Pml.Runtime.Error (RuntimeError (..))
-import Pml.Runtime.Workspace (Workspace, readTextFile, writeTextFile)
+import Pml.Runtime.Workspace (Workspace, findFiles, readTextFile, writeTextFile)
+import Pml.Source (renderDiagnostics)
 
 -- | Effectful dependencies for host ops (workspace + provider).
 data HostEnv = HostEnv
@@ -49,7 +54,8 @@ hostOpsEnv =
     [ ( Ident "fs",
         VRecord
           [ (Ident "read", VHostOp HostFsRead),
-            (Ident "write", VHostOp HostFsWrite)
+            (Ident "write", VHostOp HostFsWrite),
+            (Ident "find", VHostOp HostFsFind)
           ]
       ),
       ( Ident "llm",
@@ -68,6 +74,11 @@ hostOpsEnv =
           [ (Ident "log", VHostOp HostObsLog),
             (Ident "span", VHostOp HostObsSpan)
           ]
+      ),
+      ( Ident "meta",
+        VRecord
+          [ (Ident "check_module", VHostOp HostMetaCheckModule)
+          ]
       )
     ]
 
@@ -81,6 +92,8 @@ runHostOp ::
 runHostOp env op args = case op of
   HostFsRead -> doFsRead env args
   HostFsWrite -> doFsWrite env args
+  HostFsFind -> doFsFind env args
+  HostMetaCheckModule -> doMetaCheckModule env args
   HostLlmChat -> doLlmChat env args
   HostLlmAgent ->
     pure (Left (HostErr "llm.agent must be driven by the machine (agent loop)"))
@@ -123,6 +136,61 @@ doFsWrite env args =
       Just v -> fileRefValue v
       Nothing -> fileRefArg args
     textArg = lookupNamed (Ident "text") args
+
+doFsFind :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsFind env args = case globArg args of
+  Left e -> pure (Left e)
+  Right glob -> do
+    env.heLog ("fs.find " <> glob)
+    result <- findFiles env.heWorkspace glob
+    pure $ case result of
+      Left e -> Left e
+      Right paths ->
+        Right
+          ( HostResult
+              (VList (map VString paths))
+              (object ["count" .= length paths])
+          )
+
+doMetaCheckModule :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doMetaCheckModule env args = case fileRefArg args of
+  Left e -> pure (Left e)
+  Right path -> do
+    env.heLog ("meta.check_module " <> path)
+    readResult <- readTextFile env.heWorkspace path
+    pure $ case readResult of
+      Left e -> Left e
+      Right txt ->
+        Right (HostResult (checkModuleValue path txt) (object ["path" .= path]))
+
+checkModuleValue :: Text -> Text -> Value
+checkModuleValue path txt = case loadModuleText (T.unpack path) txt of
+  Left diags ->
+    failCheck (renderDiagnostics diags) ""
+  Right loaded -> case checkLoadedModule loaded of
+    Left err ->
+      failCheck (renderCheckError err) (qnameToText loaded.lmFrontmatter.fmName)
+    Right _ ->
+      VRecord
+        [ (Ident "ok", VBool True),
+          (Ident "error", VString ""),
+          (Ident "name", VString (qnameToText loaded.lmFrontmatter.fmName))
+        ]
+  where
+    failCheck err name =
+      VRecord
+        [ (Ident "ok", VBool False),
+          (Ident "error", VString err),
+          (Ident "name", VString name)
+        ]
+
+globArg :: [(Maybe Ident, Value)] -> Either RuntimeError Text
+globArg args = case lookupNamed (Ident "glob") args of
+  Just (VString t) -> Right t
+  Just _ -> Left (HostErr "fs.find expects glob: String")
+  Nothing -> case lookupPositional 0 args of
+    Just (VString t) -> Right t
+    _ -> Left (HostErr "fs.find expects glob: String")
 
 doLlmChat :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doLlmChat env args = case parseChatArgs args of

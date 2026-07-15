@@ -4,15 +4,16 @@ Last updated: 2026-07-15
 
 ## Current focus
 
-**M7 complete** — `llm.agent` multi-transition loop + typed `tool(f)`.
-Next: **M8** dogfood slim semantic-check in pml.
+**M8 complete** — slim semantic-check dogfood (layers 0–2b) in one pml module.
+Next: project-wide `pml check` graph / Float–`==` polish as needed.
 
 ## Done recently
 
-- `llm.agent` as machine `CurAgent` (model → tool* → final), snapshotted per round
-- Prelude `tool(f)` builds `ToolSpec` from host ops / annotated funs / closures
-- Provider `ChatRequest` carries tools + turns; mock/simple adapters updated
-- E15 tests: tool round + mid-tool step/resume + agent span tree; 76 tests
+- Dogfood `examples/semantic-check`: layers 0–2b in **1** module (~300 LOC) vs hwfi’s
+  **74** tools (~3175 LOC)
+- Pure `list` / `text` / `md` builtins; host `fs.find` + `meta.check_module`
+- String/`FileRef` check unification; `==`/`</>` on String/Float
+- E20 fixture + tests; 78 tests
 
 ## Blockers
 
@@ -20,8 +21,9 @@ None.
 
 ## Next up
 
-1. **M8** — Port slim semantic-check (layers 0–2 style) in pml; compare LOC/files to hwfi
-2. Later: Float/`==` polymorphism; project-wide `pml check` graph; polymorphic `obs.span` types
+1. Full `pml check` project.json + import graph
+2. Float/`==` polymorphism cleanup (partially unblocked by M8 special-cases)
+3. Alternate `LlmProvider` as swap proof
 
 ## Open naming
 

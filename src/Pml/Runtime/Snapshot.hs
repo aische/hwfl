@@ -769,11 +769,13 @@ parseHostOp :: Text -> Parser HostOpId
 parseHostOp = \case
   "fs.read" -> pure HostFsRead
   "fs.write" -> pure HostFsWrite
+  "fs.find" -> pure HostFsFind
   "llm.chat" -> pure HostLlmChat
   "llm.agent" -> pure HostLlmAgent
   "human.confirm" -> pure HostHumanConfirm
   "obs.log" -> pure HostObsLog
   "obs.span" -> pure HostObsSpan
+  "meta.check_module" -> pure HostMetaCheckModule
   other -> fail ("unknown host op: " <> T.unpack other)
 
 showText :: (Show a) => a -> Text

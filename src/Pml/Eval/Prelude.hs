@@ -1,4 +1,4 @@
--- | Pure prelude builtins (arithmetic, comparisons, bool) — not host ops.
+-- | Pure prelude builtins (arithmetic, comparisons, bool, list, text) — not host ops.
 module Pml.Eval.Prelude
   ( preludeEnv,
     applyBuiltin,
@@ -6,6 +6,7 @@ module Pml.Eval.Prelude
 where
 
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Pml.Ast.Name (Ident (..))
@@ -15,6 +16,14 @@ import Pml.Eval.Value
     Env,
     Value (..),
   )
+import Pml.Text.Corpus
+  ( TextMetrics (..),
+    splitSentences,
+    textContains,
+    textMetrics,
+    textSimilarity,
+  )
+import Pml.Text.Markdown (MdSection (..), extractSections)
 
 preludeEnv :: Env
 preludeEnv =
@@ -32,7 +41,28 @@ preludeEnv =
       (Ident "&&", VBuiltin BAnd),
       (Ident "||", VBuiltin BOr),
       (Ident "not", VBuiltin BNot),
-      (Ident "tool", VBuiltin BTool)
+      (Ident "tool", VBuiltin BTool),
+      ( Ident "list",
+        VRecord
+          [ (Ident "length", VBuiltin BListLength),
+            (Ident "concat", VBuiltin BListConcat)
+          ]
+      ),
+      ( Ident "text",
+        VRecord
+          [ (Ident "metrics", VBuiltin BTextMetrics),
+            (Ident "similarity", VBuiltin BTextSimilarity),
+            (Ident "contains", VBuiltin BTextContains),
+            (Ident "split_sentences", VBuiltin BTextSplitSentences),
+            (Ident "words", VBuiltin BTextWords),
+            (Ident "strip_suffix", VBuiltin BTextStripSuffix)
+          ]
+      ),
+      ( Ident "md",
+        VRecord
+          [ (Ident "sections", VBuiltin BMdSections)
+          ]
+      )
     ]
 
 applyBuiltin :: Builtin -> [Value] -> Either EvalError Value
@@ -52,10 +82,51 @@ applyBuiltin b args = case (b, args) of
   (BNot, [VBool x]) -> Right (VBool (not x))
   (BTool, _) ->
     Left (Trap "tool() requires the host runtime (typed ToolSpec)")
+  (BListLength, [VList xs]) -> Right (VInt (fromIntegral (length xs)))
+  (BListConcat, [VList xs, VList ys]) -> Right (VList (xs ++ ys))
+  (BTextMetrics, [VString s]) -> Right (metricsValue (textMetrics s))
+  (BTextSimilarity, [VString a, VString c]) -> Right (VFloat (textSimilarity a c))
+  (BTextContains, [VString hay, VString needle]) -> Right (VBool (textContains hay needle))
+  (BTextSplitSentences, [VString s]) ->
+    Right (VList (map VString (splitSentences s)))
+  (BTextWords, [VString s]) ->
+    Right (VList (map VString (T.words s)))
+  (BTextStripSuffix, [VString s, VString suf]) ->
+    Right (VString (fromMaybe s (T.stripSuffix suf s)))
+  (BMdSections, [VString s]) -> case extractSections s of
+    Left err -> Left (Trap ("md.sections: " <> err))
+    Right secs -> Right (VList (map sectionValue secs))
   (BAnd, _) -> arityOrType "&&" 2 args
   (BOr, _) -> arityOrType "||" 2 args
   (BNot, _) -> arityOrType "not" 1 args
+  (BListLength, _) -> arityOrType "list.length" 1 args
+  (BListConcat, _) -> arityOrType "list.concat" 2 args
+  (BTextMetrics, _) -> arityOrType "text.metrics" 1 args
+  (BTextSimilarity, _) -> arityOrType "text.similarity" 2 args
+  (BTextContains, _) -> arityOrType "text.contains" 2 args
+  (BTextSplitSentences, _) -> arityOrType "text.split_sentences" 1 args
+  (BTextWords, _) -> arityOrType "text.words" 1 args
+  (BTextStripSuffix, _) -> arityOrType "text.strip_suffix" 2 args
+  (BMdSections, _) -> arityOrType "md.sections" 1 args
   (_, _) -> Left (Trap ("wrong arity for builtin: " <> T.pack (show b)))
+
+metricsValue :: TextMetrics -> Value
+metricsValue m =
+  VRecord
+    [ (Ident "chars", VInt (fromIntegral m.tmChars)),
+      (Ident "tokens", VInt (fromIntegral m.tmTokens)),
+      (Ident "lines", VInt (fromIntegral m.tmLines)),
+      (Ident "entropy", VFloat m.tmShannonEntropy),
+      (Ident "uniqueness", VFloat m.tmUniqueness)
+    ]
+
+sectionValue :: MdSection -> Value
+sectionValue s =
+  VRecord
+    [ (Ident "slug", VString s.msSlug),
+      (Ident "title", VString s.msTitle),
+      (Ident "body", VString s.msBody)
+    ]
 
 num2 ::
   (Integer -> Integer -> Integer) ->

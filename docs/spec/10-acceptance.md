@@ -52,9 +52,9 @@
 - [x] Typed tools from functions
 
 ### M8 — Dogfood
-- [ ] Port slim semantic-check (layers 0–2 style) in pml
-- [ ] Compare file count / LOC to hwfi example
-- [ ] Decision log entry with results
+- [x] Port slim semantic-check (layers 0–2 style) in pml
+- [x] Compare file count / LOC to hwfi example
+- [x] Decision log entry with results
 
 ## 3. v0 release gate
 

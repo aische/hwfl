@@ -100,6 +100,16 @@ hostOpenAttrs op args = case op of
         "path" .= pathAttr args,
         "text_len" .= textLenAttr (Ident "text") args
       ]
+  HostFsFind ->
+    object
+      [ "op" .= hostOpName op,
+        "glob" .= stringAttr (Ident "glob") args
+      ]
+  HostMetaCheckModule ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args
+      ]
   HostLlmChat ->
     object
       [ "op" .= hostOpName op,

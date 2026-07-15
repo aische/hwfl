@@ -8,6 +8,7 @@ module Pml.Runtime.Workspace
     resolveContainedPath,
     readTextFile,
     writeTextFile,
+    findFiles,
   )
 where
 
@@ -20,6 +21,8 @@ import Pml.Runtime.Error (RuntimeError (..))
 import System.Directory
   ( canonicalizePath,
     createDirectoryIfMissing,
+    doesDirectoryExist,
+    listDirectory,
   )
 import System.FilePath
   ( isAbsolute,
@@ -27,6 +30,7 @@ import System.FilePath
     makeRelative,
     splitDirectories,
     takeDirectory,
+    takeExtension,
     takeFileName,
     (</>),
   )
@@ -133,3 +137,52 @@ writeTextFile ws rel content = do
                     Left ex ->
                       Left (HostErr ("write failed for '" <> rel <> "': " <> T.pack (show ex)))
                     Right () -> Right ()
+
+-- | Find workspace-relative files matching a simple glob.
+-- Supported: @**/*.ext@ (recursive) and @*.ext@ (workspace root only).
+findFiles :: Workspace -> Text -> IO (Either RuntimeError [Text])
+findFiles ws glob = case parseGlob glob of
+  Left e -> pure (Left e)
+  Right pat -> do
+    let root = workspaceRoot ws
+    paths <- try (walk root "" pat) :: IO (Either IOException [FilePath])
+    pure $ case paths of
+      Left ex -> Left (HostErr ("fs.find failed: " <> T.pack (show ex)))
+      Right ps -> Right (map T.pack ps)
+
+data GlobPat
+  = GlobRecursiveExt String
+  | GlobRootExt String
+
+parseGlob :: Text -> Either RuntimeError GlobPat
+parseGlob g = case T.stripPrefix "**/*" g of
+  Just ext | not (T.null ext) && T.head ext == '.' -> Right (GlobRecursiveExt (T.unpack ext))
+  _ -> case T.stripPrefix "*" g of
+    Just ext | not (T.null ext) && T.head ext == '.' -> Right (GlobRootExt (T.unpack ext))
+    _ -> Left (HostErr ("fs.find: unsupported glob (use **/*.md or *.md): " <> g))
+
+walk :: FilePath -> FilePath -> GlobPat -> IO [FilePath]
+walk absRoot relDir pat = do
+  let absDir = if null relDir then absRoot else absRoot </> relDir
+  names <- listDirectory absDir
+  fmap concat $ traverse (one absRoot relDir pat) names
+
+one :: FilePath -> FilePath -> GlobPat -> FilePath -> IO [FilePath]
+one absRoot relDir pat name = do
+  let rel = if null relDir then name else relDir </> name
+      absPath = absRoot </> rel
+  isDir <- doesDirectoryExist absPath
+  if isDir
+    then case pat of
+      GlobRecursiveExt _ -> walk absRoot rel pat
+      GlobRootExt _ -> pure []
+    else
+      pure $
+        if matchPat pat name
+          then [rel]
+          else []
+
+matchPat :: GlobPat -> FilePath -> Bool
+matchPat pat name = case pat of
+  GlobRecursiveExt ext -> takeExtension name == ext
+  GlobRootExt ext -> takeExtension name == ext

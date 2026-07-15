@@ -103,6 +103,11 @@ infer env = \case
     pure tString
   EApp f args
     | isToolBuiltin f -> inferToolApp env args
+    | isListLength f -> inferListLengthApp env args
+    | isListConcat f -> inferListConcatApp env args
+    | isEqOp f -> inferEqApp env args
+    | isOrdOp f -> inferOrdApp env args
+    | isArithOp f -> inferArithApp env args
     | otherwise -> do
         ft <- infer env f
         applyType env ft args
@@ -408,9 +413,25 @@ paramBindings env ps domain = do
 
 unify :: TypeExpr -> TypeExpr -> Either CheckError ()
 unify want got =
-  if typeEq want got
+  if typeEq want got || stringFileRefCompatible want got
     then Right ()
     else Left (TypeMismatch want got)
+
+-- | Path string literals are accepted where @FileRef@ is required (runtime
+-- FileRef is a path string under the workspace).
+stringFileRefCompatible :: TypeExpr -> TypeExpr -> Bool
+stringFileRefCompatible a b =
+  (isFileRef a && isStringName b) || (isStringName a && isFileRef b)
+
+isFileRef :: TypeExpr -> Bool
+isFileRef = \case
+  TName (TypeName "FileRef") -> True
+  _ -> False
+
+isStringName :: TypeExpr -> Bool
+isStringName = \case
+  TName (TypeName "String") -> True
+  _ -> False
 
 literalType :: Literal -> TypeExpr
 literalType = \case
@@ -436,6 +457,122 @@ inferToolApp env args = case args of
       TEffFun {} -> Right tToolSpec
       _ -> Left (ExpectedFunction te')
   _ -> Left (ArityMismatch 1 (length args))
+
+isListLength :: Expr -> Bool
+isListLength = \case
+  EProj (EVar (Ident "list")) (Ident "length") -> True
+  _ -> False
+
+isListConcat :: Expr -> Bool
+isListConcat = \case
+  EProj (EVar (Ident "list")) (Ident "concat") -> True
+  _ -> False
+
+inferListLengthApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferListLengthApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Positional [e]) -> do
+    te <- infer env e
+    te' <- resolveType env te
+    case te' of
+      TList _ -> Right tInt
+      _ -> Left (ExpectedList te')
+  Right (Named [(Ident "xs", e)]) -> do
+    te <- infer env e
+    te' <- resolveType env te
+    case te' of
+      TList _ -> Right tInt
+      _ -> Left (ExpectedList te')
+  _ -> Left (ArityMismatch 1 (length args))
+
+inferListConcatApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferListConcatApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Positional [a, b]) -> do
+    ta <- infer env a
+    ta' <- resolveType env ta
+    case ta' of
+      TList _ -> do
+        check env b ta'
+        pure ta'
+      _ -> Left (ExpectedList ta')
+  Right (Named nes) -> do
+    a <- maybe (Left (MissingNamedArg (Ident "left"))) pure (lookup (Ident "left") nes)
+    b <- maybe (Left (MissingNamedArg (Ident "right"))) pure (lookup (Ident "right") nes)
+    inferListConcatApp env [ArgPos a, ArgPos b]
+  _ -> Left (ArityMismatch 2 (length args))
+
+isEqOp :: Expr -> Bool
+isEqOp = \case
+  EVar (Ident n) -> n == "==" || n == "!="
+  _ -> False
+
+isOrdOp :: Expr -> Bool
+isOrdOp = \case
+  EVar (Ident n) -> n `elem` ["<", "<=", ">", ">="]
+  _ -> False
+
+isArithOp :: Expr -> Bool
+isArithOp = \case
+  EVar (Ident n) -> n `elem` ["+", "-", "*", "/"]
+  _ -> False
+
+inferEqApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferEqApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Positional [a, b]) -> do
+    ta <- infer env a
+    tb <- infer env b
+    ta' <- resolveType env ta
+    tb' <- resolveType env tb
+    unless (comparableType ta') $
+      Left (TypeMismatchMsg "equality requires a comparable type" ta' tb')
+    unify ta' tb'
+    pure tBool
+  _ -> Left (ArityMismatch 2 (length args))
+
+inferOrdApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferOrdApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Positional [a, b]) -> do
+    ta <- infer env a
+    tb <- infer env b
+    ta' <- resolveType env ta
+    tb' <- resolveType env tb
+    unless (orderedType ta') $
+      Left (TypeMismatchMsg "ordered comparison requires Int, Float, or String" ta' tb')
+    unify ta' tb'
+    pure tBool
+  _ -> Left (ArityMismatch 2 (length args))
+
+inferArithApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferArithApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Positional [a, b]) -> do
+    ta <- infer env a
+    tb <- infer env b
+    ta' <- resolveType env ta
+    tb' <- resolveType env tb
+    unless (numericType ta') $
+      Left (TypeMismatchMsg "arithmetic requires Int or Float" ta' tb')
+    unify ta' tb'
+    pure ta'
+  _ -> Left (ArityMismatch 2 (length args))
+
+comparableType :: TypeExpr -> Bool
+comparableType = \case
+  TName (TypeName n) -> n `elem` ["Unit", "Bool", "Int", "Float", "String", "FileRef"]
+  _ -> False
+
+orderedType :: TypeExpr -> Bool
+orderedType = \case
+  TName (TypeName n) -> n `elem` ["Int", "Float", "String"]
+  _ -> False
+
+numericType :: TypeExpr -> Bool
+numericType = \case
+  TName (TypeName n) -> n == "Int" || n == "Float"
+  _ -> False
 
 tUnit, tBool, tInt, tFloat, tString, tToolSpec :: TypeExpr
 tUnit = TName (TypeName "Unit")

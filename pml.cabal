@@ -54,6 +54,8 @@ library
         Pml.Obs.Show
         Pml.Obs.Span
         Pml.Obs.Trace
+        Pml.Text.Corpus
+        Pml.Text.Markdown
         Pml.Parse.Expr
         Pml.Parse.Frontmatter
         Pml.Parse.Lexer
@@ -128,6 +130,7 @@ test-suite pml-test
         Pml.Runtime.AgentSpec
         Pml.Runtime.ConcurrentSpec
         Pml.Runtime.RunSpec
+        Pml.Runtime.SemanticCheckSpec
         Pml.Runtime.WorkspaceSpec
     build-depends:
         base,

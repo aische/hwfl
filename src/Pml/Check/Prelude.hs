@@ -25,7 +25,11 @@ preludeTypeEnv =
                  (Ident "llm", llmType),
                  (Ident "human", humanType),
                  (Ident "obs", obsType),
-                 (Ident "exec", execType)
+                 (Ident "exec", execType),
+                 (Ident "meta", metaType),
+                 (Ident "list", listType),
+                 (Ident "text", textType),
+                 (Ident "md", mdType)
                ],
       teAliases = Map.empty
     }
@@ -75,6 +79,12 @@ fsType =
           )
           [EffWrite]
           (t "Unit")
+      ),
+      ( Ident "find",
+        TEffFun
+          ( TRecord [(Ident "glob", t "String")] )
+          [EffRead]
+          (TList (t "FileRef"))
       )
     ]
 
@@ -170,6 +180,73 @@ execType =
           )
           [EffExec]
           (t "Unit")
+      )
+    ]
+
+metaType :: TypeExpr
+metaType =
+  TRecord
+    [ ( Ident "check_module",
+        TEffFun
+          (t "FileRef")
+          [EffMeta, EffRead]
+          ( TRecord
+              [ (Ident "ok", t "Bool"),
+                (Ident "error", t "String"),
+                (Ident "name", t "String")
+              ]
+          )
+      )
+    ]
+
+-- | Domains use Json as a placeholder; Infer special-cases @list.length@ / @list.concat@.
+listType :: TypeExpr
+listType =
+  TRecord
+    [ (Ident "length", TFun (TList (t "Json")) (t "Int")),
+      ( Ident "concat",
+        TFun (TList (t "Json")) (TFun (TList (t "Json")) (TList (t "Json")))
+      )
+    ]
+
+textType :: TypeExpr
+textType =
+  TRecord
+    [ ( Ident "metrics",
+        TFun
+          (t "String")
+          ( TRecord
+              [ (Ident "chars", t "Int"),
+                (Ident "tokens", t "Int"),
+                (Ident "lines", t "Int"),
+                (Ident "entropy", t "Float"),
+                (Ident "uniqueness", t "Float")
+              ]
+          )
+      ),
+      (Ident "similarity", TFun (t "String") (TFun (t "String") (t "Float"))),
+      (Ident "contains", TFun (t "String") (TFun (t "String") (t "Bool"))),
+      (Ident "split_sentences", TFun (t "String") (TList (t "String"))),
+      (Ident "words", TFun (t "String") (TList (t "String"))),
+      ( Ident "strip_suffix",
+        TFun (t "String") (TFun (t "String") (t "String"))
+      )
+    ]
+
+mdType :: TypeExpr
+mdType =
+  TRecord
+    [ ( Ident "sections",
+        TFun
+          (t "String")
+          ( TList
+              ( TRecord
+                  [ (Ident "slug", t "String"),
+                    (Ident "title", t "String"),
+                    (Ident "body", t "String")
+                  ]
+              )
+          )
       )
     ]
 

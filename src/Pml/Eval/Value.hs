@@ -54,6 +54,15 @@ data Builtin
   | BNot
   | -- | Wrap a typed callable as an agent 'ToolSpecValue'.
     BTool
+  | BListLength
+  | BListConcat
+  | BTextMetrics
+  | BTextSimilarity
+  | BTextContains
+  | BTextSplitSentences
+  | BTextWords
+  | BTextStripSuffix
+  | BMdSections
   deriving stock (Eq, Show, Read)
 
 -- | Host operation identity (runtime only). Typed stubs stay in Check.Prelude;
@@ -61,11 +70,13 @@ data Builtin
 data HostOpId
   = HostFsRead
   | HostFsWrite
+  | HostFsFind
   | HostLlmChat
   | HostLlmAgent
   | HostHumanConfirm
   | HostObsLog
   | HostObsSpan
+  | HostMetaCheckModule
   deriving stock (Eq, Ord, Show)
 
 -- | Runtime tool advertisement: schema + callable (host op / fun / closure).
@@ -132,11 +143,13 @@ hostOpName :: HostOpId -> Text
 hostOpName = \case
   HostFsRead -> "fs.read"
   HostFsWrite -> "fs.write"
+  HostFsFind -> "fs.find"
   HostLlmChat -> "llm.chat"
   HostLlmAgent -> "llm.agent"
   HostHumanConfirm -> "human.confirm"
   HostObsLog -> "obs.log"
   HostObsSpan -> "obs.span"
+  HostMetaCheckModule -> "meta.check_module"
 
 renderJsonish :: Value -> Either Text Text
 renderJsonish = \case

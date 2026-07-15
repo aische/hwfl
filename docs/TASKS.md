@@ -19,7 +19,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] **M5** — `par` + `confirm` + resume / `--step`
 - [x] **M6** — Span observability + `show`
 - [x] **M7** — Agent loop (`llm.agent`) + tool functions
-- [ ] **M8** — Dogfood: port a slim semantic-check in pml
+- [x] **M8** — Dogfood: port a slim semantic-check in pml
 
 ## Later
 
@@ -41,3 +41,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] M5 `par` + `confirm` + step/resume/approve + machine_json (2026-07-15)
 - [x] M6 spans.jsonl + `pml show` + redaction (2026-07-15)
 - [x] M7 `llm.agent` loop + `tool(f)` typed tools (2026-07-15)
+- [x] M8 slim semantic-check dogfood + LOC/file delta vs hwfi (2026-07-15)
