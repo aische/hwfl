@@ -5,11 +5,13 @@ module Pml.Check.Error
   )
 where
 
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Pml.Ast.Name (Ident (..), TypeName (..))
 import Pml.Ast.Pretty (prettyType)
-import Pml.Ast.Type (TypeExpr)
+import Pml.Ast.Type (Effect, TypeExpr, effectName)
 
 data CheckError
   = UnboundVar Ident
@@ -33,6 +35,8 @@ data CheckError
   | MainParamMismatch TypeExpr TypeExpr
   | MainReturnMismatch TypeExpr TypeExpr
   | SchemaUnsupported TypeExpr
+  | -- | Inferred effect set is not a subset of the declared ceiling.
+    EffectsNotAllowed (Set Effect) (Set Effect)
   | Unsupported Text
   deriving stock (Eq, Show)
 
@@ -71,4 +75,17 @@ renderCheckError = \case
       <> ", got "
       <> prettyType got
   SchemaUnsupported t -> "schema(" <> prettyType t <> ") is not supported"
+  EffectsNotAllowed inferred declared ->
+    "effects not allowed: inferred "
+      <> renderEffSet inferred
+      <> ", declared "
+      <> renderEffSet declared
   Unsupported msg -> "unsupported in type checker: " <> msg
+
+renderEffSet :: Set Effect -> Text
+renderEffSet es
+  | Set.null es = "[]"
+  | otherwise =
+      "["
+        <> T.intercalate ", " (map effectName (Set.toAscList es))
+        <> "]"

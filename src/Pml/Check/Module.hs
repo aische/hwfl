@@ -1,4 +1,4 @@
--- | Module-level checking: decls, @main@ vs frontmatter I/O.
+-- | Module-level checking: decls, @main@ vs frontmatter I/O, effects ceiling.
 module Pml.Check.Module
   ( checkModuleBody,
     checkLoadedModule,
@@ -11,6 +11,7 @@ import Pml.Ast.Expr (Param (..))
 import Pml.Ast.Module (Frontmatter (..), LoadedModule (..))
 import Pml.Ast.Name (Ident (..))
 import Pml.Ast.Type (TypeExpr (..))
+import Pml.Check.Effects (analyzeModuleEffects, checkEffectsCeiling)
 import Pml.Check.Env (TypeEnv, extendVars, lookupVar, resolveType, typeEq)
 import Pml.Check.Error (CheckError (..))
 import Pml.Check.Infer (check, infer, inferModuleEnv)
@@ -20,7 +21,7 @@ data CheckResult = CheckResult
   }
   deriving stock (Eq, Show)
 
--- | Type-check a kernel module body (no frontmatter I/O rules).
+-- | Type-check a kernel module body (no frontmatter I/O or effects ceiling).
 checkModuleBody :: ModuleBody -> Either CheckError CheckResult
 checkModuleBody body@(ModuleBody decls mexpr) = do
   env <- inferModuleEnv body
@@ -39,6 +40,9 @@ checkDecl env = \case
     Just (TFun domain ret) -> do
       binds <- bindParams ps domain
       check (extendVars binds env) body ret
+    Just (TEffFun domain _ ret) -> do
+      binds <- bindParams ps domain
+      check (extendVars binds env) body ret
     Just ty -> Left (ExpectedFunction ty)
 
 bindParams :: [Param] -> TypeExpr -> Either CheckError [(Ident, TypeExpr)]
@@ -50,7 +54,7 @@ bindParams ps domain = case ps of
           Right $ zipWith (\(Param n _) (_, ty) -> (n, ty)) ps fs
     _ -> Left (ExpectedRecord domain)
 
--- | Check a loaded markdown module, including inputs/outputs vs @main@.
+-- | Check a loaded markdown module: types, I/O vs @main@, effects ceiling.
 checkLoadedModule :: LoadedModule -> Either CheckError CheckResult
 checkLoadedModule loaded = do
   let fm = lmFrontmatter loaded
@@ -58,6 +62,8 @@ checkLoadedModule loaded = do
   body <- elaborateMainIO fm body0
   result <- checkModuleBody body
   checkMainIO fm body result.crEnv
+  effEnv <- analyzeModuleEffects result.crEnv body
+  checkEffectsCeiling fm effEnv
   pure result
 
 -- | Fill missing @main@ param/return types from frontmatter I/O records.
@@ -94,6 +100,9 @@ checkMainIO fm (ModuleBody _decls _) env
       case lookupVar (Ident "main") env of
         Nothing -> Left MissingMain
         Just (TFun domain ret) -> do
+          unlessEq' MainParamMismatch inputsTy domain
+          unlessEq' MainReturnMismatch outputsTy ret
+        Just (TEffFun domain _ ret) -> do
           unlessEq' MainParamMismatch inputsTy domain
           unlessEq' MainReturnMismatch outputsTy ret
         Just ty -> Left (ExpectedFunction ty)

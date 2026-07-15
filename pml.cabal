@@ -34,6 +34,7 @@ library
         Pml.Ast.Pat
         Pml.Ast.Pretty
         Pml.Ast.Type
+        Pml.Check.Effects
         Pml.Check.Env
         Pml.Check.Error
         Pml.Check.Infer
@@ -105,6 +106,7 @@ test-suite pml-test
         base,
         pml,
         aeson,
+        containers,
         hspec                >=2.10 && <2.12,
         megaparsec,
         text,

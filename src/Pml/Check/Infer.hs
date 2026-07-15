@@ -50,7 +50,7 @@ resolveTypeFrom env stack0 = go stack0
       TSecret t -> TSecret <$> go stack t
       TRecord fs -> TRecord <$> traverse (\(f, t) -> (f,) <$> go stack t) fs
       TFun a b -> TFun <$> go stack a <*> go stack b
-      TEffFun a _ b -> TFun <$> go stack a <*> go stack b
+      TEffFun a es b -> TEffFun <$> go stack a <*> pure es <*> go stack b
 
 checkDuplicateFuns :: [Decl] -> Either CheckError ()
 checkDuplicateFuns decls = mapM_ one names
@@ -142,9 +142,23 @@ infer env = \case
     check env e tt
     pure tt
   EMatch scrut arms -> inferMatch env scrut arms
-  EPar {} -> Left (Unsupported "par")
-  EJoin {} -> Left (Unsupported "join")
-  EConfirm {} -> Left (Unsupported "confirm")
+  EPar _opts n xs body -> do
+    te <- infer env xs
+    te' <- resolveType env te
+    case te' of
+      TList el -> do
+        bt <- infer (extendVar n el env) body
+        pure (TList bt)
+      _ -> Left (ExpectedList te')
+  EJoin es -> case es of
+    [] -> Left (CannotInfer "empty join")
+    (e : rest) -> do
+      t0 <- infer env e
+      mapM_ (\x -> check env x t0) rest
+      pure (TList t0)
+  EConfirm e -> do
+    _ <- infer env e
+    pure tBool
   ETry {} -> Left (Unsupported "try/catch")
   ESchema te -> do
     _ <- typeToSchema env te
@@ -187,6 +201,26 @@ check env e want = do
         Nothing -> infer env e1
       check (extendVar n t1 env) e2 want'
     EMatch scrut arms -> checkMatch env scrut arms want'
+    EPar _opts n xs body -> case want' of
+      TList el -> do
+        te <- infer env xs
+        te' <- resolveType env te
+        case te' of
+          TList elemTy -> do
+            check (extendVar n elemTy env) body el
+          _ -> Left (ExpectedList te')
+      _ -> do
+        got <- infer env e
+        unify want' got
+    EConfirm arg -> do
+      unify want' tBool
+      _ <- infer env arg
+      pure ()
+    EJoin es -> case want' of
+      TList el -> mapM_ (\x -> check env x el) es
+      _ -> do
+        got <- infer env e
+        unify want' got
     _ -> do
       got <- infer env e
       unify want' got
@@ -296,21 +330,23 @@ applyPositional :: TypeEnv -> TypeExpr -> [Expr] -> Either CheckError TypeExpr
 applyPositional env fty es = go fty es
   where
     go ty [] = Right ty
-    go (TFun (TRecord fields) ret) args
-      | length args == length fields && not (null args) = do
-          mapM_
-            ( \(e, (_, domain)) -> check env e domain
-            )
-            (zip args fields)
-          pure ret
-    go (TFun domain ret) (e : rest) = do
-      check env e domain
-      go ret rest
-    go ty (_ : _) = Left (ExpectedFunction ty)
+    go ty args = case funArrow ty of
+      Just (TRecord fields, ret)
+        | length args == length fields && not (null args) -> do
+            mapM_
+              ( \(arg, (_, domain)) -> check env arg domain
+              )
+              (zip args fields)
+            pure ret
+      Just (domain, ret)
+        | (arg : rest) <- args -> do
+            check env arg domain
+            go ret rest
+      _ -> Left (ExpectedFunction ty)
 
 applyNamed :: TypeEnv -> TypeExpr -> [(Ident, Expr)] -> Either CheckError TypeExpr
-applyNamed env fty nes = case fty of
-  TFun (TRecord fields) ret -> do
+applyNamed env fty nes = case funArrow fty of
+  Just (TRecord fields, ret) -> do
     mapM_ (checkNamed fields) nes
     let given = map fst nes
         expected = map fst fields
@@ -318,13 +354,20 @@ applyNamed env fty nes = case fty of
       Left (ArityMismatch (length expected) (length given))
     mapM_ (\n -> unless (n `elem` given) $ Left (MissingNamedArg n)) expected
     pure ret
-  TFun domain _ ->
+  Just (domain, _) ->
     Left (TypeMismatchMsg "named arguments require a record parameter" (TRecord []) domain)
-  _ -> Left (ExpectedFunction fty)
+  Nothing -> Left (ExpectedFunction fty)
   where
     checkNamed fields (n, e) = case lookup n fields of
       Nothing -> Left (UnknownField n (TRecord fields))
       Just ty -> check env e ty
+
+-- | View @TFun@ / @TEffFun@ as a single arrow (effects ignored for typing).
+funArrow :: TypeExpr -> Maybe (TypeExpr, TypeExpr)
+funArrow = \case
+  TFun a b -> Just (a, b)
+  TEffFun a _ b -> Just (a, b)
+  _ -> Nothing
 
 paramBindings :: TypeEnv -> [Param] -> TypeExpr -> Either CheckError [(Ident, TypeExpr)]
 paramBindings env ps domain = do

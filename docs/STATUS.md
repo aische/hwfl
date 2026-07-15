@@ -4,15 +4,15 @@ Last updated: 2026-07-15
 
 ## Current focus
 
-**M2 complete** — bidirectional type checker, module I/O vs `main`, `schema(T)`.
-Next: **M3** effects lattice + `check` CLI.
+**M3 complete** — effect lattice on load check; `pml check <module.md>`.
+Next: **M4** host runtime + `LlmProvider` + snapshots.
 
 ## Done recently
 
-- `Pml.Check.*`: env, prelude stubs (`fs`/`llm`), infer/check, module I/O, schema
-- `schema(T)` parse + JSON Schema reflection (records/lists/bases)
-- Frontmatter inputs/outputs elaborate missing `main` annotations
-- 50 tests green (parse + load + pretty + pure eval + check)
+- `Pml.Check.Effects`: infer residual effects; `effects:` ceiling (absent ⇒ pure)
+- Host stubs: `fs`/`llm`/`human`/`exec` use `TEffFun`; `par`/`join`/`confirm` typed + Parallel/Human
+- CLI: `pml check` single-module (project.json graph deferred; stderr note)
+- E12 reject + summarise `[Read, Net]` green; 52 tests
 
 ## Blockers
 
@@ -20,9 +20,9 @@ None.
 
 ## Next up
 
-1. **M3** — Effects lattice + `pml check` CLI
-2. **M4** — Host ops + `LlmProvider` + snapshots
-3. Later: Float/`==` polymorphism; width subtyping if needed
+1. **M4** — Host ops + `LlmProvider` + snapshots
+2. **M5** — `par` + `confirm` + resume / `--step`
+3. Later: Float/`==` polymorphism; project-wide `pml check` graph
 
 ## Open naming
 

@@ -27,8 +27,8 @@
 - [x] `schema(T)` for records/lists
 
 ### M3 — Effects + `check` CLI
-- [ ] Effect lattice enforced
-- [ ] `pml check` usable
+- [x] Effect lattice enforced
+- [x] `pml check` usable
 
 ### M4 — Host + LLM + snapshots
 - [ ] Workspace FS ops + sandbox tests

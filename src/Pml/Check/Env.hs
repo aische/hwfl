@@ -68,7 +68,7 @@ primitiveNames =
 isPrimitive :: TypeName -> Bool
 isPrimitive (TypeName n) = Set.member n primitiveNames
 
--- | Expand aliases (cycle-checked) and drop effect annotations on arrows.
+-- | Expand aliases (cycle-checked). Effect annotations on arrows are kept.
 resolveType :: TypeEnv -> TypeExpr -> Either CheckError TypeExpr
 resolveType env = go []
   where
@@ -85,9 +85,9 @@ resolveType env = go []
       TSecret t -> TSecret <$> go stack t
       TRecord fs -> TRecord <$> traverse (\(f, t) -> (f,) <$> go stack t) fs
       TFun a b -> TFun <$> go stack a <*> go stack b
-      TEffFun a _ b -> TFun <$> go stack a <*> go stack b
+      TEffFun a es b -> TEffFun <$> go stack a <*> pure es <*> go stack b
 
--- | Erase effect annotations (effects are enforced in M3).
+-- | Erase effect annotations (type equality ignores the lattice).
 stripEffects :: TypeExpr -> TypeExpr
 stripEffects = \case
   TList t -> TList (stripEffects t)

@@ -1,11 +1,12 @@
 module Pml.Check.ModuleSpec (spec) where
 
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Pml.Ast.Decl (ModuleBody)
 import Pml.Ast.Expr (Expr)
 import Pml.Ast.Name (TypeName (..))
-import Pml.Ast.Type (TypeExpr (..))
+import Pml.Ast.Type (Effect (..), TypeExpr (..))
 import Pml.Check.Error (CheckError (..))
 import Pml.Check.Infer (infer)
 import Pml.Check.Module (CheckResult (..), checkLoadedModule, checkModuleBody)
@@ -140,6 +141,78 @@ spec = describe "type checker" $ do
                                 Left TypeMismatch {} -> True
                                 _ -> False
                             )
+
+  describe "effects (M3)" $ do
+    it "E12 rejects effects: [Read] with llm.chat" $ do
+      let src =
+            T.unlines
+              [ "---",
+                "name: workflows/e12",
+                "inputs:",
+                "  path: FileRef",
+                "outputs:",
+                "  summary: String",
+                "effects: [Read]",
+                "---",
+                "",
+                "## system",
+                "",
+                "Hi.",
+                "",
+                "## body",
+                "",
+                "```pml",
+                "fun main(inputs): { summary: String } =",
+                "  let summary = llm.chat(",
+                "    system = @system,",
+                "    prompt = $\"x {inputs.path}\",",
+                "    model = \"gpt-5\"",
+                "  )",
+                "  { summary }",
+                "```"
+              ]
+      case loadModuleText "e12.md" src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded ->
+          checkLoadedModule loaded
+            `shouldBe` Left
+              ( EffectsNotAllowed
+                  (Set.fromList [EffNet])
+                  (Set.fromList [EffRead])
+              )
+
+    it "accepts summarise-shaped module with [Read, Net]" $ do
+      let src =
+            T.unlines
+              [ "---",
+                "name: workflows/summarise",
+                "inputs:",
+                "  path: FileRef",
+                "outputs:",
+                "  summary: String",
+                "effects: [Read, Net]",
+                "---",
+                "",
+                "## system",
+                "",
+                "You are a concise summariser.",
+                "",
+                "## body",
+                "",
+                "```pml",
+                "fun main(inputs): { summary: String } =",
+                "  let contents = fs.read(inputs.path)",
+                "  let summary = llm.chat(",
+                "    system = @system,",
+                "    prompt = $\"Summarise:\\n\\n{contents.text}\",",
+                "    model = \"gpt-5\"",
+                "  )",
+                "  { summary }",
+                "```"
+              ]
+      case loadModuleText "summarise.md" src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> checkLoadedModule loaded `shouldSatisfy` isRight
 
 isRight :: Either a b -> Bool
 isRight = \case

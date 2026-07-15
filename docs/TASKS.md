@@ -14,7 +14,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 - [x] **M1** — Pure evaluator (CEK / frames) + unit tests
 - [x] **M2** — Type checker (signatures + local inference)
-- [ ] **M3** — Effects lattice + `check` CLI
+- [x] **M3** — Effects lattice + `check` CLI
 - [ ] **M4** — Host ops: fs + llm (via provider) + snapshots
 - [ ] **M5** — `par` + `confirm` + resume / `--step`
 - [ ] **M6** — Span observability + `show`
@@ -23,6 +23,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Later
 
+- [ ] Full `pml check` project.json + import graph (M3 shipped single-module)
 - [ ] Alternate `LlmProvider` (e.g. direct OpenAI/Anthropic SDK) as proof of swap
 - [ ] Streaming LLM spans
 - [ ] Optional DB-backed run store (hwfi M5 analogue)
@@ -33,3 +34,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] M0 syntax skeleton: parser + AST + pretty + markdown loader (2026-07-15)
 - [x] M1 pure evaluator: values, prelude builtins, module funs, E01/E02 (2026-07-15)
 - [x] M2 type checker: I/O vs main, local inference, schema(T) (2026-07-15)
+- [x] M3 effects lattice + `pml check` single-module CLI (2026-07-15)

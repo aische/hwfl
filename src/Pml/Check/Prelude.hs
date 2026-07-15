@@ -1,4 +1,4 @@
--- | Prelude and host-op type stubs for the checker (effects deferred to M3).
+-- | Prelude and host-op type stubs for the checker (effects on arrows).
 module Pml.Check.Prelude
   ( preludeTypeEnv,
   )
@@ -7,7 +7,7 @@ where
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Pml.Ast.Name (Ident (..), TypeName (..))
-import Pml.Ast.Type (TypeExpr (..))
+import Pml.Ast.Type (Effect (..), TypeExpr (..))
 import Pml.Check.Env (TypeEnv (..))
 
 preludeTypeEnv :: TypeEnv
@@ -18,7 +18,9 @@ preludeTypeEnv =
           binOps
             ++ [ (Ident "not", TFun (t "Bool") (t "Bool")),
                  (Ident "fs", fsType),
-                 (Ident "llm", llmType)
+                 (Ident "llm", llmType),
+                 (Ident "human", humanType),
+                 (Ident "exec", execType)
                ],
       teAliases = Map.empty
     }
@@ -57,15 +59,16 @@ fsType :: TypeExpr
 fsType =
   TRecord
     [ ( Ident "read",
-        TFun (t "FileRef") (TRecord [(Ident "text", t "String")])
+        TEffFun (t "FileRef") [EffRead] (TRecord [(Ident "text", t "String")])
       ),
       ( Ident "write",
-        TFun
+        TEffFun
           ( TRecord
               [ (Ident "path", t "FileRef"),
                 (Ident "text", t "String")
               ]
           )
+          [EffWrite]
           (t "Unit")
       )
     ]
@@ -74,24 +77,57 @@ llmType :: TypeExpr
 llmType =
   TRecord
     [ ( Ident "chat",
-        TFun
+        TEffFun
           ( TRecord
               [ (Ident "system", t "String"),
                 (Ident "prompt", t "String"),
                 (Ident "model", t "String")
               ]
           )
+          [EffNet]
           (t "String")
       ),
       ( Ident "object",
-        TFun
+        TEffFun
           ( TRecord
               [ (Ident "prompt", t "String"),
                 (Ident "schema", t "Schema"),
                 (Ident "model", t "String")
               ]
           )
+          [EffNet]
           (t "Json")
+      )
+    ]
+
+humanType :: TypeExpr
+humanType =
+  TRecord
+    [ ( Ident "confirm",
+        TEffFun
+          ( TRecord
+              [ (Ident "title", t "String"),
+                (Ident "detail", t "String")
+              ]
+          )
+          [EffHuman]
+          (t "Bool")
+      )
+    ]
+
+execType :: TypeExpr
+execType =
+  TRecord
+    [ ( Ident "run",
+        TEffFun
+          ( TRecord
+              [ (Ident "program", t "String"),
+                (Ident "args", TList (t "String")),
+                (Ident "stdin", t "String")
+              ]
+          )
+          [EffExec]
+          (t "Unit")
       )
     ]
 
