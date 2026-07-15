@@ -87,3 +87,11 @@ spec = describe "expression parser" $ do
             (Just (TName (TypeName "Int")))
             (EVar (Ident "x"))
         )
+
+  it "parses infix + as prelude app" $
+    parseE "x + y"
+      `shouldBe` Right
+        ( EApp
+            (EVar (Ident "+"))
+            [ArgPos (EVar (Ident "x")), ArgPos (EVar (Ident "y"))]
+        )

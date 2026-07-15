@@ -12,7 +12,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Next — milestones (see [spec/10-acceptance.md](spec/10-acceptance.md))
 
-- [ ] **M1** — Pure evaluator (CEK / frames) + unit tests
+- [x] **M1** — Pure evaluator (CEK / frames) + unit tests
 - [ ] **M2** — Type checker (signatures + local inference)
 - [ ] **M3** — Effects lattice + `check` CLI
 - [ ] **M4** — Host ops: fs + llm (via provider) + snapshots
@@ -31,3 +31,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 - [x] Initial multi-file language/runtime specification (2026-07-15)
 - [x] M0 syntax skeleton: parser + AST + pretty + markdown loader (2026-07-15)
+- [x] M1 pure evaluator: values, prelude builtins, module funs, E01/E02 (2026-07-15)

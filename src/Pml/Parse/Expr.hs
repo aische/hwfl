@@ -32,8 +32,66 @@ expr =
       try joinExpr,
       try tryExpr,
       try confirmExpr,
-      appExpr
+      orExpr
     ]
+
+-- | Infix ops elaborate to @EApp (EVar op) [lhs, rhs]@ for prelude builtins.
+orExpr :: Parser Expr
+orExpr = infixl1 andExpr (binApp "||" <$ symbol "||")
+
+andExpr :: Parser Expr
+andExpr = infixl1 cmpExpr (binApp "&&" <$ symbol "&&")
+
+cmpExpr :: Parser Expr
+cmpExpr = do
+  l <- addExpr
+  option l $ do
+    op <- cmpOp
+    r <- addExpr
+    pure (binApp op l r)
+
+cmpOp :: Parser Text
+cmpOp =
+  choice
+    [ "==" <$ symbol "==",
+      "!=" <$ symbol "!=",
+      "<=" <$ symbol "<=",
+      ">=" <$ symbol ">=",
+      "<" <$ symbol "<",
+      ">" <$ symbol ">"
+    ]
+
+addExpr :: Parser Expr
+addExpr = infixl1 mulExpr addOp
+  where
+    addOp =
+      choice
+        [ binApp "+" <$ symbol "+",
+          binApp "-" <$ symbol "-"
+        ]
+
+mulExpr :: Parser Expr
+mulExpr = infixl1 appExpr mulOp
+  where
+    mulOp =
+      choice
+        [ binApp "*" <$ symbol "*",
+          binApp "/" <$ symbol "/"
+        ]
+
+binApp :: Text -> Expr -> Expr -> Expr
+binApp op l r = EApp (EVar (Ident op)) [ArgPos l, ArgPos r]
+
+infixl1 :: Parser Expr -> Parser (Expr -> Expr -> Expr) -> Parser Expr
+infixl1 p op = do
+  x <- p
+  rest x
+  where
+    rest x =
+      option x $ do
+        f <- op
+        y <- p
+        rest (f x y)
 
 letExpr :: Parser Expr
 letExpr = do

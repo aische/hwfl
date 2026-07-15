@@ -17,9 +17,9 @@
 - [x] Golden parse tests
 
 ### M1 — Pure evaluator
-- [ ] CEK/frames for pure subset
-- [ ] Lists/records/match/functions
-- [ ] Unit tests from example suite § pure
+- [x] CEK/frames for pure subset
+- [x] Lists/records/match/functions
+- [x] Unit tests from example suite § pure
 
 ### M2 — Types
 - [ ] Check module I/O vs `main`
