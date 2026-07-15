@@ -5,6 +5,7 @@ import Pml.Check.ModuleSpec
 import Pml.Check.SchemaSpec
 import Pml.Eval.PureSpec
 import Pml.Llm.ProviderSpec
+import Pml.Obs.SpanSpec
 import Pml.Parse.ExprSpec
 import Pml.Parse.LoadSpec
 import Pml.Parse.ModuleSpec
@@ -30,3 +31,4 @@ main = hspec $ do
   Pml.Runtime.WorkspaceSpec.spec
   Pml.Runtime.RunSpec.spec
   Pml.Runtime.ConcurrentSpec.spec
+  Pml.Obs.SpanSpec.spec

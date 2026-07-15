@@ -13,6 +13,7 @@ module Pml.Runtime.Snapshot
     valueFromJson,
     machineToJson,
     machineFromJson,
+    statusText,
   )
 where
 
@@ -56,7 +57,10 @@ data RunSnapshot = RunSnapshot
     rsLastHost :: Maybe Text,
     rsLastResult :: Maybe Aeson.Value,
     rsAt :: Text,
-    rsMachine :: Maybe Machine
+    rsMachine :: Maybe Machine,
+    -- | Innermost-first open span stack + monotonic counter for resume.
+    rsSpanStack :: [Text],
+    rsSpanCounter :: Int
   }
   deriving stock (Eq, Show)
 
@@ -146,7 +150,9 @@ snapshotToJson s =
       "last_host" .= s.rsLastHost,
       "last_result" .= s.rsLastResult,
       "at" .= s.rsAt,
-      "machine_json" .= maybe (object ["kind" .= String "none"]) machineToJson s.rsMachine
+      "machine_json" .= maybe (object ["kind" .= String "none"]) machineToJson s.rsMachine,
+      "span_stack" .= s.rsSpanStack,
+      "span_counter" .= s.rsSpanCounter
     ]
 
 parseSnapshot :: Aeson.Value -> Parser RunSnapshot
@@ -170,7 +176,9 @@ parseSnapshot = withObject "RunSnapshot" $ \o -> do
       | KM.lookup "kind" km == Just (String "none") -> pure Nothing
       | otherwise -> Just <$> parseMachine (Object km)
     Just v -> Just <$> parseMachine v
-  pure (RunSnapshot fmt runId seqNo status hash lastHost lastRes at machine)
+  spanStack <- o .:? "span_stack" .!= []
+  spanCounter <- o .:? "span_counter" .!= 0
+  pure (RunSnapshot fmt runId seqNo status hash lastHost lastRes at machine spanStack spanCounter)
 
 persistTransition ::
   RunStore ->
@@ -180,8 +188,10 @@ persistTransition ::
   Maybe V.Value ->
   MachineStatus ->
   Maybe Machine ->
+  [Text] ->
+  Int ->
   IO ()
-persistTransition store seqRef projectHash mHost mVal status mMachine = do
+persistTransition store seqRef projectHash mHost mVal status mMachine spanStack spanCounter = do
   modifyIORef' seqRef (+ 1)
   seqNo <- readIORef seqRef
   now <- getCurrentTime
@@ -196,7 +206,9 @@ persistTransition store seqRef projectHash mHost mVal status mMachine = do
             rsLastHost = fmap hostOpName mHost,
             rsLastResult = fmap valueToJson mVal,
             rsAt = at,
-            rsMachine = mMachine
+            rsMachine = mMachine,
+            rsSpanStack = spanStack,
+            rsSpanCounter = spanCounter
           }
   writeRunSnapshot store snap
 
@@ -302,6 +314,8 @@ currentToJson = \case
   CurAwaitConfirm c ->
     object ["tag" .= String "await_confirm", "confirm" .= confirmToJson c]
   CurParPool -> object ["tag" .= String "par_pool"]
+  CurCloseRegion sid v ->
+    object ["tag" .= String "close_region", "span_id" .= sid, "v" .= valueToJson v]
 
 parseCurrent :: Aeson.Value -> Parser Current
 parseCurrent = withObject "Current" $ \o -> do
@@ -315,6 +329,8 @@ parseCurrent = withObject "Current" $ \o -> do
         <*> (o .: "args" >>= mapM parseArgVal)
     "await_confirm" -> CurAwaitConfirm <$> (o .: "confirm" >>= parseConfirm)
     "par_pool" -> pure CurParPool
+    "close_region" ->
+      CurCloseRegion <$> o .: "span_id" <*> (o .: "v" >>= parseValue)
     other -> fail ("unknown current: " <> T.unpack other)
 
 frameToJson :: Frame -> Aeson.Value
@@ -372,6 +388,7 @@ frameToJson = \case
     object ["tag" .= String "match", "env" .= envToJson env, "arms" .= showText arms]
   FrPar pjs -> object ["tag" .= String "par", "par" .= parToJson pjs]
   FrConfirm c -> object ["tag" .= String "confirm", "confirm" .= confirmToJson c]
+  FrRegion sid -> object ["tag" .= String "region", "span_id" .= sid]
   FrJoin acc env es ->
     object
       [ "tag" .= String "join",
@@ -425,6 +442,7 @@ parseFrame = withObject "Frame" $ \o -> do
       FrMatch <$> (o .: "env" >>= parseEnv) <*> (o .: "arms" >>= readText)
     "par" -> FrPar <$> (o .: "par" >>= parsePar)
     "confirm" -> FrConfirm <$> (o .: "confirm" >>= parseConfirm)
+    "region" -> FrRegion <$> o .: "span_id"
     "join" ->
       FrJoin
         <$> (o .: "acc" >>= mapM parseValue)
@@ -591,6 +609,8 @@ valueToJson = \case
   V.VVariant (TypeName t) Nothing -> object ["tag" .= String "variant", "name" .= t]
   V.VVariant (TypeName t) (Just v) ->
     object ["tag" .= String "variant", "name" .= t, "v" .= valueToJson v]
+  -- Secrets never hit disk in cleartext (spec §07 §4).
+  V.VSecret _ -> object ["tag" .= String "secret", "v" .= String "[REDACTED]"]
   V.VClosure ps body env ->
     object
       [ "tag" .= String "closure",
@@ -620,6 +640,7 @@ parseValue = withObject "Value" $ \o -> do
       n <- TypeName <$> o .: "name"
       mv <- o .:? "v"
       V.VVariant n <$> traverse parseValue mv
+    "secret" -> pure (V.VSecret (V.VString "[REDACTED]"))
     "closure" ->
       V.VClosure
         <$> (o .: "params" >>= readText)
@@ -636,6 +657,8 @@ parseHostOp = \case
   "fs.write" -> pure HostFsWrite
   "llm.chat" -> pure HostLlmChat
   "human.confirm" -> pure HostHumanConfirm
+  "obs.log" -> pure HostObsLog
+  "obs.span" -> pure HostObsSpan
   other -> fail ("unknown host op: " <> T.unpack other)
 
 showText :: (Show a) => a -> Text

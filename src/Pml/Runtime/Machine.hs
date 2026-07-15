@@ -63,6 +63,8 @@ data Current
     CurAwaitConfirm ConfirmRequest
   | -- | Driving an active @par@ pool ('FrPar' on the frame stack).
     CurParPool
+  | -- | Close an @obs.span@ region then return @Value@ into the kont.
+    CurCloseRegion Text Value
   deriving stock (Eq, Show)
 
 data Frame
@@ -80,6 +82,8 @@ data Frame
   | FrPar ParJoinState
   | -- | After approve, continue with Bool into prior kont.
     FrConfirm ConfirmRequest
+  | -- | Open @obs.span@ region; close when value returns.
+    FrRegion Text
   | FrJoin [Value] Env [Expr]
   deriving stock (Eq, Show)
 

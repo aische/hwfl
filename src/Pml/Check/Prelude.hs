@@ -20,6 +20,7 @@ preludeTypeEnv =
                  (Ident "fs", fsType),
                  (Ident "llm", llmType),
                  (Ident "human", humanType),
+                 (Ident "obs", obsType),
                  (Ident "exec", execType)
                ],
       teAliases = Map.empty
@@ -112,6 +113,26 @@ humanType =
           )
           [EffHuman]
           (t "Bool")
+      )
+    ]
+
+obsType :: TypeExpr
+obsType =
+  TRecord
+    [ ( Ident "log",
+        -- Observability is pure-ish (spec §05 §5); no residual effects.
+        TFun
+          ( TRecord
+              [ (Ident "level", t "String"),
+                (Ident "message", t "String"),
+                (Ident "fields", t "Json")
+              ]
+          )
+          (t "Unit")
+      ),
+      ( Ident "span",
+        -- Region wrapper; polymorphic result deferred — body typed as Unit->Unit for v0.
+        TFun (t "String") (TFun (TFun (t "Unit") (t "Unit")) (t "Unit"))
       )
     ]
 

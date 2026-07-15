@@ -17,7 +17,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] **M3** — Effects lattice + `check` CLI
 - [x] **M4** — Host ops: fs + llm (via provider) + snapshots
 - [x] **M5** — `par` + `confirm` + resume / `--step`
-- [ ] **M6** — Span observability + `show`
+- [x] **M6** — Span observability + `show`
 - [ ] **M7** — Agent loop (`llm.agent`) + tool functions
 - [ ] **M8** — Dogfood: port a slim semantic-check in pml
 
@@ -28,6 +28,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [ ] Alternate `LlmProvider` (e.g. direct OpenAI/Anthropic SDK) as proof of swap
 - [ ] Streaming LLM spans
 - [ ] Optional DB-backed run store (hwfi M5 analogue)
+- [ ] Polymorphic `obs.span` check type (v0 approximates Unit→Unit)
 
 ## Done
 
@@ -38,3 +39,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] M3 effects lattice + `pml check` single-module CLI (2026-07-15)
 - [x] M4 host runtime + LlmProvider + snapshots + `pml run` (2026-07-15)
 - [x] M5 `par` + `confirm` + step/resume/approve + machine_json (2026-07-15)
+- [x] M6 spans.jsonl + `pml show` + redaction (2026-07-15)

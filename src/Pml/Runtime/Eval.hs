@@ -11,7 +11,10 @@ module Pml.Runtime.Eval
   )
 where
 
-import Data.IORef (IORef)
+import Data.Aeson (object, (.=))
+import Data.Aeson qualified as Aeson
+import Data.Aeson.Key qualified as Key
+import Data.IORef (IORef, readIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -23,8 +26,17 @@ import Pml.Eval.Error (EvalError (..))
 import Pml.Eval.Prelude (applyBuiltin)
 import Pml.Eval.Pure (bindParams, matchPat)
 import Pml.Eval.Value
+import Pml.Obs.Redact (hostOpenAttrs)
+import Pml.Obs.Span (SpanKind (..), SpanStatus (..))
+import Pml.Obs.Trace
+  ( SpanState (..),
+    appendEvent,
+    closeSpan,
+    getSpanStack,
+    openSpan,
+  )
 import Pml.Runtime.Error (RuntimeError (..))
-import Pml.Runtime.Host (HostEnv (..), runHostOp)
+import Pml.Runtime.Host (HostEnv (..), HostResult (..), runHostOp)
 import Pml.Runtime.Machine
 import Pml.Runtime.Snapshot (RunStore (..), persistTransition)
 
@@ -35,7 +47,8 @@ data RunCtx = RunCtx
     rcBaseEnv :: Env,
     rcStore :: RunStore,
     rcProjectHash :: Text,
-    rcSeq :: IORef Int
+    rcSeq :: IORef Int,
+    rcSpans :: SpanState
   }
 
 data StepMode = StepOnce | StepRun
@@ -70,15 +83,17 @@ applyIO ctx f args = case openApply ctx f args of
   Right (CurHost op argv)
     | op == HostHumanConfirm ->
         pure (Left (EvalErr (Unsupported "human.confirm requires the machine driver")))
+    | op == HostObsSpan ->
+        pure (Left (EvalErr (Unsupported "obs.span requires the machine driver")))
     | otherwise -> do
         result <- runHostOp ctx.rcHost op argv
         case result of
           Left e -> do
             _ <- persist ctx (Just op) Nothing MsFailed Nothing
             pure (Left e)
-          Right v -> do
-            _ <- persist ctx (Just op) (Just v) MsRunning Nothing
-            pure (Right v)
+          Right hr -> do
+            _ <- persist ctx (Just op) (Just hr.hrValue) MsRunning Nothing
+            pure (Right hr.hrValue)
   Right c ->
     pure (Left (EvalErr (Trap ("applyIO: unexpected " <> T.pack (show c)))))
 
@@ -153,21 +168,38 @@ stepMachine ctx mode m = case m.mStatus of
         CurHost op args -> doHost ctx mode m' op args
         CurAwaitConfirm c -> doConfirm ctx m' c
         CurParPool -> stepPar ctx mode m'
+        CurCloseRegion sid v -> doCloseRegion ctx mode m' sid v
         CurReturn v | null m'.mFrames -> doComplete ctx mode m' v
         _ -> pure (Right (StepResult m' False))
+
+doCloseRegion ::
+  RunCtx -> StepMode -> Machine -> Text -> Value -> IO (Either RuntimeError StepResult)
+doCloseRegion ctx mode m sid v = do
+  closeSpan ctx.rcStore ctx.rcSpans sid SsOk (object []) Nothing
+  let m' = m {mCurrent = CurReturn v}
+  -- Continue reducing the returned value into remaining frames / complete.
+  stepMachine ctx mode m'
 
 doComplete ::
   RunCtx -> StepMode -> Machine -> Value -> IO (Either RuntimeError StepResult)
 doComplete ctx mode m v = do
   let m' = m {mStatus = MsCompleted, mLastResult = Just v}
-  persist ctx Nothing (Just v) MsCompleted (Just m')
+  _ <- persist ctx Nothing (Just v) MsCompleted (Just m')
   pure (Right (StepResult (pauseIfStep mode m') True))
 
 doConfirm ::
   RunCtx -> Machine -> ConfirmRequest -> IO (Either RuntimeError StepResult)
 doConfirm ctx m c = do
   let m' = m {mStatus = MsPaused (PauseAwaitingConfirm c), mCurrent = CurAwaitConfirm c}
-  persist ctx (Just HostHumanConfirm) Nothing (MsPaused (PauseAwaitingConfirm c)) (Just m')
+  _ <-
+    openSpan
+      ctx.rcStore
+      ctx.rcSpans
+      "human.confirm"
+      SkHost
+      (hostOpenAttrs HostHumanConfirm [(Just (Ident "title"), VString c.crTitle)])
+  -- Leave host span open across the pause; closed on approve.
+  _ <- persist ctx (Just HostHumanConfirm) Nothing (MsPaused (PauseAwaitingConfirm c)) (Just m')
   pure (Right (StepResult m' True))
 
 doHost ::
@@ -181,17 +213,121 @@ doHost ctx mode m op args
   | op == HostHumanConfirm = case confirmArgs args of
       Left e -> pure (Left e)
       Right c -> doConfirm ctx m c
+  | op == HostObsSpan = doObsSpan ctx mode m args
+  | op == HostObsLog = doObsLog ctx mode m args
   | otherwise = do
+      sid <-
+        openSpan
+          ctx.rcStore
+          ctx.rcSpans
+          (hostOpName op)
+          SkHost
+          (hostOpenAttrs op args)
       result <- runHostOp ctx.rcHost op args
       case result of
         Left e -> do
           let m' = m {mStatus = MsFailed, mError = Just e}
-          persist ctx (Just op) Nothing MsFailed (Just m')
+          seqNo <- persist ctx (Just op) Nothing MsFailed (Just m')
+          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) (Just seqNo)
           pure (Left e)
-        Right v -> do
-          let m' = pauseIfStep mode (m {mCurrent = CurReturn v})
-          persist ctx (Just op) (Just v) m'.mStatus (Just m')
+        Right hr -> do
+          let m' = pauseIfStep mode (m {mCurrent = CurReturn hr.hrValue})
+          seqNo <- persist ctx (Just op) (Just hr.hrValue) m'.mStatus (Just m')
+          closeSpan ctx.rcStore ctx.rcSpans sid SsOk hr.hrCloseAttrs (Just seqNo)
           pure (Right (StepResult m' True))
+
+doObsLog ::
+  RunCtx -> StepMode -> Machine -> [(Maybe Ident, Value)] -> IO (Either RuntimeError StepResult)
+doObsLog ctx mode m args = case parseObsLog args of
+  Left e -> pure (Left e)
+  Right (level, message, fields) -> do
+    sid <-
+      openSpan
+        ctx.rcStore
+        ctx.rcSpans
+        "obs.log"
+        SkHost
+        (hostOpenAttrs HostObsLog args)
+    appendEvent ctx.rcStore ctx.rcSpans level message fields
+    let m' = pauseIfStep mode (m {mCurrent = CurReturn VUnit})
+    seqNo <- persist ctx (Just HostObsLog) (Just VUnit) m'.mStatus (Just m')
+    closeSpan ctx.rcStore ctx.rcSpans sid SsOk (object []) (Just seqNo)
+    pure (Right (StepResult m' True))
+
+doObsSpan ::
+  RunCtx -> StepMode -> Machine -> [(Maybe Ident, Value)] -> IO (Either RuntimeError StepResult)
+doObsSpan ctx mode m args = case parseObsSpan args of
+  Left e -> pure (Left e)
+  Right (name, thunk) -> do
+    sid <-
+      openSpan
+        ctx.rcStore
+        ctx.rcSpans
+        name
+        SkRegion
+        (hostOpenAttrs HostObsSpan args)
+    case openApply ctx thunk [] of
+      Left e -> do
+        closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) Nothing
+        pure (Left e)
+      Right current -> do
+        let m' =
+              m
+                { mCurrent = current,
+                  mFrames = FrRegion sid : m.mFrames
+                }
+        -- Region open itself is not a host snapshot boundary; body host ops will snap.
+        pure (Right (StepResult (pauseIfStep mode m') False))
+
+parseObsLog :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text, Aeson.Value)
+parseObsLog args = do
+  level <- case lookup (Just (Ident "level")) args of
+    Just (VString t) -> Right t
+    _ -> case [v | (Nothing, v) <- args] of
+      (VString t : _) -> Right t
+      _ -> Left (HostErr "obs.log expects level: String")
+  message <- case lookup (Just (Ident "message")) args of
+    Just (VString t) -> Right t
+    _ -> case [v | (Nothing, v) <- args] of
+      (_ : VString t : _) -> Right t
+      _ -> Left (HostErr "obs.log expects message: String")
+  let fields = case lookup (Just (Ident "fields")) args of
+        Just (VRecord fs) ->
+          object [Key.fromText (unIdent k) .= fieldJson v | (k, v) <- fs]
+        _ -> object []
+  pure (level, message, fields)
+  where
+    fieldJson = \case
+      VString t -> Aeson.String t
+      VInt n -> Aeson.Number (fromIntegral n)
+      VBool b -> Aeson.Bool b
+      VSecret _ -> Aeson.String "[REDACTED]"
+      _ -> Aeson.Null
+
+parseObsSpan :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Value)
+parseObsSpan args = case (nameArg, bodyArg) of
+  (Just (VString name), Just thunk)
+    | isThunk thunk -> Right (name, thunk)
+    | otherwise -> Left (HostErr "obs.span body must be a function")
+  _ -> Left (HostErr "obs.span expects name: String and a thunk")
+  where
+    nameArg =
+      lookup (Just (Ident "name")) args
+        <|> case [v | (Nothing, v) <- args] of
+          (v : _) -> Just v
+          [] -> Nothing
+    bodyArg =
+      lookup (Just (Ident "body")) args
+        <|> case [v | (Nothing, v) <- args] of
+          (_ : v : _) -> Just v
+          _ -> Nothing
+    isThunk = \case
+      VClosure {} -> True
+      VTopFun {} -> True
+      _ -> False
+    (<|>) :: Maybe a -> Maybe a -> Maybe a
+    (<|>) (Just x) _ = Just x
+    (<|>) Nothing y = y
 
 pauseIfStep :: StepMode -> Machine -> Machine
 pauseIfStep StepOnce m
@@ -392,7 +528,14 @@ tryFinishDrain ctx mode m pjs rest
                     mCurrent = CurAwaitConfirm c,
                     mFrames = FrPar pjs' : rest
                   }
-          persist ctx (Just HostHumanConfirm) Nothing (MsPaused (PauseAwaitingConfirm c)) (Just m')
+          _ <-
+            openSpan
+              ctx.rcStore
+              ctx.rcSpans
+              "human.confirm"
+              SkHost
+              (hostOpenAttrs HostHumanConfirm [(Just (Ident "title"), VString c.crTitle)])
+          _ <- persist ctx (Just HostHumanConfirm) Nothing (MsPaused (PauseAwaitingConfirm c)) (Just m')
           pure (Right (StepResult m' True))
         [] -> finishJoin ctx mode m pjs rest
   | otherwise =
@@ -434,7 +577,7 @@ finishJoin ::
 finishJoin ctx mode m pjs rest = case joinSlots pjs.pjsOnError pjs.pjsSlots of
   Left err -> do
     let m' = m {mStatus = MsFailed, mError = Just (EvalErr (Trap err)), mFrames = rest}
-    persist ctx Nothing Nothing MsFailed (Just m')
+    _ <- persist ctx Nothing Nothing MsFailed (Just m')
     pure (Left (EvalErr (Trap err)))
   Right vs -> do
     let m' =
@@ -445,7 +588,7 @@ finishJoin ctx mode m pjs rest = case joinSlots pjs.pjsOnError pjs.pjsSlots of
                 mCurrent = CurReturn (VList vs),
                 mFrames = rest
               }
-    persist ctx Nothing (Just (VList vs)) m'.mStatus (Just m')
+    _ <- persist ctx Nothing (Just (VList vs)) m'.mStatus (Just m')
     pure (Right (StepResult m' True))
 
 finishParStep ::
@@ -456,7 +599,9 @@ finishParStep ::
   IO (Either RuntimeError StepResult)
 finishParStep ctx mode m transitioned = do
   let m' = if transitioned then pauseIfStep mode m else m
-  when transitioned (persist ctx Nothing Nothing m'.mStatus (Just m'))
+  when transitioned $ do
+    _ <- persist ctx Nothing Nothing m'.mStatus (Just m')
+    pure ()
   pure (Right (StepResult m' transitioned))
 
 when :: Bool -> IO () -> IO ()
@@ -550,6 +695,7 @@ crunchOnce ctx m = case m.mStatus of
       CurHost {} -> Right Nothing
       CurAwaitConfirm {} -> Right Nothing
       CurParPool -> Right Nothing
+      CurCloseRegion {} -> Right Nothing
       CurEval e env -> crunchEval ctx m e env
       CurReturn v -> crunchReturn ctx m v
 
@@ -737,6 +883,8 @@ crunchReturn ctx m v = case m.mFrames of
                   mFrames = FrConfirm c : rest
                 }
           )
+    FrRegion sid ->
+      Right (Just m {mCurrent = CurCloseRegion sid v, mFrames = rest})
     FrJoin acc env es -> case es of
       [] -> ret m {mFrames = rest} (VList (reverse (v : acc)))
       e : es' ->
@@ -855,8 +1003,10 @@ persist ::
   Maybe Value ->
   MachineStatus ->
   Maybe Machine ->
-  IO ()
+  IO Int
 persist ctx mHost mVal status mMachine = do
+  stack <- getSpanStack ctx.rcSpans
+  counter <- readIORef ctx.rcSpans.ssCounter
   persistTransition
     ctx.rcStore
     ctx.rcSeq
@@ -865,3 +1015,6 @@ persist ctx mHost mVal status mMachine = do
     mVal
     status
     mMachine
+    stack
+    counter
+  readIORef ctx.rcSeq

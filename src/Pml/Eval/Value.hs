@@ -59,6 +59,8 @@ data HostOpId
   | HostFsWrite
   | HostLlmChat
   | HostHumanConfirm
+  | HostObsLog
+  | HostObsSpan
   deriving stock (Eq, Ord, Show)
 
 data Value
@@ -71,6 +73,8 @@ data Value
   | -- | Field order preserved for display; equality is by name.
     VRecord [(Ident, Value)]
   | VVariant TypeName (Maybe Value)
+  | -- | Opaque secret payload; redacted in spans / snapshots / show.
+    VSecret Value
   | -- | Closure over parameter names and body (local @fun@ / lambdas).
     VClosure [Param] Expr Env
   | -- | Top-level module function by name (avoids cyclic env in snapshots).
@@ -100,6 +104,7 @@ renderValue = \case
   VVariant (TypeName t) (Just v) -> do
     inner <- renderJsonish v
     pure (t <> "(" <> inner <> ")")
+  VSecret {} -> Left "cannot render a Secret as text"
   VClosure {} -> Left "cannot render a closure as text"
   VTopFun (Ident n) -> Left ("cannot render top-level fun as text: " <> n)
   VBuiltin {} -> Left "cannot render a builtin as text"
@@ -112,6 +117,8 @@ hostOpName = \case
   HostFsWrite -> "fs.write"
   HostLlmChat -> "llm.chat"
   HostHumanConfirm -> "human.confirm"
+  HostObsLog -> "obs.log"
+  HostObsSpan -> "obs.span"
 
 renderJsonish :: Value -> Either Text Text
 renderJsonish = \case

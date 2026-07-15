@@ -14,6 +14,7 @@ import Pml.Parse.Load (loadModule)
 import Pml.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Pml.Runtime.Eval (StepMode (..))
 import Pml.Runtime.Machine (MachineStatus (..))
+import Pml.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Pml.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
@@ -40,6 +41,7 @@ main = do
     ("step" : rest) -> cmdStep rest
     ("resume" : rest) -> cmdResume rest
     ("approve" : rest) -> cmdApprove rest
+    ("show" : rest) -> cmdShow rest
     _ -> usage
 
 usage :: IO ()
@@ -53,6 +55,9 @@ usage = do
   hPutStrLn
     stderr
     "       pml approve <workspace> <run-id> --yes|--no [--llm-provider mock|simple]"
+  hPutStrLn
+    stderr
+    "       pml show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
     "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step"
@@ -156,6 +161,17 @@ cmdApprove args = case parseApprove args of
   Right (ws, runId, yes, provName, catalog) -> do
     provider <- resolveProvider provName catalog
     handleOutcome =<< approveRun ws runId yes provider
+
+cmdShow :: [String] -> IO ()
+cmdShow args = case parseShow args of
+  Left msg -> dieUsage msg
+  Right opts -> do
+    result <- showRun opts
+    case result of
+      Left err -> do
+        TIO.hPutStrLn stderr err
+        exitWith (ExitFailure 1)
+      Right txt -> TIO.putStrLn txt
 
 handleOutcome :: RunOutcome -> IO ()
 handleOutcome = \case
@@ -288,4 +304,29 @@ parseApprove = go Nothing Nothing Nothing "simple" "model-catalog.json"
         | otherwise -> case (mWs, mId) of
             (Nothing, _) -> go (Just x) mId mYes prov catalog rest
             (Just _, Nothing) -> go mWs (Just (T.pack x)) mYes prov catalog rest
+            _ -> Left ("unexpected argument: " <> x)
+
+parseShow :: [String] -> Either String ShowOptions
+parseShow = go Nothing Nothing ShowSummary Nothing
+  where
+    go mWs mId mode filt = \case
+      [] -> case (mWs, mId) of
+        (Just ws, Just rid) ->
+          Right
+            ShowOptions
+              { soWorkspace = ws,
+                soRunId = rid,
+                soMode = mode,
+                soFilter = filt
+              }
+        _ -> Left "usage: pml show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
+      ("--tree" : rest) -> go mWs mId ShowTree filt rest
+      ("--spans" : rest) -> go mWs mId ShowSpans filt rest
+      ("--snapshot" : rest) -> go mWs mId ShowSnapshot filt rest
+      ("--filter" : p : rest) -> go mWs mId mode (Just (T.pack p)) rest
+      (x : rest)
+        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
+        | otherwise -> case (mWs, mId) of
+            (Nothing, _) -> go (Just x) mId mode filt rest
+            (Just _, Nothing) -> go mWs (Just (T.pack x)) mode filt rest
             _ -> Left ("unexpected argument: " <> x)

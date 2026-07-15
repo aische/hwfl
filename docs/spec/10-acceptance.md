@@ -43,9 +43,9 @@
 - [x] `step` / `resume`
 
 ### M6 — Observability
-- [ ] spans.jsonl + tree show
-- [ ] Redaction tests
-- [ ] No full-trace rebuild per step
+- [x] spans.jsonl + tree show
+- [x] Redaction tests
+- [x] No full-trace rebuild per step
 
 ### M7 — Agent
 - [ ] `llm.agent` multi-transition loop

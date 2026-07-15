@@ -13,20 +13,31 @@ module Pml.Runtime.Run
   )
 where
 
-import Data.IORef (IORef, newIORef, readIORef)
+import Data.Aeson (object, (.=))
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Pml.Ast.Decl (Decl (..), ModuleBody (..))
-import Pml.Ast.Module (LoadedModule (..), Section (..))
-import Pml.Ast.Name (Ident (..), Slug)
+import Pml.Ast.Module (Frontmatter (..), LoadedModule (..), Section (..))
+import Pml.Ast.Name (Ident (..), Slug, qnameToText)
 import Pml.Eval.Error (EvalError (..))
 import Pml.Eval.Prelude (preludeEnv)
 import Pml.Eval.Pure (bindParams)
 import Pml.Eval.Value
 import Pml.Llm.Provider (LlmProvider)
+import Pml.Obs.Span (SpanKind (..), SpanStatus (..))
+import Pml.Obs.Trace
+  ( SpanState (..),
+    closeSpan,
+    currentSpanId,
+    getSpanStack,
+    newSpanState,
+    openSpan,
+    setSpanStack,
+  )
 import Pml.Parse.Load (loadModule)
 import Pml.Runtime.Error (RuntimeError (..))
 import Pml.Runtime.Eval
@@ -90,6 +101,7 @@ runLoadedModule opts loaded = do
         rmStatus = "running"
       }
   seqRef <- newIORef (0 :: Int)
+  spans <- newSpanState
   let (baseEnv, funs) = loadRunEnv (lmBody loaded)
       host =
         HostEnv
@@ -105,9 +117,12 @@ runLoadedModule opts loaded = do
             rcBaseEnv = baseEnv,
             rcStore = store,
             rcProjectHash = hash,
-            rcSeq = seqRef
+            rcSeq = seqRef,
+            rcSpans = spans
           }
+      modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
   hPutStrLn stderr ("pml run: run_id=" <> T.unpack runId)
+  moduleSid <- openSpan store spans modName SkModule (object [])
   case startMain funs baseEnv opts.roInputs of
     Left err -> do
       let m0 = initialMachine hash (CurReturn VUnit)
@@ -116,12 +131,16 @@ runLoadedModule opts loaded = do
               { mStatus = MsFailed,
                 mError = Just err
               }
-      persistTransition store seqRef hash Nothing Nothing MsFailed (Just m)
+      stack <- getSpanStack spans
+      counter <- readIORef spans.ssCounter
+      persistTransition store seqRef hash Nothing Nothing MsFailed (Just m) stack counter
+      closeSpan store spans moduleSid SsError (object []) Nothing
       pure (OutcomeFailed err store 0)
     Right current -> do
       let m0 = initialMachine hash current
       m1 <- runUntilPause ctx opts.roMode m0
       seqNo <- readIORef seqRef
+      closeModuleSpan store spans moduleSid m1.mStatus
       finalizeOutcome store seqNo m1
 
 startMain :: FunTable -> Env -> [(Ident, Value)] -> Either RuntimeError Current
@@ -162,6 +181,13 @@ pauseMessage = \case
   PauseAwaitingConfirm c -> "awaiting confirm: " <> c.crTitle
   PauseCrashRecovery -> "paused (crash recovery)"
 
+closeModuleSpan :: RunStore -> SpanState -> Text -> MachineStatus -> IO ()
+closeModuleSpan store spans sid status = case status of
+  MsCompleted -> closeSpan store spans sid SsOk (object []) Nothing
+  MsFailed -> closeSpan store spans sid SsError (object []) Nothing
+  -- Leave module span open across pause / step; resume continues under it.
+  _ -> pure ()
+
 mkCtx ::
   LlmProvider ->
   FilePath ->
@@ -169,8 +195,9 @@ mkCtx ::
   RunStore ->
   Text ->
   IORef Int ->
+  SpanState ->
   IO RunCtx
-mkCtx provider wsRoot loaded store hash seqRef = do
+mkCtx provider wsRoot loaded store hash seqRef spans = do
   ws <- newWorkspace wsRoot
   let (baseEnv, funs) = loadRunEnv (lmBody loaded)
       host =
@@ -187,7 +214,8 @@ mkCtx provider wsRoot loaded store hash seqRef = do
         rcBaseEnv = baseEnv,
         rcStore = store,
         rcProjectHash = hash,
-        rcSeq = seqRef
+        rcSeq = seqRef,
+        rcSpans = spans
       }
 
 loadExisting ::
@@ -213,7 +241,10 @@ loadExisting workspace runId provider = do
               then pure (Left (ConfigErr "stale project: hash mismatch"))
               else do
                 seqRef <- newIORef snap.rsSeq
-                ctx <- mkCtx provider workspace loaded store hash seqRef
+                spans <- newSpanState
+                writeIORef spans.ssCounter snap.rsSpanCounter
+                setSpanStack spans snap.rsSpanStack
+                ctx <- mkCtx provider workspace loaded store hash seqRef spans
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 
@@ -231,6 +262,7 @@ stepRun workspace runId provider = do
           let machine = unpauseExplicit machine0
           m1 <- runUntilPause ctx StepOnce machine
           seqNo <- readIORef seqRef
+          closeModuleIfTerminal ctx store m1.mStatus
           finalizeOutcome store seqNo m1
   where
     store0 = RunStore (workspace </> ".pml" </> "runs" </> T.unpack runId) runId
@@ -256,6 +288,7 @@ resumeRun workspace runId provider = do
           let machine = unpauseExplicit machine0
           m1 <- runUntilPause ctx StepRun machine
           seqNo <- readIORef seqRef
+          closeModuleIfTerminal ctx store m1.mStatus
           finalizeOutcome store seqNo m1
   where
     store0 = RunStore (workspace </> ".pml" </> "runs" </> T.unpack runId) runId
@@ -269,6 +302,19 @@ approveRun workspace runId yes provider = do
       case approveMachine yes machine0 of
         Left e -> pure (OutcomeFailed e store 0)
         Right machine1 -> do
+          mSid <- currentSpanId ctx.rcSpans
+          case mSid of
+            Just sid ->
+              closeSpan
+                store
+                ctx.rcSpans
+                sid
+                (if yes then SsOk else SsCancelled)
+                (object ["approved" .= yes])
+                Nothing
+            Nothing -> pure ()
+          stack <- getSpanStack ctx.rcSpans
+          counter <- readIORef ctx.rcSpans.ssCounter
           persistTransition
             store
             seqRef
@@ -277,11 +323,28 @@ approveRun workspace runId yes provider = do
             (Just (VBool yes))
             machine1.mStatus
             (Just machine1)
+            stack
+            counter
           m2 <- runUntilPause ctx StepRun machine1
           seqNo <- readIORef seqRef
+          closeModuleIfTerminal ctx store m2.mStatus
           finalizeOutcome store seqNo m2
   where
     store0 = RunStore (workspace </> ".pml" </> "runs" </> T.unpack runId) runId
+
+-- | Close the outermost open span (module) on terminal status. Stack is
+-- innermost-first, so the module id is last.
+closeModuleIfTerminal :: RunCtx -> RunStore -> MachineStatus -> IO ()
+closeModuleIfTerminal ctx store status = case status of
+  MsCompleted -> closeOutermost SsOk
+  MsFailed -> closeOutermost SsError
+  _ -> pure ()
+  where
+    closeOutermost st = do
+      stack <- getSpanStack ctx.rcSpans
+      case reverse stack of
+        (sid : _) -> closeSpan store ctx.rcSpans sid st (object []) Nothing
+        [] -> pure ()
 
 unpauseExplicit :: Machine -> Machine
 unpauseExplicit m = case m.mStatus of

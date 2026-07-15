@@ -50,6 +50,10 @@ library
         Pml.Llm.Provider
         Pml.Llm.Simple
         Pml.Llm.Types
+        Pml.Obs.Redact
+        Pml.Obs.Show
+        Pml.Obs.Span
+        Pml.Obs.Trace
         Pml.Parse.Expr
         Pml.Parse.Frontmatter
         Pml.Parse.Lexer
@@ -114,6 +118,7 @@ test-suite pml-test
         Pml.Check.SchemaSpec
         Pml.Eval.PureSpec
         Pml.Llm.ProviderSpec
+        Pml.Obs.SpanSpec
         Pml.Parse.ExprSpec
         Pml.Parse.LoadSpec
         Pml.Parse.ModuleSpec
@@ -126,6 +131,7 @@ test-suite pml-test
         base,
         pml,
         aeson,
+        bytestring,
         containers,
         directory,
         filepath,
