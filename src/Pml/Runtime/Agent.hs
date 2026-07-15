@@ -1,8 +1,10 @@
--- | @llm.agent@ tool-loop helpers: tool specs from functions, arg coercion,
--- provider ToolSpec projection. Stepping lives in 'Pml.Runtime.Eval'.
+-- | @llm.agent@ / @llm.agent_object@ tool-loop helpers: tool specs from
+-- functions, arg coercion, provider ToolSpec projection, synthetic @submit@.
+-- Stepping lives in 'Pml.Runtime.Eval'.
 module Pml.Runtime.Agent
   ( buildToolSpec,
     parseAgentArgs,
+    parseAgentObjectArgs,
     initAgentState,
     providerToolSpecs,
     coerceToolArgs,
@@ -10,6 +12,11 @@ module Pml.Runtime.Agent
     sanitizeToolName,
     lookupTool,
     defaultMaxRounds,
+    submitToolName,
+    isSubmitCall,
+    submitToolSpec,
+    validateSubmit,
+    mixesSubmit,
   )
 where
 
@@ -20,6 +27,7 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Vector qualified as V
 import Pml.Ast.Expr (Param (..))
 import Pml.Ast.Name (Ident (..), TypeName (..))
 import Pml.Ast.Type (TypeExpr (..))
@@ -33,6 +41,12 @@ import Pml.Runtime.Machine (AgentState (..), FunTable)
 
 defaultMaxRounds :: Int
 defaultMaxRounds = 8
+
+submitToolName :: Text
+submitToolName = "submit"
+
+isSubmitCall :: Llm.ToolCall -> Bool
+isSubmitCall tc = tc.tcName == submitToolName
 
 -- | Build a 'VToolSpec' from a host op, top-level fun, or annotated closure.
 buildToolSpec :: FunTable -> Value -> Either RuntimeError Value
@@ -127,6 +141,20 @@ sanitizeToolName = T.map safe
       | c == '.' || c == '/' || c == '-' = '_'
       | otherwise = c
 
+-- | Synthetic terminating @submit@ tool (hwfi §6.1.3).
+submitToolSpec :: Aeson.Value -> ToolSpecValue
+submitToolSpec schema =
+  ToolSpecValue
+    { tvsName = submitToolName,
+      tvsDescription =
+        "Submit the final structured result. Call this ONLY when you have "
+          <> "everything you need, and NEVER in the same response as any other "
+          <> "tool call. Its arguments are the final result.",
+      tvsParameters = schema,
+      -- Sentinel: Eval handles submit specially before openApply.
+      tvsCallee = VUnit
+    }
+
 providerToolSpecs :: [ToolSpecValue] -> [Llm.ToolSpec]
 providerToolSpecs =
   map
@@ -142,6 +170,29 @@ lookupTool :: [ToolSpecValue] -> Text -> Maybe ToolSpecValue
 lookupTool tools name =
   lookup name [(ts.tvsName, ts) | ts <- tools]
 
+-- | True when this round mixes @submit@ with other tool calls (reject wholesale).
+mixesSubmit :: AgentState -> [Llm.ToolCall] -> Bool
+mixesSubmit ag calls =
+  case ag.agSubmitSchema of
+    Nothing -> False
+    Just _ -> any isSubmitCall calls && length calls > 1
+
+-- | Validate submit arguments against the schema's required fields.
+-- Success returns the decoded runtime value of the arguments object.
+validateSubmit :: Aeson.Value -> Aeson.Value -> Either Text Value
+validateSubmit schema args = case args of
+  Aeson.Object o -> case missing o of
+    [] -> Right (jsonToValue args)
+    ms -> Left ("missing required field(s): " <> T.intercalate ", " ms)
+  _ -> Left "arguments must be a JSON object"
+  where
+    required = case schema of
+      Aeson.Object so -> case KM.lookup "required" so of
+        Just (Aeson.Array a) -> [t' | Aeson.String t' <- V.toList a]
+        _ -> []
+      _ -> []
+    missing o = [r | r <- required, not (KM.member (Key.fromText r) o)]
+
 parseAgentArgs ::
   [(Maybe Ident, Value)] ->
   Either RuntimeError (Text, Text, [ToolSpecValue], Text, Int)
@@ -155,6 +206,14 @@ parseAgentArgs args = do
         _ -> defaultMaxRounds
   pure (system, prompt, tools, model, maxR)
 
+parseAgentObjectArgs ::
+  [(Maybe Ident, Value)] ->
+  Either RuntimeError (Text, Text, [ToolSpecValue], Aeson.Value, Text, Int)
+parseAgentObjectArgs args = do
+  (system, prompt, tools, model, maxR) <- parseAgentArgs args
+  schema <- expectSchema (Ident "schema") args
+  pure (system, prompt, tools, schema, model, maxR)
+
 initAgentState ::
   Text ->
   Text ->
@@ -162,20 +221,25 @@ initAgentState ::
   Text ->
   Int ->
   Text ->
+  Maybe Aeson.Value ->
   AgentState
-initAgentState system prompt tools model maxRounds spanId =
-  AgentState
-    { agSystem = system,
-      agPrompt = prompt,
-      agModel = model,
-      agMaxRounds = maxRounds,
-      agTools = tools,
-      agHistory = [Llm.TurnUser prompt],
-      agRound = 0,
-      agToolRound = Nothing,
-      agSpanId = spanId,
-      agRoundSpanId = Nothing
-    }
+initAgentState system prompt tools model maxRounds spanId submitSchema =
+  let tools' = case submitSchema of
+        Just schema -> tools ++ [submitToolSpec schema]
+        Nothing -> tools
+   in AgentState
+        { agSystem = system,
+          agPrompt = prompt,
+          agModel = model,
+          agMaxRounds = maxRounds,
+          agTools = tools',
+          agSubmitSchema = submitSchema,
+          agHistory = [Llm.TurnUser prompt],
+          agRound = 0,
+          agToolRound = Nothing,
+          agSpanId = spanId,
+          agRoundSpanId = Nothing
+        }
 
 expectTools :: [(Maybe Ident, Value)] -> Either RuntimeError [ToolSpecValue]
 expectTools args = case lookupNamed (Ident "tools") args of
@@ -186,6 +250,12 @@ expectTools args = case lookupNamed (Ident "tools") args of
     expectTool = \case
       VToolSpec ts -> Right ts
       _ -> Left (HostErr "llm.agent tools element is not a ToolSpec (use tool(f))")
+
+expectSchema :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError Aeson.Value
+expectSchema n args = case lookupNamed n args of
+  Just (VSchema s) -> Right s
+  Just _ -> Left (HostErr ("expected Schema for " <> unIdent n <> " (use schema(T))"))
+  Nothing -> Left (HostErr ("missing named argument: " <> unIdent n))
 
 expectString :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError Text
 expectString n args = case lookupNamed n args of

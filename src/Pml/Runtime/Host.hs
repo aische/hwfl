@@ -66,7 +66,8 @@ hostOpsEnv =
         VRecord
           [ (Ident "chat", VHostOp HostLlmChat),
             (Ident "object", VHostOp HostLlmObject),
-            (Ident "agent", VHostOp HostLlmAgent)
+            (Ident "agent", VHostOp HostLlmAgent),
+            (Ident "agent_object", VHostOp HostLlmAgentObject)
           ]
       ),
       ( Ident "human",
@@ -89,7 +90,8 @@ hostOpsEnv =
     ]
 
 -- | Execute one host op (one transition / snapshot boundary).
--- @human.confirm@ / @obs.span@ / @obs.log@ / @llm.agent@ are handled by the machine driver.
+-- @human.confirm@ / @obs.span@ / @obs.log@ / @llm.agent@ / @llm.agent_object@
+-- are handled by the machine driver.
 runHostOp ::
   HostEnv ->
   HostOpId ->
@@ -105,6 +107,8 @@ runHostOp env op args = case op of
   HostLlmObject -> doLlmObject env args
   HostLlmAgent ->
     pure (Left (HostErr "llm.agent must be driven by the machine (agent loop)"))
+  HostLlmAgentObject ->
+    pure (Left (HostErr "llm.agent_object must be driven by the machine (agent loop)"))
   HostObsLog ->
     pure (Left (HostErr "obs.log must be driven by the machine (span state)"))
   HostHumanConfirm ->

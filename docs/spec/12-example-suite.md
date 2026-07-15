@@ -103,6 +103,17 @@ mock/simple providers via `chatResponseFormat`. Fixture:
 Agent may call `fs.read` and a user `fun search`. Step granularity =
 model/tool rounds.
 
+## E15b — Typed agent + submit **A** **R**
+
+```pml
+type Out = { summary: String, score: Int }
+llm.agent_object(..., schema = schema(Out), tools = [...], …)
+  : { value: Out, rounds: Int }
+```
+
+Model gathers with tools then must call synthetic `submit` alone. Fixture:
+`test/Pml/Runtime/AgentObjectSpec.hs`; example `examples/agent-object.md`.
+
 ## E16 — `obs.span` region **H**
 
 User span wraps pure clustering; children host ops nest correctly.
@@ -140,6 +151,7 @@ check path (layer 3 pragmatic review deferred). Fixture:
 | E12–E13 | fail closed | — | — | — |
 | E14 | ✓ | ✓ | — | llm.object |
 | E15 | ✓ | ✓ | mid-tool | agent tree |
+| E15b | ✓ | ✓ | mid-tool | agent_object + submit |
 | E20 | ✓ | ✓ | optional | library spans |
 
 ## Using the suite

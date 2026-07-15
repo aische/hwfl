@@ -23,6 +23,7 @@ module Pml.Runtime.Machine
 where
 
 import Data.Map.Strict (Map)
+import Data.Aeson qualified as Aeson
 import Data.Text (Text)
 import Pml.Ast.Expr (Arg, Expr, Field, MatchArm, Param, StringPart)
 import Pml.Ast.Name (Ident)
@@ -79,10 +80,12 @@ data AgentState = AgentState
     agModel :: Text,
     agMaxRounds :: Int,
     agTools :: [ToolSpecValue],
+    -- | When 'Just', this is @llm.agent_object@: submit tool + typed finish.
+    agSubmitSchema :: Maybe Aeson.Value,
     agHistory :: [Turn],
     agRound :: Int,
     agToolRound :: Maybe ToolRound,
-    -- | Open @llm.agent@ host span id (closed on finish).
+    -- | Open @llm.agent@ / @llm.agent_object@ host span id (closed on finish).
     agSpanId :: Text,
     -- | Open @agent_round@ span for the current model/tool round, if any.
     agRoundSpanId :: Maybe Text

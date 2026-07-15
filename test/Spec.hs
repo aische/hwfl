@@ -12,6 +12,7 @@ import Pml.Parse.LoadSpec
 import Pml.Parse.ModuleSpec
 import Pml.Parse.SectionSpec
 import Pml.Parse.TypeSpec
+import Pml.Runtime.AgentObjectSpec
 import Pml.Runtime.AgentSpec
 import Pml.Runtime.ConcurrentSpec
 import Pml.Runtime.ObjectSpec
@@ -37,6 +38,7 @@ main = hspec $ do
   Pml.Runtime.RunSpec.spec
   Pml.Runtime.ConcurrentSpec.spec
   Pml.Runtime.AgentSpec.spec
+  Pml.Runtime.AgentObjectSpec.spec
   Pml.Runtime.ObjectSpec.spec
   Pml.Obs.SpanSpec.spec
   Pml.Runtime.SemanticCheckSpec.spec

@@ -134,6 +134,7 @@ test-suite pml-test
         Pml.Parse.SectionSpec
         Pml.Parse.TypeSpec
         Pml.Runtime.AgentSpec
+        Pml.Runtime.AgentObjectSpec
         Pml.Runtime.ConcurrentSpec
         Pml.Runtime.ObjectSpec
         Pml.Runtime.RunSpec

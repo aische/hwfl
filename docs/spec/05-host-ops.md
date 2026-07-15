@@ -34,6 +34,7 @@ See also [08-llm-provider.md](08-llm-provider.md).
 | `llm.chat_messages` | `(messages: List<Message>, model: String, …) -> String` |
 | `llm.object` | `(prompt: String, schema: Schema, model: String) -> T` when `schema = schema(T)` (else `Json`) |
 | `llm.agent` | `(system, prompt, tools: List<ToolSpec>, model, …) -> AgentResult` |
+| `llm.agent_object` | `(system, prompt, tools, schema: Schema, model, …) -> { value: T, rounds: Int }` when `schema = schema(T)` |
 
 Notes:
 
@@ -41,6 +42,10 @@ Notes:
 - Token usage recorded on the span.
 - Failures are catchable (rate limit, provider error) unless marked trap.
 - Streaming: **[defer]** for v0, or emit progressive span events if cheap.
+- `llm.agent_object` injects a synthetic terminating `submit` tool from `schema`
+  (hwfi §6.1.3): plain-text finish is fatal; mixed `submit`+other rounds are
+  recoverable (no tools run). Surface spelling is `agent_object` (idents have
+  no `-`).
 
 ### 2.1 Agent tools
 

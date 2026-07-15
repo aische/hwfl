@@ -117,6 +117,7 @@ infer env = \case
     | isListConcat f -> inferListConcatApp env args
     | isJsonEncode f -> inferJsonEncodeApp env args
     | isLlmObject f -> inferLlmObjectApp env args
+    | isLlmAgentObject f -> inferLlmAgentObjectApp env args
     | EVar (Ident n) <- f,
       Just cls <- classifyOp n ->
         inferOverloadedApp env cls infer args
@@ -524,13 +525,35 @@ inferLlmObjectApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
 inferLlmObjectApp env args = do
   ft <- infer env (EProj (EVar (Ident "llm")) (Ident "object"))
   ret <- applyType env ft args
-  case schemaExpr args of
+  case schemaArgExpr args of
     Just (ESchema te) -> resolveType env te
     _ -> pure ret
-  where
-    schemaExpr as = case classifyArgs as of
-      Right (Named nes) -> lookup (Ident "schema") nes
-      _ -> Nothing
+
+-- | @llm.agent_object(..., schema = schema(T), ...)@ ⇒ @{ value: T, rounds: Int }@.
+isLlmAgentObject :: Expr -> Bool
+isLlmAgentObject = \case
+  EProj (EVar (Ident "llm")) (Ident "agent_object") -> True
+  _ -> False
+
+inferLlmAgentObjectApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferLlmAgentObjectApp env args = do
+  ft <- infer env (EProj (EVar (Ident "llm")) (Ident "agent_object"))
+  ret <- applyType env ft args
+  case schemaArgExpr args of
+    Just (ESchema te) -> do
+      out <- resolveType env te
+      pure
+        ( TRecord
+            [ (Ident "value", out),
+              (Ident "rounds", tInt)
+            ]
+        )
+    _ -> pure ret
+
+schemaArgExpr :: [Arg] -> Maybe Expr
+schemaArgExpr as = case classifyArgs as of
+  Right (Named nes) -> lookup (Ident "schema") nes
+  _ -> Nothing
 
 tUnit, tBool, tInt, tFloat, tString, tToolSpec :: TypeExpr
 tUnit = TName (TypeName "Unit")

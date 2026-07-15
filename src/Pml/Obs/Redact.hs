@@ -137,6 +137,15 @@ hostOpenAttrs op args = case op of
         "prompt_len" .= textLenAttr (Ident "prompt") args,
         "tools" .= toolsLenAttr args
       ]
+  HostLlmAgentObject ->
+    object
+      [ "op" .= hostOpName op,
+        "model" .= stringAttr (Ident "model") args,
+        "system_len" .= textLenAttr (Ident "system") args,
+        "prompt_len" .= textLenAttr (Ident "prompt") args,
+        "tools" .= toolsLenAttr args,
+        "has_schema" .= True
+      ]
   HostHumanConfirm ->
     object
       [ "op" .= hostOpName op,

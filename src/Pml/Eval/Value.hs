@@ -75,6 +75,7 @@ data HostOpId
   | HostLlmChat
   | HostLlmObject
   | HostLlmAgent
+  | HostLlmAgentObject
   | HostHumanConfirm
   | HostObsLog
   | HostObsSpan
@@ -153,6 +154,7 @@ hostOpName = \case
   HostLlmChat -> "llm.chat"
   HostLlmObject -> "llm.object"
   HostLlmAgent -> "llm.agent"
+  HostLlmAgentObject -> "llm.agent_object"
   HostHumanConfirm -> "human.confirm"
   HostObsLog -> "obs.log"
   HostObsSpan -> "obs.span"

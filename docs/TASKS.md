@@ -4,19 +4,19 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now
 
-- [ ] `llm.agent-object` with synthetic `submit` tool (structured output + tools)
-
-## Next
-
 - [ ] Streaming LLM spans
 - [ ] Optional DB-backed run store (hwfi M5 analogue)
 - [ ] Polymorphic `obs.span` check type (v0 approximates Unit→Unit)
 
-## Later
+## Next
 
 - [ ] Alternate `LlmProvider` (e.g. direct OpenAI/Anthropic SDK) — **low priority**;
   `LlmProvider` interface is shipped; second adapter is swap proof only, not a
   capability blocker
+
+## Later
+
+(empty)
 
 ## Done
 
@@ -37,3 +37,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] M9 project-wide `pml check` (`project.json` + import graph) (2026-07-15)
 - [x] Float / `==` polymorphism cleanup (2026-07-15)
 - [x] `llm.object` + schema reflection at runtime (E14) (2026-07-15)
+- [x] `llm.agent_object` + synthetic `submit` tool (2026-07-15)

@@ -136,6 +136,25 @@ llmType =
                 (Ident "rounds", t "Int")
               ]
           )
+      ),
+      ( Ident "agent_object",
+        -- Default value field is Json; Infer special-cases schema = schema(T) → T.
+        TEffFun
+          ( TRecord
+              [ (Ident "system", t "String"),
+                (Ident "prompt", t "String"),
+                (Ident "tools", TList (t "ToolSpec")),
+                (Ident "schema", t "Schema"),
+                (Ident "model", t "String"),
+                (Ident "max_rounds", t "Int")
+              ]
+          )
+          [EffNet]
+          ( TRecord
+              [ (Ident "value", t "Json"),
+                (Ident "rounds", t "Int")
+              ]
+          )
       )
     ]
 

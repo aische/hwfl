@@ -338,7 +338,7 @@ parseCurrent = withObject "Current" $ \o -> do
 
 agentToJson :: AgentState -> Aeson.Value
 agentToJson ag =
-  object
+  object $
     [ "system" .= ag.agSystem,
       "prompt" .= ag.agPrompt,
       "model" .= ag.agModel,
@@ -350,6 +350,9 @@ agentToJson ag =
       "span_id" .= ag.agSpanId,
       "round_span_id" .= ag.agRoundSpanId
     ]
+      ++ case ag.agSubmitSchema of
+        Nothing -> []
+        Just s -> ["submit_schema" .= s]
 
 parseAgent :: Aeson.Value -> Parser AgentState
 parseAgent = withObject "AgentState" $ \o ->
@@ -359,6 +362,7 @@ parseAgent = withObject "AgentState" $ \o ->
     <*> o .: "model"
     <*> o .: "max_rounds"
     <*> (o .: "tools" >>= mapM parseToolSpec)
+    <*> o .:? "submit_schema"
     <*> (o .: "history" >>= mapM parseTurn)
     <*> o .: "round"
     <*> (o .:? "tool_round" >>= traverse parseToolRound)
@@ -775,6 +779,7 @@ parseHostOp = \case
   "llm.chat" -> pure HostLlmChat
   "llm.object" -> pure HostLlmObject
   "llm.agent" -> pure HostLlmAgent
+  "llm.agent_object" -> pure HostLlmAgentObject
   "human.confirm" -> pure HostHumanConfirm
   "obs.log" -> pure HostObsLog
   "obs.span" -> pure HostObsSpan
