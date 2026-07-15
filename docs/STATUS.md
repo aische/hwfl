@@ -4,27 +4,24 @@ Last updated: 2026-07-15
 
 ## Current focus
 
-**Spec pack** — normative docs for the greenfield engine (pml). No
-implementation in this folder; this is the starting documentation for a
-new repository.
+**M0 complete** — Cabal package, kernel AST/parser/pretty, markdown module
+loader, golden parse tests. Next: **M1** pure evaluator.
 
 ## Done recently
 
-- Multi-file design spec under `spec/`
-- Documentation workflow + Cursor scaffold (`cursor-scaffold/`)
-- Architecture, hwfi reference notes, example suite sketch
+- Scaffolded `pml` Cabal package (GHC2021, lib + `pml` exe + hspec suite)
+- Kernel AST + megaparsec parser + pretty (types, patterns, expressions, decls)
+- Markdown loader: YAML frontmatter, H2/H3 sections + slugify, one `pml` fence
+- 24 parser/load/pretty tests green; `examples/summarise.md` loads via `pml parse`
 
 ## Blockers
 
-None for documentation. Implementation blocked until a greenfield repo
-exists and this folder is moved to `docs/`.
+None.
 
 ## Next up
 
-1. Create greenfield Haskell repo; rename this folder → `docs/`
-2. Copy `cursor-scaffold/` → `.cursor/`
-3. Scaffold Cabal package + empty modules matching [architecture.md](architecture.md)
-4. Execute [TASKS.md](TASKS.md) milestone **M0** (kernel AST + parser)
+1. **M1** — Pure evaluator (CEK / frames) + unit tests from example suite § pure
+2. Later bootstrap (not M0): wire `llm-simple` behind `LlmProvider` (M4)
 
 ## Open naming
 

@@ -12,9 +12,9 @@
 ## 2. Milestones
 
 ### M0 — Syntax skeleton
-- [ ] Parser + AST + pretty for kernel
-- [ ] Markdown loader (frontmatter, sections, fence)
-- [ ] Golden parse tests
+- [x] Parser + AST + pretty for kernel
+- [x] Markdown loader (frontmatter, sections, fence)
+- [x] Golden parse tests
 
 ### M1 — Pure evaluator
 - [ ] CEK/frames for pure subset

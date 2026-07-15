@@ -1,0 +1,111 @@
+-- | YAML frontmatter for markdown modules (spec §01).
+module Pml.Parse.Frontmatter
+  ( parseFrontmatter,
+  )
+where
+
+import Data.Aeson (Object, Value (..))
+import Data.Aeson.Key qualified as K
+import Data.Aeson.KeyMap qualified as KM
+import Data.Foldable (toList)
+import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.Encoding (encodeUtf8)
+import Data.Yaml qualified as Yaml
+import Pml.Ast.Module (Frontmatter (..))
+import Pml.Ast.Name (Ident (..), QName (..), qnameFromParts)
+import Pml.Ast.Type (Effect, TypeExpr, parseEffectName)
+import Pml.Parse.Lexer (bundleToDiagnostics)
+import Pml.Parse.Type (parseTypeText)
+import Pml.Source (Diagnostic (..), Pos (..), mkDiagnostic)
+
+parseFrontmatter :: FilePath -> Text -> Either [Diagnostic] Frontmatter
+parseFrontmatter path yamlText = do
+  obj <- parseYamlObject path yamlText
+  nameTxt <- requireString path "name" obj
+  let fmName = qnameFromText nameTxt
+  let fmKind = stringField "kind" obj
+  fmInputs <- parseNamedTypes path "inputs" obj
+  fmOutputs <- parseNamedTypes path "outputs" obj
+  fmEffects <- parseEffects path obj
+  fmImports <- parseImports path obj
+  pure
+    Frontmatter
+      { fmName,
+        fmKind,
+        fmInputs,
+        fmOutputs,
+        fmEffects,
+        fmImports
+      }
+
+parseYamlObject :: FilePath -> Text -> Either [Diagnostic] Object
+parseYamlObject path yamlText =
+  case Yaml.decodeEither' (encodeUtf8 yamlText) of
+    Left err ->
+      Left [mkDiagnostic path (Pos 1 1) ("invalid frontmatter YAML: " <> T.pack (Yaml.prettyPrintParseException err))]
+    Right val -> case val of
+      Object o -> Right o
+      _ -> Left [mkDiagnostic path (Pos 1 1) "frontmatter must be a YAML mapping"]
+
+stringField :: Text -> Object -> Maybe Text
+stringField key o = case KM.lookup (K.fromText key) o of
+  Just (String s) -> Just s
+  _ -> Nothing
+
+requireString :: FilePath -> Text -> Object -> Either [Diagnostic] Text
+requireString path key o = case stringField key o of
+  Just s -> Right s
+  Nothing -> Left [mkDiagnostic path (Pos 1 1) ("frontmatter missing string field: " <> key)]
+
+parseNamedTypes :: FilePath -> Text -> Object -> Either [Diagnostic] [(Ident, TypeExpr)]
+parseNamedTypes path key o = case KM.lookup (K.fromText key) o of
+  Nothing -> Right []
+  Just Null -> Right []
+  Just (Object fields) ->
+    traverse (parseField path) (KM.toList fields)
+  Just _ ->
+    Left [mkDiagnostic path (Pos 1 1) (key <> " must be a mapping of name: Type")]
+
+parseField :: FilePath -> (K.Key, Value) -> Either [Diagnostic] (Ident, TypeExpr)
+parseField path (k, v) = case v of
+  String tyTxt -> do
+    ty <- parseTypeOrDiag path tyTxt
+    pure (Ident (K.toText k), ty)
+  _ ->
+    Left [mkDiagnostic path (Pos 1 1) ("type for " <> K.toText k <> " must be a string")]
+
+parseTypeOrDiag :: FilePath -> Text -> Either [Diagnostic] TypeExpr
+parseTypeOrDiag path tyTxt =
+  case parseTypeText path tyTxt of
+    Left bundle -> Left (bundleToDiagnostics path bundle)
+    Right t -> Right t
+
+parseEffects :: FilePath -> Object -> Either [Diagnostic] (Maybe [Effect])
+parseEffects path o = case KM.lookup (K.fromText "effects") o of
+  Nothing -> Right Nothing
+  Just Null -> Right Nothing
+  Just (Array arr) -> Just <$> traverse (parseEffect path) (toList arr)
+  Just _ -> Left [mkDiagnostic path (Pos 1 1) "effects must be a list of effect names"]
+
+parseEffect :: FilePath -> Value -> Either [Diagnostic] Effect
+parseEffect path = \case
+  String s -> case parseEffectName s of
+    Just e -> Right e
+    Nothing -> Left [mkDiagnostic path (Pos 1 1) ("unknown effect: " <> s)]
+  _ -> Left [mkDiagnostic path (Pos 1 1) "effect entries must be strings"]
+
+parseImports :: FilePath -> Object -> Either [Diagnostic] [QName]
+parseImports path o = case KM.lookup (K.fromText "imports") o of
+  Nothing -> Right []
+  Just Null -> Right []
+  Just (Array arr) -> traverse (parseImport path) (toList arr)
+  Just _ -> Left [mkDiagnostic path (Pos 1 1) "imports must be a list of qnames"]
+
+parseImport :: FilePath -> Value -> Either [Diagnostic] QName
+parseImport path = \case
+  String s -> Right (qnameFromText s)
+  _ -> Left [mkDiagnostic path (Pos 1 1) "import entries must be strings"]
+
+qnameFromText :: Text -> QName
+qnameFromText t = qnameFromParts (T.splitOn "/" t)

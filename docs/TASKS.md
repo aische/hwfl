@@ -4,11 +4,11 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now — bootstrap (after greenfield repo)
 
-- [ ] Create Cabal/Haskell package (GHC2021); wire `llm-simple` as default
-      provider behind `LlmProvider`
-- [ ] **M0** — AST + parser + pretty for kernel (no host ops yet)
-- [ ] **M0b** — Markdown module loader (frontmatter + fence extraction)
-- [ ] Move this docs pack to `docs/`; install Cursor scaffold
+- [x] Create Cabal/Haskell package (GHC2021)
+- [ ] Wire `llm-simple` as default provider behind `LlmProvider` (M4)
+- [x] **M0** — AST + parser + pretty for kernel (no host ops yet)
+- [x] **M0b** — Markdown module loader (frontmatter + fence extraction)
+- [x] Move this docs pack to `docs/`; install Cursor scaffold
 
 ## Next — milestones (see [spec/10-acceptance.md](spec/10-acceptance.md))
 
@@ -30,3 +30,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 ## Done
 
 - [x] Initial multi-file language/runtime specification (2026-07-15)
+- [x] M0 syntax skeleton: parser + AST + pretty + markdown loader (2026-07-15)
