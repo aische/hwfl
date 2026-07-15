@@ -37,6 +37,11 @@ data CheckError
   | SchemaUnsupported TypeExpr
   | -- | Inferred effect set is not a subset of the declared ceiling.
     EffectsNotAllowed (Set Effect) (Set Effect)
+  | UnboundModule Text
+  | ImportCycle [Text]
+  | ImportNotFound Text
+  | QNameMismatch Text Text
+  | ExecNotConfigured
   | Unsupported Text
   deriving stock (Eq, Show)
 
@@ -80,6 +85,17 @@ renderCheckError = \case
       <> renderEffSet inferred
       <> ", declared "
       <> renderEffSet declared
+  UnboundModule q -> "unbound module import: " <> q
+  ImportCycle qs ->
+    "cyclic import: " <> T.intercalate " -> " qs
+  ImportNotFound q -> "import not found: " <> q
+  QNameMismatch path q ->
+    "frontmatter name "
+      <> q
+      <> " does not match file qname "
+      <> path
+  ExecNotConfigured ->
+    "Exec effect used but project.json exec.allow is absent or empty"
   Unsupported msg -> "unsupported in type checker: " <> msg
 
 renderEffSet :: Set Effect -> Text

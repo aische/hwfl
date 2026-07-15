@@ -96,7 +96,8 @@ spec = describe "observability (M6)" $ do
                       roInputs = [],
                       roRunId = Just "test-obs",
                       roEntry = dir </> "e03.md",
-                      roMode = StepRun
+                      roMode = StepRun,
+                      roProjectHash = Nothing
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of

@@ -1,16 +1,27 @@
 module Main where
 
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import Pml.Ast.Name (Ident (..))
 import Pml.Ast.Module (LoadedModule (lmBody))
 import Pml.Ast.Pretty (prettyModuleBody)
 import Pml.Check.Error (renderCheckError)
 import Pml.Check.Module (checkLoadedModule)
-import Pml.Eval.Value (renderValue)
+import Pml.Check.Project (checkProject, checkProjectLoaded, renderProjectCheckError)
+import Pml.Eval.Value (Value, renderValue)
 import Pml.Llm.Mock (mockProvider)
 import Pml.Llm.Provider (LlmProvider (..))
 import Pml.Llm.Simple (mkSimpleProvider)
 import Pml.Parse.Load (loadModule)
+import Pml.Project
+  ( LoadedProject (..),
+    ProjectConfig (..),
+    isProjectDir,
+    loadProject,
+    modulePathForQname,
+    projectHashForModules,
+  )
 import Pml.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Pml.Runtime.Eval (StepMode (..))
 import Pml.Runtime.Machine (MachineStatus (..))
@@ -48,7 +59,7 @@ usage :: IO ()
 usage = do
   hPutStrLn
     stderr
-    "usage: pml parse|check <module.md> | pml run <module.md> [options]"
+    "usage: pml parse|check <project|module.md> | pml run <project|module.md> [options]"
   hPutStrLn
     stderr
     "       pml step|resume <workspace> <run-id> [--llm-provider mock|simple]"
@@ -74,17 +85,26 @@ cmdParse path = do
 
 cmdCheck :: FilePath -> IO ()
 cmdCheck path = do
-  hPutStrLn stderr "pml check: single-module mode (project graph deferred)"
-  result <- loadModule path
-  case result of
-    Left diags -> do
-      TIO.hPutStrLn stderr (renderDiagnostics diags)
-      exitWith (ExitFailure 1)
-    Right loaded -> case checkLoadedModule loaded of
-      Left err -> do
-        TIO.hPutStrLn stderr (renderCheckError err)
-        exitWith (ExitFailure 1)
-      Right _ -> pure ()
+  isProj <- isProjectDir path
+  if isProj
+    then do
+      result <- checkProject path
+      case result of
+        Left err -> do
+          TIO.hPutStrLn stderr (renderProjectCheckError err)
+          exitWith (ExitFailure 1)
+        Right _ -> pure ()
+    else do
+      result <- loadModule path
+      case result of
+        Left diags -> do
+          TIO.hPutStrLn stderr (renderDiagnostics diags)
+          exitWith (ExitFailure 1)
+        Right loaded -> case checkLoadedModule loaded of
+          Left err -> do
+            TIO.hPutStrLn stderr (renderCheckError err)
+            exitWith (ExitFailure 1)
+          Right _ -> pure ()
 
 data RunFlags = RunFlags
   { rfModule :: FilePath,
@@ -116,30 +136,72 @@ cmdRun rest = case parseRunFlags rest of
         exitWith (ExitFailure 2)
       Right is -> pure is
     provider <- resolveProvider flags.rfProvider flags.rfCatalog
-    result <- loadModule flags.rfModule
-    case result of
-      Left diags -> do
-        TIO.hPutStrLn stderr (renderDiagnostics diags)
-        exitWith (ExitFailure 1)
-      Right loaded -> do
-        unless flags.rfNoCheck $ do
-          hPutStrLn stderr "pml run: checking module…"
-          case checkLoadedModule loaded of
-            Left err -> do
-              TIO.hPutStrLn stderr (renderCheckError err)
-              exitWith (ExitFailure 1)
-            Right _ -> pure ()
-        let opts =
-              RunOptions
-                { roWorkspace = ws,
-                  roProvider = provider,
-                  roInputs = inputs,
-                  roRunId = Nothing,
-                  roEntry = flags.rfModule,
-                  roMode = if flags.rfStep then StepOnce else StepRun
-                }
-        outcome <- runLoadedModule opts loaded
-        handleOutcome outcome
+    isProj <- isProjectDir flags.rfModule
+    if isProj
+      then runProject flags ws inputs provider
+      else runSingleModule flags ws inputs provider
+
+runProject :: RunFlags -> FilePath -> [(Ident, Value)] -> LlmProvider -> IO ()
+runProject flags ws inputs provider = do
+  lpE <- loadProject flags.rfModule
+  case lpE of
+    Left err -> do
+      TIO.hPutStrLn stderr err
+      exitWith (ExitFailure 1)
+    Right lp -> do
+      unless flags.rfNoCheck $ do
+        hPutStrLn stderr "pml run: checking project…"
+        case checkProjectLoaded lp of
+          Left err -> do
+            TIO.hPutStrLn stderr (renderProjectCheckError err)
+            exitWith (ExitFailure 1)
+          Right _ -> pure ()
+      let entry = lp.lpConfig.pcEntrypoint
+          entryPath = modulePathForQname flags.rfModule entry
+      case Map.lookup entry lp.lpModules of
+        Nothing -> do
+          hPutStrLn stderr "entrypoint module missing after load"
+          exitWith (ExitFailure 1)
+        Just loaded -> do
+          let hash = Just (projectHashForModules lp.lpModules)
+              opts =
+                RunOptions
+                  { roWorkspace = ws,
+                    roProvider = provider,
+                    roInputs = inputs,
+                    roRunId = Nothing,
+                    roEntry = entryPath,
+                    roMode = if flags.rfStep then StepOnce else StepRun,
+                    roProjectHash = hash
+                  }
+          handleOutcome =<< runLoadedModule opts loaded
+
+runSingleModule :: RunFlags -> FilePath -> [(Ident, Value)] -> LlmProvider -> IO ()
+runSingleModule flags ws inputs provider = do
+  result <- loadModule flags.rfModule
+  case result of
+    Left diags -> do
+      TIO.hPutStrLn stderr (renderDiagnostics diags)
+      exitWith (ExitFailure 1)
+    Right loaded -> do
+      unless flags.rfNoCheck $ do
+        hPutStrLn stderr "pml run: checking module…"
+        case checkLoadedModule loaded of
+          Left err -> do
+            TIO.hPutStrLn stderr (renderCheckError err)
+            exitWith (ExitFailure 1)
+          Right _ -> pure ()
+      let opts =
+            RunOptions
+              { roWorkspace = ws,
+                roProvider = provider,
+                roInputs = inputs,
+                roRunId = Nothing,
+                roEntry = flags.rfModule,
+                roMode = if flags.rfStep then StepOnce else StepRun,
+                roProjectHash = Nothing
+              }
+      handleOutcome =<< runLoadedModule opts loaded
 
 cmdStep :: [String] -> IO ()
 cmdStep args = case parseWsRun args of

@@ -1,0 +1,7 @@
+{
+  "name": "check-project-cycle",
+  "version": "0.1.0",
+  "entrypoint": "workflows/a",
+  "env": [],
+  "effects": { "default": [], "deny": [] }
+}

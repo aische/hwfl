@@ -2,6 +2,7 @@ module Spec (main) where
 
 import Pml.Ast.PrettySpec
 import Pml.Check.ModuleSpec
+import Pml.Check.ProjectSpec
 import Pml.Check.SchemaSpec
 import Pml.Eval.PureSpec
 import Pml.Llm.ProviderSpec
@@ -28,6 +29,7 @@ main = hspec $ do
   Pml.Ast.PrettySpec.spec
   Pml.Eval.PureSpec.spec
   Pml.Check.ModuleSpec.spec
+  Pml.Check.ProjectSpec.spec
   Pml.Check.SchemaSpec.spec
   Pml.Llm.ProviderSpec.spec
   Pml.Runtime.WorkspaceSpec.spec

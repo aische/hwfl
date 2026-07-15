@@ -40,6 +40,7 @@ library
         Pml.Check.Infer
         Pml.Check.Module
         Pml.Check.Prelude
+        Pml.Check.Project
         Pml.Check.Schema
         Pml.Eval.Error
         Pml.Eval.Module
@@ -55,6 +56,7 @@ library
         Pml.Obs.Span
         Pml.Obs.Trace
         Pml.Json.Encode
+        Pml.Project
         Pml.Text.Corpus
         Pml.Text.Markdown
         Pml.Parse.Expr
@@ -102,6 +104,7 @@ executable pml
         "-with-rtsopts=-N"
     build-depends:
         base,
+        containers,
         directory,
         pml,
         text
@@ -119,6 +122,7 @@ test-suite pml-test
     other-modules:
         Pml.Ast.PrettySpec
         Pml.Check.ModuleSpec
+        Pml.Check.ProjectSpec
         Pml.Check.SchemaSpec
         Pml.Eval.PureSpec
         Pml.Llm.ProviderSpec

@@ -776,6 +776,7 @@ parseHostOp = \case
   "obs.log" -> pure HostObsLog
   "obs.span" -> pure HostObsSpan
   "meta.check_module" -> pure HostMetaCheckModule
+  "meta.check_project" -> pure HostMetaCheckProject
   other -> fail ("unknown host op: " <> T.unpack other)
 
 showText :: (Show a) => a -> Text

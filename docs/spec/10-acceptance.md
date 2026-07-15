@@ -58,18 +58,18 @@
 
 ### Post-M8 (not yet milestone-numbered)
 
-- [ ] **M9 (proposed)** — project-wide `pml check`: `project.json` + import graph
+- [x] **M9** — project-wide `pml check`: `project.json` + import graph
 - [ ] Float / `==` polymorphism cleanup
 - [ ] `llm.object` runtime (E14); `llm.agent-object` + submit tool
 - [ ] Alternate `LlmProvider` adapter — low priority swap proof
 
 ## 3. v0 release gate
 
-**Milestones M0–M8 are complete** (2026-07-15). Before treating pml as the
+**Milestones M0–M9 are complete** (2026-07-15). Before treating pml as the
 default substrate for all new agent work vs hwfi:
 
-- **Required next:** project-wide **`pml check`** (import graph, multi-module)
 - **Ongoing fitness:** resume, span comprehension, semantic-check-class ergonomics
+- **Next language/runtime:** Float/`==` cleanup; `llm.object` / `llm.agent-object`
 - **Deferred / low priority:** second LLM provider adapter (interface already exists)
 
 ## 4. Explicit non-acceptance

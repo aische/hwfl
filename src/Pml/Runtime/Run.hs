@@ -59,7 +59,8 @@ data RunOptions = RunOptions
     roInputs :: [(Ident, Value)],
     roRunId :: Maybe Text,
     roEntry :: FilePath,
-    roMode :: StepMode
+    roMode :: StepMode,
+    roProjectHash :: Maybe Text
   }
 
 data RunOutcome
@@ -103,7 +104,7 @@ runLoadedModule :: RunOptions -> LoadedModule -> IO RunOutcome
 runLoadedModule opts loaded = do
   ws <- newWorkspace opts.roWorkspace
   runId <- maybe newRunId pure opts.roRunId
-  let hash = projectHashOf loaded
+  let hash = maybe (projectHashOf loaded) id opts.roProjectHash
   store <- openRunStore (workspaceRoot ws) runId
   now <- getCurrentTime
   let started = T.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now)
@@ -244,7 +245,9 @@ loadExisting ::
   LlmProvider ->
   IO (Either RuntimeError (RunCtx, Machine, RunStore, IORef Int))
 loadExisting workspace runId provider = do
-  store <- openRunStore workspace runId
+  ws <- newWorkspace workspace
+  let root = workspaceRoot ws
+  store <- openRunStore root runId
   mMeta <- readRunMeta store
   mSnap <- readRunSnapshot store
   case (mMeta, mSnap) of
@@ -264,7 +267,7 @@ loadExisting workspace runId provider = do
                 spans <- newSpanState
                 writeIORef spans.ssCounter snap.rsSpanCounter
                 setSpanStack spans snap.rsSpanStack
-                ctx <- mkCtx provider workspace loaded store hash meta.rmRunId meta.rmStartedAt seqRef spans
+                ctx <- mkCtx provider root loaded store hash meta.rmRunId meta.rmStartedAt seqRef spans
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 
@@ -315,9 +318,11 @@ resumeRun workspace runId provider = do
 
 approveRun :: FilePath -> Text -> Bool -> LlmProvider -> IO RunOutcome
 approveRun workspace runId yes provider = do
-  loaded <- loadExisting workspace runId provider
+  ws <- newWorkspace workspace
+  let root = workspaceRoot ws
+  loaded <- loadExisting root runId provider
   case loaded of
-    Left e -> pure (OutcomeFailed e store0 0)
+    Left e -> pure (OutcomeFailed e (RunStore (root </> ".pml" </> "runs" </> T.unpack runId) runId) 0)
     Right (ctx, machine0, store, seqRef) ->
       case approveMachine yes machine0 of
         Left e -> pure (OutcomeFailed e store 0)
@@ -349,8 +354,6 @@ approveRun workspace runId yes provider = do
           seqNo <- readIORef seqRef
           closeModuleIfTerminal ctx store m2.mStatus
           finalizeOutcome store seqNo m2
-  where
-    store0 = RunStore (workspace </> ".pml" </> "runs" </> T.unpack runId) runId
 
 -- | Close the outermost open span (module) on terminal status. Stack is
 -- innermost-first, so the module id is last.

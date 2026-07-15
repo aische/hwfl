@@ -92,7 +92,7 @@ as long as host ops inside are correct.
 |----|-------|
 | `meta.invoke` | run another module with inputs (nested frames) **[defer]** |
 | `meta.check_module` | check one markdown module; `{ ok, error, name }` (recoverable; M8) |
-| `meta.check_project` | whole-project graph check **[defer]** — use `meta.check_module` per file for now |
+| `meta.check_project` | whole-project graph check; `{ ok, error }` (workspace-relative project root; M9) |
 | `meta.list_runs` | **[defer]** |
 | `meta.read_spans` | query spans for a run **[defer]** |
 | `meta.read_snapshot` | **careful** — may expose secrets; redact **[defer]** |

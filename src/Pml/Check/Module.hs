@@ -2,35 +2,68 @@
 module Pml.Check.Module
   ( checkModuleBody,
     checkLoadedModule,
+    checkLoadedModuleInContext,
     CheckResult (..),
+    ModuleCheckContext (..),
+    emptyModuleCheckContext,
   )
 where
 
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
 import Pml.Ast.Decl (Decl (..), ModuleBody (..))
 import Pml.Ast.Expr (Param (..))
 import Pml.Ast.Module (Frontmatter (..), LoadedModule (..))
 import Pml.Ast.Name (Ident (..))
-import Pml.Ast.Type (TypeExpr (..))
-import Pml.Check.Effects (analyzeModuleEffects, checkEffectsCeiling)
-import Pml.Check.Env (TypeEnv, extendVars, lookupVar, resolveType, typeEq)
+import Pml.Ast.Type (Effect (..), TypeExpr (..))
+import Pml.Check.Effects (EffSet, analyzeModuleEffects, checkEffectsCeiling)
+import Pml.Check.Env
+  ( ModuleExport (..),
+    TypeEnv,
+    extendVars,
+    lookupVar,
+    resolveType,
+    setImports,
+    typeEq,
+  )
 import Pml.Check.Error (CheckError (..))
 import Pml.Check.Infer (check, infer, inferModuleEnv)
+import Pml.Project (EffectsPolicy (..), ProjectConfig (..))
 
 data CheckResult = CheckResult
-  { crEnv :: TypeEnv
+  { crEnv :: TypeEnv,
+    crEffects :: Map Ident EffSet
   }
   deriving stock (Eq, Show)
 
+data ModuleCheckContext = ModuleCheckContext
+  { mccImports :: Map Text ModuleExport
+  }
+  deriving stock (Eq, Show)
+
+emptyModuleCheckContext :: ModuleCheckContext
+emptyModuleCheckContext = ModuleCheckContext Map.empty
+
 -- | Type-check a kernel module body (no frontmatter I/O or effects ceiling).
 checkModuleBody :: ModuleBody -> Either CheckError CheckResult
-checkModuleBody body@(ModuleBody decls mexpr) = do
-  env <- inferModuleEnv body
+checkModuleBody body = checkModuleBodyInContext emptyModuleCheckContext body
+
+checkModuleBodyInContext :: ModuleCheckContext -> ModuleBody -> Either CheckError CheckResult
+checkModuleBodyInContext ctx body@(ModuleBody decls mexpr) = do
+  env0 <- inferModuleEnv body
+  let env = setImports ctx.mccImports env0
   mapM_ (checkDecl env) decls
-  case mexpr of
-    Nothing -> pure (CheckResult env)
+  env' <- case mexpr of
+    Nothing -> pure env
     Just e -> do
       _ <- infer env e
-      pure (CheckResult env)
+      pure env
+  effEnv <- analyzeModuleEffects env' body
+  pure CheckResult {crEnv = env', crEffects = effEnv}
 
 checkDecl :: TypeEnv -> Decl -> Either CheckError ()
 checkDecl env = \case
@@ -59,12 +92,36 @@ checkLoadedModule :: LoadedModule -> Either CheckError CheckResult
 checkLoadedModule loaded = do
   let fm = lmFrontmatter loaded
       body0 = lmBody loaded
+      ctx = ModuleCheckContext {mccImports = Map.empty}
   body <- elaborateMainIO fm body0
-  result <- checkModuleBody body
+  result <- checkModuleBodyInContext ctx body
   checkMainIO fm body result.crEnv
-  effEnv <- analyzeModuleEffects result.crEnv body
-  checkEffectsCeiling fm effEnv
+  let ceiling = Set.fromList (fromMaybe [] fm.fmEffects)
+  checkEffectsCeiling ceiling True result.crEffects
   pure result
+
+checkLoadedModuleInContext ::
+  ProjectConfig ->
+  Bool ->
+  Map Text ModuleExport ->
+  LoadedModule ->
+  Either CheckError CheckResult
+checkLoadedModuleInContext cfg execAllowed importExports loaded = do
+  let fm = lmFrontmatter loaded
+      body0 = lmBody loaded
+      ctx = ModuleCheckContext {mccImports = importExports}
+  body <- elaborateMainIO fm body0
+  result <- checkModuleBodyInContext ctx body
+  checkMainIO fm body result.crEnv
+  let ceiling = effectiveEffects cfg fm
+  checkEffectsCeiling ceiling execAllowed result.crEffects
+  pure result
+
+effectiveEffects :: ProjectConfig -> Frontmatter -> Set Effect
+effectiveEffects cfg fm =
+  let base = fromMaybe cfg.pcEffects.epDefault fm.fmEffects
+      deny = Set.fromList cfg.pcEffects.epDeny
+   in Set.fromList base Set.\\ deny
 
 -- | Fill missing @main@ param/return types from frontmatter I/O records.
 elaborateMainIO :: Frontmatter -> ModuleBody -> Either CheckError ModuleBody

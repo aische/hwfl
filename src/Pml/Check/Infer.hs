@@ -9,7 +9,7 @@ where
 import Control.Monad (foldM, unless, when)
 import Pml.Ast.Decl (Decl (..), ModuleBody (..))
 import Pml.Ast.Expr
-import Pml.Ast.Name (Ident (..), TypeName (..))
+import Pml.Ast.Name (Ident (..), TypeName (..), qnameToText)
 import Pml.Ast.Pat (Literal (..), Pattern (..))
 import Pml.Ast.Type (TypeExpr (..))
 import Pml.Check.Env
@@ -88,7 +88,9 @@ infer env = \case
   ELit lit -> Right (literalType lit)
   EVar n ->
     maybe (Left (UnboundVar n)) (resolveType env) (lookupVar n env)
-  EQName _ -> Left (Unsupported "qualified names are not elaborated yet")
+  EQName q -> case lookupImport (qnameToText q) env of
+    Nothing -> Left (UnboundModule (qnameToText q))
+    Just ex -> resolveType env (moduleExportRecord ex)
   ESection _ -> Right tString
   EList [] -> Left (CannotInfer "empty list; add a type annotation")
   EList (e : es) -> do

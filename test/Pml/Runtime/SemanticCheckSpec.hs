@@ -48,7 +48,8 @@ spec = describe "semantic-check dogfood (M8 / E20)" $ do
                   roInputs = [(Ident "entry", VString "workflows/ok")],
                   roRunId = Just "e20",
                   roEntry = checkerPath,
-                  roMode = StepRun
+                  roMode = StepRun,
+                  roProjectHash = Nothing
                 }
               m
           case outcome of

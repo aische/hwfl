@@ -113,7 +113,8 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roInputs = [],
                   roRunId = Just "par1",
                   roEntry = path,
-                  roMode = StepRun
+                  roMode = StepRun,
+                  roProjectHash = Nothing
                 }
               loaded
           case outcome of
@@ -140,7 +141,8 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roInputs = [],
                   roRunId = Just "c1",
                   roEntry = path,
-                  roMode = StepRun
+                  roMode = StepRun,
+                  roProjectHash = Nothing
                 }
               loaded
           case outcome of
@@ -165,7 +167,8 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roInputs = [],
                   roRunId = Just "pc1",
                   roEntry = path,
-                  roMode = StepRun
+                  roMode = StepRun,
+                  roProjectHash = Nothing
                 }
               loaded
           case outcome of
@@ -202,7 +205,8 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roInputs = [],
                   roRunId = Just "s1",
                   roEntry = path,
-                  roMode = StepOnce
+                  roMode = StepOnce,
+                  roProjectHash = Nothing
                 }
               loaded
           case o0 of
@@ -236,7 +240,8 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roInputs = [],
                   roRunId = Just "stale1",
                   roEntry = path,
-                  roMode = StepRun
+                  roMode = StepRun,
+                  roProjectHash = Nothing
                 }
               loaded
           -- Mutate kernel body so project_hash changes.

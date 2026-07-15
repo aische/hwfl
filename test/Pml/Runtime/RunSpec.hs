@@ -92,7 +92,8 @@ spec = describe "runtime run (M4/M5)" $ do
                     roInputs = [],
                     roRunId = Just "test-e03",
                     roEntry = dir </> "e03.md",
-                    roMode = StepRun
+                    roMode = StepRun,
+                    roProjectHash = Nothing
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -118,7 +119,8 @@ spec = describe "runtime run (M4/M5)" $ do
                     roInputs = [(Ident "path", VString "doc.txt")],
                     roRunId = Just "test-e04",
                     roEntry = dir </> "summarise.md",
-                    roMode = StepRun
+                    roMode = StepRun,
+                    roProjectHash = Nothing
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -170,7 +172,8 @@ spec = describe "runtime run (M4/M5)" $ do
                     roInputs = [(Ident "path", VString "../outside.txt")],
                     roRunId = Just "test-escape",
                     roEntry = "escape.md",
-                    roMode = StepRun
+                    roMode = StepRun,
+                    roProjectHash = Nothing
                   }
           outcome <- runLoadedModule opts loaded
           outcome `shouldSatisfy` isFailed

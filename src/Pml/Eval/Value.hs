@@ -78,6 +78,7 @@ data HostOpId
   | HostObsLog
   | HostObsSpan
   | HostMetaCheckModule
+  | HostMetaCheckProject
   deriving stock (Eq, Ord, Show)
 
 -- | Runtime tool advertisement: schema + callable (host op / fun / closure).
@@ -151,6 +152,7 @@ hostOpName = \case
   HostObsLog -> "obs.log"
   HostObsSpan -> "obs.span"
   HostMetaCheckModule -> "meta.check_module"
+  HostMetaCheckProject -> "meta.check_project"
 
 renderJsonish :: Value -> Either Text Text
 renderJsonish = \case

@@ -110,6 +110,11 @@ hostOpenAttrs op args = case op of
       [ "op" .= hostOpName op,
         "path" .= pathAttr args
       ]
+  HostMetaCheckProject ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args
+      ]
   HostLlmChat ->
     object
       [ "op" .= hostOpName op,

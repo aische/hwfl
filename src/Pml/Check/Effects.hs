@@ -8,18 +8,16 @@ module Pml.Check.Effects
   )
 where
 
-import Control.Monad (foldM, unless)
+import Control.Monad (foldM, unless, when)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Pml.Ast.Decl (Decl (..), ModuleBody (..))
 import Pml.Ast.Expr
-import Pml.Ast.Module (Frontmatter (..))
-import Pml.Ast.Name (Ident (..))
+import Pml.Ast.Name (Ident (..), qnameToText)
 import Pml.Ast.Type (Effect (..), TypeExpr (..))
-import Pml.Check.Env (TypeEnv, resolveType)
+import Pml.Check.Env (ModuleExport (..), TypeEnv, lookupImport, resolveType)
 import Pml.Check.Error (CheckError (..))
 import Pml.Check.Infer (infer)
 
@@ -48,11 +46,15 @@ analyzeModuleEffects env (ModuleBody decls _) = go Map.empty
         then pure effEnv
         else go effEnv'
 
--- | Module @effects:@ (absent ⇒ pure) is the ceiling for every top-level fun.
-checkEffectsCeiling :: Frontmatter -> EffEnv -> Either CheckError ()
-checkEffectsCeiling fm effEnv = mapM_ checkOne (Map.toList effEnv)
+-- | Module effects ceiling (from frontmatter or project default) for every top-level fun.
+checkEffectsCeiling :: Set Effect -> Bool -> EffEnv -> Either CheckError ()
+checkEffectsCeiling ceilingSet execAllowed effEnv = do
+  mapM_ checkOne (Map.toList effEnv)
+  when (EffExec `Set.member` ceilingSet && not execAllowed) $
+    Left ExecNotConfigured
+  when (any (EffExec `Set.member`) (Map.elems effEnv) && not execAllowed) $
+    Left ExecNotConfigured
   where
-    ceilingSet = Set.fromList (fromMaybe [] fm.fmEffects)
     checkOne (_n, inferred) =
       unless (inferred `Set.isSubsetOf` ceilingSet) $
         Left (EffectsNotAllowed inferred ceilingSet)
@@ -116,6 +118,12 @@ inferExprEffects env effEnv = go
 
     calleeResidual = \case
       EVar n -> pure (Map.findWithDefault emptyEffs n effEnv)
+      EProj (EQName q) n ->
+        pure $
+          maybe
+            emptyEffs
+            (\ex -> Map.findWithDefault emptyEffs n ex.meEffects)
+            (lookupImport (qnameToText q) env)
       EProj e _ -> calleeResidual e
       _ -> pure emptyEffs
 

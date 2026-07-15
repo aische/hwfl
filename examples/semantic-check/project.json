@@ -1,0 +1,10 @@
+{
+  "name": "semantic-check",
+  "version": "0.1.0",
+  "entrypoint": "workflows/main",
+  "env": [],
+  "effects": {
+    "default": ["Read", "Write", "Meta"],
+    "deny": []
+  }
+}

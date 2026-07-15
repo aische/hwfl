@@ -18,6 +18,7 @@ import Pml.Ast.Module (Frontmatter (..), LoadedModule (..))
 import Pml.Ast.Name (Ident (..), qnameToText)
 import Pml.Check.Error (renderCheckError)
 import Pml.Check.Module (checkLoadedModule)
+import Pml.Check.Project (checkProject, renderProjectCheckError)
 import Pml.Eval.Value
 import Pml.Llm.Provider (LlmProvider (..))
 import Pml.Llm.Types
@@ -31,7 +32,8 @@ import Pml.Llm.Types
   )
 import Pml.Parse.Load (loadModuleText)
 import Pml.Runtime.Error (RuntimeError (..))
-import Pml.Runtime.Workspace (Workspace, findFiles, readTextFile, writeTextFile)
+import System.FilePath ((</>))
+import Pml.Runtime.Workspace (Workspace, findFiles, readTextFile, writeTextFile, workspaceRoot)
 import Pml.Source (renderDiagnostics)
 
 -- | Effectful dependencies for host ops (workspace + provider).
@@ -77,7 +79,8 @@ hostOpsEnv =
       ),
       ( Ident "meta",
         VRecord
-          [ (Ident "check_module", VHostOp HostMetaCheckModule)
+          [ (Ident "check_module", VHostOp HostMetaCheckModule),
+            (Ident "check_project", VHostOp HostMetaCheckProject)
           ]
       )
     ]
@@ -94,6 +97,7 @@ runHostOp env op args = case op of
   HostFsWrite -> doFsWrite env args
   HostFsFind -> doFsFind env args
   HostMetaCheckModule -> doMetaCheckModule env args
+  HostMetaCheckProject -> doMetaCheckProject env args
   HostLlmChat -> doLlmChat env args
   HostLlmAgent ->
     pure (Left (HostErr "llm.agent must be driven by the machine (agent loop)"))
@@ -151,6 +155,31 @@ doFsFind env args = case globArg args of
               (VList (map VString paths))
               (object ["count" .= length paths])
           )
+
+doMetaCheckProject :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doMetaCheckProject env args = case fileRefArg args of
+  Left e -> pure (Left e)
+  Right rel -> do
+    let root = workspaceRoot env.heWorkspace </> T.unpack rel
+    env.heLog ("meta.check_project " <> rel)
+    result <- checkProject root
+    pure $
+      Right
+        ( HostResult
+            ( case result of
+                Left err ->
+                  VRecord
+                    [ (Ident "ok", VBool False),
+                      (Ident "error", VString (renderProjectCheckError err))
+                    ]
+                Right _ ->
+                  VRecord
+                    [ (Ident "ok", VBool True),
+                      (Ident "error", VString "")
+                    ]
+            )
+            (object ["root" .= rel])
+        )
 
 doMetaCheckModule :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doMetaCheckModule env args = case fileRefArg args of

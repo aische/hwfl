@@ -1,12 +1,16 @@
 -- | Resolved type environments for checking.
 module Pml.Check.Env
   ( TypeEnv (..),
+    ModuleExport (..),
     emptyTypeEnv,
     lookupVar,
     extendVar,
     extendVars,
     lookupAlias,
     insertAlias,
+    lookupImport,
+    setImports,
+    moduleExportRecord,
     resolveType,
     stripEffects,
     typeEq,
@@ -17,20 +21,29 @@ where
 
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Pml.Ast.Name (Ident (..), TypeName (..))
-import Pml.Ast.Type (TypeExpr (..))
+import Pml.Ast.Type (Effect, TypeExpr (..))
 import Pml.Check.Error (CheckError (..))
 
 data TypeEnv = TypeEnv
   { teVars :: Map Ident TypeExpr,
-    teAliases :: Map TypeName TypeExpr
+    teAliases :: Map TypeName TypeExpr,
+    teImports :: Map Text ModuleExport
+  }
+  deriving stock (Eq, Show)
+
+-- | Exported bindings from an imported module (qname key is slash text).
+data ModuleExport = ModuleExport
+  { meValues :: Map Ident TypeExpr,
+    meEffects :: Map Ident (Set Effect)
   }
   deriving stock (Eq, Show)
 
 emptyTypeEnv :: TypeEnv
-emptyTypeEnv = TypeEnv Map.empty Map.empty
+emptyTypeEnv = TypeEnv Map.empty Map.empty Map.empty
 
 lookupVar :: Ident -> TypeEnv -> Maybe TypeExpr
 lookupVar n env = Map.lookup n env.teVars
@@ -44,13 +57,23 @@ extendVars bs env = foldr (uncurry extendVar) env bs
 lookupAlias :: TypeName -> TypeEnv -> Maybe TypeExpr
 lookupAlias n env = Map.lookup n env.teAliases
 
+lookupImport :: Text -> TypeEnv -> Maybe ModuleExport
+lookupImport q env = Map.lookup q env.teImports
+
+setImports :: Map Text ModuleExport -> TypeEnv -> TypeEnv
+setImports im env = env {teImports = im}
+
+moduleExportRecord :: ModuleExport -> TypeExpr
+moduleExportRecord ex =
+  TRecord [(n, t) | (n, t) <- Map.toList ex.meValues]
+
 insertAlias :: TypeName -> TypeExpr -> TypeEnv -> Either CheckError TypeEnv
 insertAlias n t env =
   if Map.member n env.teAliases
     then Left (DuplicateType n)
     else Right env {teAliases = Map.insert n t env.teAliases}
 
-primitiveNames :: Set.Set Text
+primitiveNames :: Set Text
 primitiveNames =
   Set.fromList
     [ "Unit",
@@ -115,7 +138,7 @@ typeEq a b = eq (stripEffects a) (stripEffects b)
             | (n, t) <- fs,
               Just u <- [lookup n gs]
           ]
-        && length fs == length (Map.fromList fs) -- reject dup keys asymmetrically
+        && length fs == length (Map.fromList fs)
         && length gs == length (Map.fromList gs)
     eq (TFun x1 y1) (TFun x2 y2) = eq x1 x2 && eq y1 y2
     eq (TEffFun x1 _ y1) (TEffFun x2 _ y2) = eq x1 x2 && eq y1 y2

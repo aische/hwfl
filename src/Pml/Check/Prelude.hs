@@ -33,7 +33,8 @@ preludeTypeEnv =
                  (Ident "json", jsonType),
                  (Ident "ctx", ctxType)
                ],
-      teAliases = Map.empty
+      teAliases = Map.empty,
+      teImports = Map.empty
     }
 
 binOps :: [(Ident, TypeExpr)]
@@ -198,6 +199,12 @@ metaType =
                 (Ident "name", t "String")
               ]
           )
+      ),
+      ( Ident "check_project",
+        TEffFun
+          (t "FileRef")
+          [EffMeta, EffRead]
+          (TRecord [(Ident "ok", t "Bool"), (Ident "error", t "String")])
       )
     ]
 
