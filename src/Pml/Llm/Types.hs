@@ -69,8 +69,8 @@ data ChatRequest = ChatRequest
     -- | System prompt for agent rounds (or override for message path).
     chatSystem :: Maybe Text,
     chatModel :: Text,
-    -- | Optional JSON Schema for structured object mode.
-    chatResponseFormat :: Maybe Text,
+    -- | Optional JSON Schema for structured object mode (@llm.object@).
+    chatResponseFormat :: Maybe Value,
     -- | Tools advertised for this request (agent model rounds).
     chatTools :: [ToolSpec]
   }

@@ -1,5 +1,8 @@
 module Pml.Llm.ProviderSpec (spec) where
 
+import Data.Aeson (object, (.=))
+import Data.Text (Text)
+import Data.Text qualified as T
 import Pml.Llm.Mock (mockProvider, mockProviderWith)
 import Pml.Llm.Provider (LlmProvider (..))
 import Pml.Llm.Types
@@ -53,3 +56,25 @@ spec = describe "LlmProvider" $ do
             prUsage = Nothing,
             prFinishReason = FinishStop
           }
+
+  it "mock fills chatResponseFormat schema with JSON object" $ do
+    let schema =
+          object
+            [ "type" .= ("object" :: Text),
+              "properties"
+                .= object
+                  [ "summary" .= object ["type" .= ("string" :: Text)],
+                    "score" .= object ["type" .= ("integer" :: Text)]
+                  ]
+            ]
+        req =
+          (emptyChatRequest "gpt-5")
+            { chatMessages = [Message RoleUser "hello world"],
+              chatResponseFormat = Just schema
+            }
+    result <- mockProvider.llmChat req
+    case result of
+      Left err -> expectationFailure (show err)
+      Right pr -> do
+        pr.prContent `shouldSatisfy` T.isInfixOf "SUMMARY:"
+        pr.prContent `shouldSatisfy` T.isInfixOf "\"score\":1"

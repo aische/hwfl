@@ -94,6 +94,10 @@ type Out = { summary: String, score: Int }
 llm.object(..., schema = schema(Out), model = …) : Out
 ```
 
+**Shipped:** check infers `Out` when `schema = schema(Out)`; runtime host op +
+mock/simple providers via `chatResponseFormat`. Fixture:
+`test/Pml/Runtime/ObjectSpec.hs`.
+
 ## E15 — Agent with tools **A** **R**
 
 Agent may call `fs.read` and a user `fun search`. Step granularity =
@@ -134,6 +138,7 @@ check path (layer 3 pragmatic review deferred). Fixture:
 | E03–E04 | ✓ | ✓ | mid-llm | fs?/llm/fs? |
 | E07–E08 | ✓ | ✓ | mid-par | par + children |
 | E12–E13 | fail closed | — | — | — |
+| E14 | ✓ | ✓ | — | llm.object |
 | E15 | ✓ | ✓ | mid-tool | agent tree |
 | E20 | ✓ | ✓ | optional | library spans |
 

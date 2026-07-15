@@ -77,7 +77,8 @@ as canonical JSON.
 ## 4. Schema reflection
 
 `schema(T)` (compile-time / check-time operator) yields a JSON Schema
-value used by `llm.object` and agent tool registration.
+value used by `llm.object` and agent tool registration. At runtime the
+machine evaluates it to `VSchema` (pure eval still traps — host path only).
 
 Rules:
 

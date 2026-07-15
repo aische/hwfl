@@ -122,6 +122,13 @@ hostOpenAttrs op args = case op of
         "system_len" .= textLenAttr (Ident "system") args,
         "prompt_len" .= textLenAttr (Ident "prompt") args
       ]
+  HostLlmObject ->
+    object
+      [ "op" .= hostOpName op,
+        "model" .= stringAttr (Ident "model") args,
+        "prompt_len" .= textLenAttr (Ident "prompt") args,
+        "has_schema" .= True
+      ]
   HostLlmAgent ->
     object
       [ "op" .= hostOpName op,

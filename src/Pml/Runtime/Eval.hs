@@ -22,6 +22,9 @@ import Data.Text qualified as T
 import Pml.Ast.Expr
 import Pml.Ast.Name (Ident (..), Slug, qnameToText, slugToText)
 import Pml.Ast.Pat (Literal (..))
+import Pml.Check.Env (TypeEnv)
+import Pml.Check.Error (renderCheckError)
+import Pml.Check.Schema (typeToSchema)
 import Pml.Eval.Error (EvalError (..))
 import Pml.Eval.Prelude (applyBuiltin)
 import Pml.Eval.Pure (bindParams, matchPat)
@@ -65,6 +68,8 @@ data RunCtx = RunCtx
     rcSections :: Map Slug Text,
     rcFuns :: FunTable,
     rcBaseEnv :: Env,
+    -- | Module type aliases for @schema(T)@ reflection at runtime.
+    rcTypeEnv :: TypeEnv,
     rcStore :: RunStore,
     rcProjectHash :: Text,
     rcSeq :: IORef Int,
@@ -1092,7 +1097,9 @@ crunchEval ctx m e env = case e of
     Just t -> ret m (VString t)
     Nothing -> Left (EvalErr (Trap ("unknown section: @" <> slugToText s)))
   EFun ps _ body -> ret m (VClosure ps body env)
-  ESchema {} -> Left (EvalErr (Unsupported "schema(T) is check-time only"))
+  ESchema te -> case typeToSchema ctx.rcTypeEnv te of
+    Left err -> Left (EvalErr (Trap (renderCheckError err)))
+    Right schema -> ret m (VSchema schema)
   ETry {} -> Left (EvalErr (Unsupported "try/catch is not available yet"))
   EList [] -> ret m (VList [])
   EList (x : xs) ->

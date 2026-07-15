@@ -7,16 +7,21 @@ module Pml.Llm.Simple
 where
 
 import Control.Exception (SomeException, try)
+import Data.Aeson qualified as Aeson
+import Data.ByteString.Lazy.Char8 qualified as BL
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import LLM.Core.Types (ChatResponse (..), ContentBlock (..), ToolDef (..))
 import LLM.Core.Types qualified as LLM
 import LLM.Core.Usage qualified as LLMUsage
 import LLM.Generate
   ( GenerateError (..),
+    GenerateErrorResult (..),
     GenRequest (..),
     ModelWithFallbacks (..),
     generateTextWithFallbacks,
+    genObjectUntyped,
     llmHooks,
     noHooks,
     defaultDebugHooks,
@@ -66,21 +71,37 @@ chatWithCatalog catalogPath req = do
                 grHooks = noHooks
               }
           models = ModelWithFallbacks model []
-      result <- generateTextWithFallbacks gr models
-      pure $ case result of
-        Left genErr -> Left (mapGenerateError genErr)
-        Right resp ->
-          let toolCalls = [fromLLMToolCall tc | ToolCallBlock tc <- resp.respContent]
-              finish =
-                if null toolCalls
-                  then FinishStop
-                  else FinishToolCalls
-           in Right
+      case req.chatResponseFormat of
+        Nothing -> do
+          result <- generateTextWithFallbacks gr models
+          pure $ case result of
+            Left genErr -> Left (mapGenerateError genErr)
+            Right resp ->
+              let toolCalls = [fromLLMToolCall tc | ToolCallBlock tc <- resp.respContent]
+                  finish =
+                    if null toolCalls
+                      then FinishStop
+                      else FinishToolCalls
+               in Right
+                    ProviderResult
+                      { prContent = resp.respText,
+                        prToolCalls = toolCalls,
+                        prUsage = fmap mapUsage resp.respUsage,
+                        prFinishReason = finish
+                      }
+        Just schema -> do
+          -- Structured object path: tools must stay empty (llm-simple contract).
+          let grObj = gr {grTools = []}
+          result <- genObjectUntyped grObj models schema
+          pure $ case result of
+            Left ger -> Left (mapGenerateError ger.gerError)
+            Right (val, usage) ->
+              Right
                 ProviderResult
-                  { prContent = resp.respText,
-                    prToolCalls = toolCalls,
-                    prUsage = fmap mapUsage resp.respUsage,
-                    prFinishReason = finish
+                  { prContent = TE.decodeUtf8 (BL.toStrict (Aeson.encode val)),
+                    prToolCalls = [],
+                    prUsage = Just (mapUsage usage),
+                    prFinishReason = FinishStop
                   }
 
 requestToTurns :: ChatRequest -> (Maybe Text, [LLM.Turn])

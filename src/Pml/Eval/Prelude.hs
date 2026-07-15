@@ -191,6 +191,8 @@ valueEq a b = case (a, b) of
   (_, VHostOp {}) -> Left (Trap "cannot compare host ops")
   (VToolSpec {}, _) -> Left (Trap "cannot compare tool specs")
   (_, VToolSpec {}) -> Left (Trap "cannot compare tool specs")
+  (VSchema {}, _) -> Left (Trap "cannot compare schemas")
+  (_, VSchema {}) -> Left (Trap "cannot compare schemas")
   (VSecret {}, _) -> Left (Trap "cannot compare secrets")
   (_, VSecret {}) -> Left (Trap "cannot compare secrets")
   (VUnit, VUnit) -> Right True

@@ -116,6 +116,7 @@ infer env = \case
     | isListLength f -> inferListLengthApp env args
     | isListConcat f -> inferListConcatApp env args
     | isJsonEncode f -> inferJsonEncodeApp env args
+    | isLlmObject f -> inferLlmObjectApp env args
     | EVar (Ident n) <- f,
       Just cls <- classifyOp n ->
         inferOverloadedApp env cls infer args
@@ -512,6 +513,24 @@ inferJsonEncodeApp env args = case classifyArgs args of
       Left (TypeMismatchMsg "json.encode requires a JSON-encodable value" ty' tString)
     pure tString
   _ -> Left (ArityMismatch 1 (length args))
+
+-- | @llm.object(..., schema = schema(T), ...)@ returns @T@ (E14); otherwise Json.
+isLlmObject :: Expr -> Bool
+isLlmObject = \case
+  EProj (EVar (Ident "llm")) (Ident "object") -> True
+  _ -> False
+
+inferLlmObjectApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferLlmObjectApp env args = do
+  ft <- infer env (EProj (EVar (Ident "llm")) (Ident "object"))
+  ret <- applyType env ft args
+  case schemaExpr args of
+    Just (ESchema te) -> resolveType env te
+    _ -> pure ret
+  where
+    schemaExpr as = case classifyArgs as of
+      Right (Named nes) -> lookup (Ident "schema") nes
+      _ -> Nothing
 
 tUnit, tBool, tInt, tFloat, tString, tToolSpec :: TypeExpr
 tUnit = TName (TypeName "Unit")

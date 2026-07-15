@@ -32,7 +32,7 @@ See also [08-llm-provider.md](08-llm-provider.md).
 |----|-------------------|
 | `llm.chat` | `(system?: String, prompt: String, model: String, …) -> String` |
 | `llm.chat_messages` | `(messages: List<Message>, model: String, …) -> String` |
-| `llm.object` | `(…, schema: Schema \| type param, model) -> T` |
+| `llm.object` | `(prompt: String, schema: Schema, model: String) -> T` when `schema = schema(T)` (else `Json`) |
 | `llm.agent` | `(system, prompt, tools: List<ToolSpec>, model, …) -> AgentResult` |
 
 Notes:

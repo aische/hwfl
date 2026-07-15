@@ -14,12 +14,14 @@ import Data.Aeson qualified as Aeson
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Pml.Ast.Module (Frontmatter (..), LoadedModule (..))
 import Pml.Ast.Name (Ident (..), qnameToText)
 import Pml.Check.Error (renderCheckError)
 import Pml.Check.Module (checkLoadedModule)
 import Pml.Check.Project (checkProject, renderProjectCheckError)
 import Pml.Eval.Value
+import Pml.Json.Encode (jsonToValue)
 import Pml.Llm.Provider (LlmProvider (..))
 import Pml.Llm.Types
   ( ChatRequest (..),
@@ -63,6 +65,7 @@ hostOpsEnv =
       ( Ident "llm",
         VRecord
           [ (Ident "chat", VHostOp HostLlmChat),
+            (Ident "object", VHostOp HostLlmObject),
             (Ident "agent", VHostOp HostLlmAgent)
           ]
       ),
@@ -99,6 +102,7 @@ runHostOp env op args = case op of
   HostMetaCheckModule -> doMetaCheckModule env args
   HostMetaCheckProject -> doMetaCheckProject env args
   HostLlmChat -> doLlmChat env args
+  HostLlmObject -> doLlmObject env args
   HostLlmAgent ->
     pure (Left (HostErr "llm.agent must be driven by the machine (agent loop)"))
   HostObsLog ->
@@ -244,6 +248,34 @@ doLlmChat env args = case parseChatArgs args of
               (llmCloseAttrs pr)
           )
 
+doLlmObject :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doLlmObject env args = case parseObjectArgs args of
+  Left e -> pure (Left e)
+  Right (prompt, schema, model) -> do
+    env.heLog ("llm.object model=" <> model)
+    let req =
+          (emptyChatRequest model)
+            { chatMessages = [Message RoleUser prompt],
+              chatResponseFormat = Just schema
+            }
+    result <- env.heProvider.llmChat req
+    pure $ case result of
+      Left pe -> Left (ProviderErr (renderProviderError pe))
+      Right pr -> case decodeJsonObject pr.prContent of
+        Left err -> Left (HostErr err)
+        Right val ->
+          Right
+            ( HostResult
+                val
+                (llmCloseAttrs pr)
+            )
+
+decodeJsonObject :: Text -> Either Text Value
+decodeJsonObject txt =
+  case Aeson.eitherDecodeStrict' (TE.encodeUtf8 txt) of
+    Left err -> Left ("llm.object: invalid JSON response: " <> T.pack err)
+    Right (v :: Aeson.Value) -> Right (jsonToValue v)
+
 llmCloseAttrs :: ProviderResult -> Aeson.Value
 llmCloseAttrs pr =
   object $
@@ -261,6 +293,19 @@ parseChatArgs args = do
   prompt <- expectString (Ident "prompt") args
   model <- expectString (Ident "model") args
   pure (system, prompt, model)
+
+parseObjectArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Aeson.Value, Text)
+parseObjectArgs args = do
+  prompt <- expectString (Ident "prompt") args
+  schema <- expectSchema (Ident "schema") args
+  model <- expectString (Ident "model") args
+  pure (prompt, schema, model)
+
+expectSchema :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError Aeson.Value
+expectSchema n args = case lookupNamed n args of
+  Just (VSchema v) -> Right v
+  Just _ -> Left (HostErr ("expected Schema for " <> unIdent n <> " (use schema(T))"))
+  Nothing -> Left (HostErr ("missing named argument: " <> unIdent n))
 
 expectString :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError Text
 expectString n args = case lookupNamed n args of

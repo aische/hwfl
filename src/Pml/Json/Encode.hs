@@ -52,3 +52,4 @@ valueToAeson = \case
   VBuiltin {} -> Aeson.String "<builtin>"
   VHostOp op -> Aeson.String ("<" <> hostOpName op <> ">")
   VToolSpec ts -> Aeson.String ("<tool:" <> ts.tvsName <> ">")
+  VSchema schema -> schema

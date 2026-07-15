@@ -23,6 +23,9 @@ import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Pml.Ast.Decl (Decl (..), ModuleBody (..))
 import Pml.Ast.Module (Frontmatter (..), LoadedModule (..), Section (..))
 import Pml.Ast.Name (Ident (..), Slug, qnameToText)
+import Pml.Check.Env (TypeEnv)
+import Pml.Check.Infer (inferModuleEnv)
+import Pml.Check.Prelude (preludeTypeEnv)
 import Pml.Eval.Error (EvalError (..))
 import Pml.Eval.Prelude (preludeEnv)
 import Pml.Eval.Pure (bindParams)
@@ -79,6 +82,12 @@ loadRunEnv (ModuleBody decls _) =
           (Map.union hostOpsEnv preludeEnv)
    in (env, table)
 
+-- | Type env for @schema(T)@ at runtime (aliases from the loaded module).
+loadTypeEnv :: ModuleBody -> TypeEnv
+loadTypeEnv body = case inferModuleEnv body of
+  Right env -> env
+  Left _ -> preludeTypeEnv
+
 -- | Ambient run context (spec §01 §4) injected at runtime only.
 mkCtxValue :: Text -> Text -> Value
 mkCtxValue runId started =
@@ -120,6 +129,7 @@ runLoadedModule opts loaded = do
   seqRef <- newIORef (0 :: Int)
   spans <- newSpanState
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
+      typeEnv = loadTypeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
       host =
         HostEnv
@@ -133,6 +143,7 @@ runLoadedModule opts loaded = do
             rcSections = sectionMap loaded,
             rcFuns = funs,
             rcBaseEnv = baseEnv,
+            rcTypeEnv = typeEnv,
             rcStore = store,
             rcProjectHash = hash,
             rcSeq = seqRef,
@@ -220,6 +231,7 @@ mkCtx ::
 mkCtx provider wsRoot loaded store hash runId started seqRef spans = do
   ws <- newWorkspace wsRoot
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
+      typeEnv = loadTypeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
       host =
         HostEnv
@@ -233,6 +245,7 @@ mkCtx provider wsRoot loaded store hash runId started seqRef spans = do
         rcSections = sectionMap loaded,
         rcFuns = funs,
         rcBaseEnv = baseEnv,
+        rcTypeEnv = typeEnv,
         rcStore = store,
         rcProjectHash = hash,
         rcSeq = seqRef,

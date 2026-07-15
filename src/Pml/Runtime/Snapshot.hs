@@ -734,6 +734,7 @@ valueToJson = \case
   V.VBuiltin b -> object ["tag" .= String "builtin", "op" .= showText b]
   V.VHostOp op -> object ["tag" .= String "host", "op" .= hostOpName op]
   V.VToolSpec ts -> object ["tag" .= String "tool_spec", "tool" .= toolSpecToJson ts]
+  V.VSchema schema -> object ["tag" .= String "schema", "v" .= schema]
 
 valueFromJson :: Aeson.Value -> Either String V.Value
 valueFromJson = parseEither parseValue
@@ -763,6 +764,7 @@ parseValue = withObject "Value" $ \o -> do
     "builtin" -> V.VBuiltin <$> (o .: "op" >>= readText)
     "host" -> V.VHostOp <$> (o .: "op" >>= parseHostOp)
     "tool_spec" -> V.VToolSpec <$> (o .: "tool" >>= parseToolSpec)
+    "schema" -> V.VSchema <$> o .: "v"
     other -> fail ("unknown value tag: " <> T.unpack other)
 
 parseHostOp :: Text -> Parser HostOpId
@@ -771,6 +773,7 @@ parseHostOp = \case
   "fs.write" -> pure HostFsWrite
   "fs.find" -> pure HostFsFind
   "llm.chat" -> pure HostLlmChat
+  "llm.object" -> pure HostLlmObject
   "llm.agent" -> pure HostLlmAgent
   "human.confirm" -> pure HostHumanConfirm
   "obs.log" -> pure HostObsLog

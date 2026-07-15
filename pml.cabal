@@ -135,6 +135,7 @@ test-suite pml-test
         Pml.Parse.TypeSpec
         Pml.Runtime.AgentSpec
         Pml.Runtime.ConcurrentSpec
+        Pml.Runtime.ObjectSpec
         Pml.Runtime.RunSpec
         Pml.Runtime.SemanticCheckSpec
         Pml.Runtime.WorkspaceSpec

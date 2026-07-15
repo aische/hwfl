@@ -109,6 +109,7 @@ llmType =
           (t "String")
       ),
       ( Ident "object",
+        -- Default result is Json; Infer special-cases schema = schema(T) → T (E14).
         TEffFun
           ( TRecord
               [ (Ident "prompt", t "String"),

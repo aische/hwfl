@@ -73,6 +73,7 @@ data HostOpId
   | HostFsWrite
   | HostFsFind
   | HostLlmChat
+  | HostLlmObject
   | HostLlmAgent
   | HostHumanConfirm
   | HostObsLog
@@ -111,6 +112,8 @@ data Value
     VHostOp HostOpId
   | -- | Agent tool spec from @tool(f)@.
     VToolSpec ToolSpecValue
+  | -- | Reflected JSON Schema from @schema(T)@ (check-time type @Schema@).
+    VSchema Aeson.Value
   deriving stock (Eq, Show)
 
 -- | Text rendering for string interpolation (hwfi §3.2.1 / types §3.1 subset).
@@ -139,6 +142,7 @@ renderValue = \case
   VBuiltin {} -> Left "cannot render a builtin as text"
   VHostOp op -> Left ("cannot render host op as text: " <> hostOpName op)
   VToolSpec ts -> Left ("cannot render tool spec as text: " <> ts.tvsName)
+  VSchema {} -> Left "cannot render a Schema as text"
 
 -- | Stable dotted name for spans / snapshots.
 hostOpName :: HostOpId -> Text
@@ -147,6 +151,7 @@ hostOpName = \case
   HostFsWrite -> "fs.write"
   HostFsFind -> "fs.find"
   HostLlmChat -> "llm.chat"
+  HostLlmObject -> "llm.object"
   HostLlmAgent -> "llm.agent"
   HostHumanConfirm -> "human.confirm"
   HostObsLog -> "obs.log"
