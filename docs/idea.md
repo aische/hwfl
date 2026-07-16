@@ -6,7 +6,7 @@ HTML and logic for the web. Inside those modules runs a **small ML-ish
 general-purpose language** with first-class LLM, filesystem, parallelism,
 human confirmation, and durable resume.
 
-Working name: **hwfl** (Prose ML). Rename at leisure.
+Working name: **hwfl** (originally plm, Prose ML). Rename at leisure.
 
 ## Problem
 
