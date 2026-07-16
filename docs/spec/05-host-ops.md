@@ -102,6 +102,18 @@ as long as host ops inside are correct.
 | `meta.read_spans` | query spans for a run **[defer]** |
 | `meta.read_snapshot` | **careful** — may expose secrets; redact **[defer]** |
 
+## 6.1 Skills (`Meta` / `Read`) — **[defer]**
+
+Progressive-disclosure skill catalog for agents. Full plan:
+[skills-plan.md](../skills-plan.md). Not implemented yet.
+
+| Op | Notes |
+|----|-------|
+| `skill.discover` | metadata filter over checked `skills/` catalog |
+| `skill.load` | instruction → agent context; callable → active tool set |
+
+Do not treat `fs.read` of `skills/*.md` as a substitute inside agents.
+
 `meta.check_module` signature (sketch):
 
 ```text

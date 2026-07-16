@@ -120,6 +120,10 @@ model_call → (tool_call → tool_result →)* → final
 Each model/tool call is snapshotted. Tools invoke ordinary functions /
 host ops under the agent frame.
 
+**Skills (planned):** mid-loop `skill.load` may expand the active tool set
+(callable) or append instruction context; checkpoints must record loaded
+ids for resume. See [skills-plan.md](../skills-plan.md).
+
 ## 7. Workspace & sandbox
 
 Identical intent to hwfi:

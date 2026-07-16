@@ -15,7 +15,9 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Later
 
-(empty)
+- [ ] Skills (full plan: [skills-plan.md](skills-plan.md)) — catalog +
+      `skill.discover` / `skill.load`, agent mid-loop load + resume;
+      extraction dogfood optional
 
 ## Done
 

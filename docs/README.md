@@ -15,6 +15,7 @@ Start sessions from [STATUS.md](STATUS.md) and [TASKS.md](TASKS.md).
 | [TASKS.md](TASKS.md)                   | Active backlog only              |
 | [architecture.md](architecture.md)     | Layers, components, boundaries   |
 | [hwfi-reference.md](hwfi-reference.md) | What to reuse / avoid from hwfi  |
+| [skills-plan.md](skills-plan.md)       | Planned skills catalog + agent load |
 | [log/](log/)                           | Decision / milestone log         |
 | [spec/](spec/)                         | Normative specification          |
 | [examples/](examples/)                 | Design examples (contracts)      |

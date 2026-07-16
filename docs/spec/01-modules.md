@@ -9,6 +9,7 @@ model-catalog.json          # required once LLM is used
 workflows/
   main.md
 tools/                      # optional callable modules
+skills/                     # optional agent skills — [defer]; see skills-plan.md
 types/                      # optional shared type alias modules
 lib/                        # optional libraries
 ```

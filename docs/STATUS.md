@@ -27,7 +27,8 @@ None.
 
 1. Streaming LLM spans
 2. Optional DB-backed run store
-3. Alternate `LlmProvider` backends remain low priority
+3. Skills (planned only — see [skills-plan.md](skills-plan.md); implement later)
+4. Alternate `LlmProvider` backends remain low priority
 
 ## Open naming
 

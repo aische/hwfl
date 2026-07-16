@@ -18,6 +18,7 @@ not contradict it.
 | Agent tool loop states          | `MachineAgent`, agent `Current`                    | Reify as frames/current in new machine                             |
 | Project load / check pipeline   | Parse → Check → Run                                | Keep fail-closed `check`                                           |
 | Merkle / project hash staleness | refuse resume on project change                    | Same policy                                                        |
+| Skills catalog + discover/load  | `docs/skills-design.md`, §6.6–§6.7, `SkillCatalog` | Progressive disclosure; plan: [skills-plan.md](skills-plan.md)     |
 
 ## Do **not** copy as-is
 

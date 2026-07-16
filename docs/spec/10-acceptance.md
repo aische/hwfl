@@ -73,6 +73,8 @@
 - [x] `llm.agent_object` + submit tool
 - [x] Polymorphic `obs.span` check type (E16)
 - [ ] Alternate `LlmProvider` adapter — low priority swap proof
+- [ ] Skills catalog + `skill.discover` / `skill.load` + agent resume
+      (plan: [skills-plan.md](../skills-plan.md))
 
 ## 3. v0 release gate
 
@@ -81,6 +83,8 @@ default substrate for all new agent work vs hwfi:
 
 - **Ongoing fitness:** resume, span comprehension, semantic-check-class ergonomics
 - **Deferred / low priority:** second LLM provider adapter (interface already exists)
+- **Planned post-v0 / later:** skills progressive disclosure
+  ([skills-plan.md](../skills-plan.md))
 
 ## 4. Explicit non-acceptance
 
