@@ -4,7 +4,8 @@ Last updated: 2026-07-16
 
 ## Current focus
 
-**CLI ergonomics** — `.env` auto-load for provider keys.
+**Schema-guided LLM UX** — enrich builtin tool schemas with parameter
+descriptions and allow optional markdown-backed schema field docs.
 
 ## Done recently
 
@@ -19,8 +20,11 @@ None.
 
 ## Next up
 
-1. Streaming LLM spans
-2. Optional DB-backed run store
+1. Add parameter descriptions to builtin agent tools
+2. Allow optional `## schema Typename` sections in module markdown for
+   `schema(T)` field descriptions
+3. Streaming LLM spans
+4. Optional DB-backed run store
 
 **Deprioritized:** alternate `LlmProvider` backends — interface is stable; llm-simple
 + mock suffice until much later.

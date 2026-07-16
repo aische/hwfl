@@ -4,6 +4,9 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now
 
+- [ ] Add parameter descriptions to builtin agent tools
+- [ ] Allow optional `## schema Typename` sections in module markdown for
+  `schema(T)` field descriptions
 - [ ] Streaming LLM spans
 - [ ] Optional DB-backed run store (hwfi M5 analogue)
 
