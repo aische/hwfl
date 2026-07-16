@@ -5,10 +5,15 @@ module Pml.Parse.Load
   )
 where
 
+import Control.Applicative ((<|>))
+import Control.Monad (guard)
+import Data.List (dropWhileEnd)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Pml.Ast.Module (LoadedModule (..))
+import Pml.Ast.Module (LoadedModule (..), SchemaDoc (..), Section (..))
+import Pml.Ast.Name (Ident (..), TypeName (..))
 import Pml.Parse.Frontmatter (parseFrontmatter)
 import Pml.Parse.Lexer (bundleToDiagnostics)
 import Pml.Parse.Markdown (MarkdownFile (..), MdFence (..), parseMarkdown)
@@ -33,11 +38,13 @@ loadModuleText path src = do
     Left bundle -> Left (bundleToDiagnostics path bundle)
     Right b -> Right b
   let sections = buildSections md.mdLines md.mdHeadings md.mdFences
+      schemaDocs = mapMaybe schemaDocSection sections
   pure
     LoadedModule
       { lmPath = path,
         lmFrontmatter = fm,
         lmSections = sections,
+        lmSchemaDocs = schemaDocs,
         lmBody = body
       }
 
@@ -52,3 +59,62 @@ exactlyOnePmlFence path fences =
       case T.words (T.strip f.mfInfo) of
         ("pml" : _) -> True
         _ -> False
+
+schemaDocSection :: Section -> Maybe SchemaDoc
+schemaDocSection sec = do
+  tyName <- schemaTitleTypeName sec.secTitle
+  pure
+    SchemaDoc
+      { sdTypeName = tyName,
+        sdFieldDocs = parseFieldDocs sec.secBody
+      }
+
+schemaTitleTypeName :: Text -> Maybe TypeName
+schemaTitleTypeName title = case T.words (T.strip title) of
+  ["schema", typeName] -> Just (TypeName typeName)
+  _ -> Nothing
+
+parseFieldDocs :: Text -> [(Ident, Text)]
+parseFieldDocs body = go [] Nothing (T.lines body)
+  where
+    go acc Nothing [] = reverse acc
+    go acc (Just (name, descLines)) [] =
+      reverse ((Ident name, finishDesc descLines) : acc)
+    go acc current (line : rest) =
+      case parseBullet line of
+        Just (name, desc) ->
+          let acc' = flush acc current
+           in go acc' (Just (name, [desc])) rest
+        Nothing -> case current of
+          Just (name, descLines) ->
+            go acc (Just (name, descLines ++ [T.strip line])) rest
+          Nothing ->
+            go acc Nothing rest
+
+    flush acc = \case
+      Just (name, descLines) -> (Ident name, finishDesc descLines) : acc
+      Nothing -> acc
+
+    finishDesc =
+      T.strip
+        . T.intercalate "\n"
+        . dropWhileEnd T.null
+        . dropWhile T.null
+
+parseBullet :: Text -> Maybe (Text, Text)
+parseBullet line = do
+  rest0 <- stripBullet (T.stripStart line)
+  let (name0, desc0) = T.breakOn ":" rest0
+  guard (not (T.null desc0))
+  let name = stripCodeTicks (T.strip name0)
+  guard (not (T.null name))
+  pure (name, T.strip (T.drop 1 desc0))
+  where
+    stripBullet t =
+      T.stripPrefix "- " t
+        <|> T.stripPrefix "* " t
+        <|> T.stripPrefix "-\t" t
+        <|> T.stripPrefix "*\t" t
+    stripCodeTicks t =
+      fromMaybe t $
+        T.stripPrefix "`" t >>= \inner -> T.stripSuffix "`" inner

@@ -2,13 +2,14 @@
 module Pml.Ast.Module
   ( Frontmatter (..),
     Section (..),
+    SchemaDoc (..),
     LoadedModule (..),
   )
 where
 
 import Data.Text (Text)
 import Pml.Ast.Decl (ModuleBody)
-import Pml.Ast.Name (Ident, QName, Slug)
+import Pml.Ast.Name (Ident, QName, Slug, TypeName)
 import Pml.Ast.Type (Effect, TypeExpr)
 
 data Frontmatter = Frontmatter
@@ -29,10 +30,17 @@ data Section = Section
   }
   deriving stock (Eq, Show)
 
+data SchemaDoc = SchemaDoc
+  { sdTypeName :: TypeName,
+    sdFieldDocs :: [(Ident, Text)]
+  }
+  deriving stock (Eq, Show)
+
 data LoadedModule = LoadedModule
   { lmPath :: FilePath,
     lmFrontmatter :: Frontmatter,
     lmSections :: [Section],
+    lmSchemaDocs :: [SchemaDoc],
     lmBody :: ModuleBody
   }
   deriving stock (Eq, Show)

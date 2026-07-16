@@ -21,11 +21,12 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Pml.Ast.Expr
+import Pml.Ast.Module (SchemaDoc)
 import Pml.Ast.Name (Ident (..), Slug, qnameToText, slugToText)
 import Pml.Ast.Pat (Literal (..))
 import Pml.Check.Env (TypeEnv)
 import Pml.Check.Error (renderCheckError)
-import Pml.Check.Schema (typeToSchema)
+import Pml.Check.Schema (typeToSchemaWithDocs)
 import Pml.Eval.Error (EvalError (..))
 import Pml.Eval.Prelude (applyBuiltin)
 import Pml.Eval.Pure (bindParams, matchPat)
@@ -76,6 +77,7 @@ data RunCtx = RunCtx
     rcBaseEnv :: Env,
     -- | Module type aliases for @schema(T)@ reflection at runtime.
     rcTypeEnv :: TypeEnv,
+    rcSchemaDocs :: [SchemaDoc],
     rcStore :: RunStore,
     rcProjectHash :: Text,
     rcSeq :: IORef Int,
@@ -1287,7 +1289,7 @@ crunchEval ctx m e env = case e of
     Just t -> ret m (VString t)
     Nothing -> Left (EvalErr (Trap ("unknown section: @" <> slugToText s)))
   EFun ps _ body -> ret m (VClosure ps body env)
-  ESchema te -> case typeToSchema ctx.rcTypeEnv te of
+  ESchema te -> case typeToSchemaWithDocs ctx.rcTypeEnv ctx.rcSchemaDocs te of
     Left err -> Left (EvalErr (Trap (renderCheckError err)))
     Right schema -> ret m (VSchema schema)
   ETry {} -> Left (EvalErr (Unsupported "try/catch is not available yet"))

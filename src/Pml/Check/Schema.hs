@@ -1,17 +1,22 @@
 -- | Reflect a type expression as JSON Schema (types §4).
 module Pml.Check.Schema
   ( typeToSchema,
+    typeToSchemaWithDocs,
     schemaType,
   )
 where
 
 import Data.Aeson (Value (..), object, (.=))
 import Data.Aeson.Key qualified as Key
+import Data.Aeson.KeyMap qualified as KM
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Vector qualified as V
 import Pml.Ast.Name (Ident (..), TypeName (..))
+import Pml.Ast.Module (SchemaDoc (..))
 import Pml.Ast.Type (TypeExpr (..))
-import Pml.Check.Env (TypeEnv, resolveType)
+import Pml.Check.Env (TypeEnv, isPrimitive, lookupAlias)
 import Pml.Check.Error (CheckError (..))
 
 -- | Type of @schema(T)@ expressions.
@@ -20,17 +25,31 @@ schemaType = TName (TypeName "Schema")
 
 -- | Compile-time JSON Schema for records, lists, and base types.
 typeToSchema :: TypeEnv -> TypeExpr -> Either CheckError Value
-typeToSchema env te = do
-  t <- resolveType env te
-  go t
+typeToSchema env = typeToSchemaWithDocs env []
+
+typeToSchemaWithDocs :: TypeEnv -> [SchemaDoc] -> TypeExpr -> Either CheckError Value
+typeToSchemaWithDocs env docs te = go [] te
   where
-    go = \case
-      TName (TypeName n) -> baseSchema n
+    fieldDocMap =
+      Map.fromList
+        [ (tyName, Map.fromList fieldDocs)
+          | SchemaDoc tyName fieldDocs <- docs
+        ]
+
+    go stack = \case
+      TName tyName
+        | isPrimitive tyName -> baseSchema (unTypeName tyName)
+        | tyName `elem` stack -> Left (AliasCycle (reverse (tyName : stack)))
+        | otherwise -> case lookupAlias tyName env of
+            Nothing -> Left (UnboundType tyName)
+            Just t -> do
+              schema <- go (tyName : stack) t
+              pure (annotateFields tyName schema)
       TList e -> do
-        items <- go e
+        items <- go stack e
         pure $ object ["type" .= String "array", "items" .= items]
       TOption e -> do
-        inner <- go e
+        inner <- go stack e
         pure $
           object
             [ "anyOf"
@@ -42,8 +61,8 @@ typeToSchema env te = do
                   )
             ]
       TResult a b -> do
-        ok <- go a
-        err <- go b
+        ok <- go stack a
+        err <- go stack b
         pure $
           object
             [ "oneOf"
@@ -62,9 +81,9 @@ typeToSchema env te = do
                       ]
                   )
             ]
-      TSecret e -> go e
+      TSecret e -> go stack e
       TRecord fs -> do
-        propPairs <- traverse (\(Ident k, ty) -> (k,) <$> go ty) fs
+        propPairs <- traverse (\(Ident k, ty) -> (k,) <$> go stack ty) fs
         let required = arrStr [k | (Ident k, _) <- fs]
             props = object [Key.fromText k .= v | (k, v) <- propPairs]
         pure $
@@ -77,8 +96,28 @@ typeToSchema env te = do
       TFun {} -> Left (SchemaUnsupported te)
       TEffFun {} -> Left (SchemaUnsupported te)
 
+    annotateFields tyName schema = case Map.lookup tyName fieldDocMap of
+      Just docsForType -> applyFieldDocs docsForType schema
+      Nothing -> schema
+
 arrStr :: [Text] -> Value
 arrStr xs = Array (V.fromList (map String xs))
+
+applyFieldDocs :: Map Ident Text -> Value -> Value
+applyFieldDocs docs = \case
+  Object o -> case KM.lookup "properties" o of
+    Just (Object props) ->
+      Object (KM.insert "properties" (Object (foldr annotateOne props (Map.toList docs))) o)
+    _ -> Object o
+  other -> other
+  where
+    annotateOne (Ident field, desc) props = case KM.lookup (Key.fromText field) props of
+      Just (Object fieldSchema) ->
+        KM.insert
+          (Key.fromText field)
+          (Object (KM.insert "description" (String desc) fieldSchema))
+          props
+      _ -> props
 
 baseSchema :: Text -> Either CheckError Value
 baseSchema = \case

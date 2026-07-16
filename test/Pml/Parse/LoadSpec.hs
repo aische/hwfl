@@ -26,6 +26,12 @@ summariseMd =
       "",
       "You are a concise summariser.",
       "",
+      "## schema Output",
+      "",
+      "- `summary`: One sentence summary.",
+      "- score: Quality score.",
+      "  Keep this terse.",
+      "",
       "## body",
       "",
       "```pml",
@@ -49,10 +55,18 @@ spec = describe "markdown module loader" $ do
         fmName (lmFrontmatter loaded) `shouldBe` qnameFromParts ["workflows", "summarise"]
         fmEffects (lmFrontmatter loaded) `shouldBe` Just [EffRead, EffNet]
         map secSlug (lmSections loaded)
-          `shouldBe` [Slug "system", Slug "body"]
+          `shouldBe` [Slug "system", Slug "schema-output", Slug "body"]
         case lookupSection "system" (lmSections loaded) of
           Just s -> secBody s `shouldBe` "You are a concise summariser."
           Nothing -> expectationFailure "missing system section"
+        lmSchemaDocs loaded
+          `shouldBe`
+            [ SchemaDoc
+                (TypeName "Output")
+                [ (Ident "summary", "One sentence summary."),
+                  (Ident "score", "Quality score.\nKeep this terse.")
+                ]
+            ]
         case lookupSection "body" (lmSections loaded) of
           Just s -> secBody s `shouldBe` ""
           Nothing -> expectationFailure "missing body section"
