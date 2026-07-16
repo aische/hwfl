@@ -1,7 +1,6 @@
 # New project documentation pack
 
-Provisional working name: **hwfl** (Prose ML) — rename freely when the
-greenfield repo is created.
+Provisional working name: **hwfl** (Haskell workflow language - although it looks more like ML, but implemented in Haskell)
 
 This folder is **`docs/`** in the hwfl repository. Keep the **hwfi** repo
 nearby as a behavioural / design reference (see [hwfi-reference.md](hwfi-reference.md)).
