@@ -121,7 +121,7 @@ spec = describe "runtime agent (M7)" $ do
                                   "description" .= ("Workspace-relative file path to read" :: Text)
                                 ]
                           ],
-                      "required" .= [("path" :: Text)],
+                      "required" .= ["path" :: Text],
                       "additionalProperties" .= False
                     ],
                 tvsCallee = VHostOp HostFsRead
@@ -149,7 +149,7 @@ spec = describe "runtime agent (M7)" $ do
                                   "description" .= ("UTF-8 text content to write to the file" :: Text)
                                 ]
                           ],
-                      "required" .= [("path" :: Text), ("text" :: Text)],
+                      "required" .= ["path" :: Text, "text" :: Text],
                       "additionalProperties" .= False
                     ],
                 tvsCallee = VHostOp HostFsWrite

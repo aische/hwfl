@@ -1,10 +1,12 @@
 module Main where
 
+import Control.Monad (unless)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Pml.Ast.Name (Ident (..))
 import Pml.Ast.Module (LoadedModule (lmBody))
+import Pml.Ast.Name (Ident (..))
 import Pml.Ast.Pretty (prettyModuleBody)
 import Pml.Check.Error (renderCheckError)
 import Pml.Check.Module (checkLoadedModule)
@@ -14,6 +16,7 @@ import Pml.Eval.Value (Value, renderValue)
 import Pml.Llm.Mock (mockProvider)
 import Pml.Llm.Provider (LlmProvider (..))
 import Pml.Llm.Simple (mkSimpleProvider)
+import Pml.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Pml.Parse.Load (loadModule)
 import Pml.Project
   ( LoadedProject (..),
@@ -26,7 +29,6 @@ import Pml.Project
 import Pml.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Pml.Runtime.Eval (StepMode (..))
 import Pml.Runtime.Machine (MachineStatus (..))
-import Pml.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Pml.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
@@ -131,7 +133,7 @@ cmdRun rest = case parseRunFlags rest of
             (False, Just p) -> flags0 {rfProvider = p}
             (False, Nothing) -> flags0
     cwd <- getCurrentDirectory
-    let ws = maybe cwd id flags.rfWorkspace
+    let ws = fromMaybe cwd flags.rfWorkspace
     inputs <- case parseCliInputs flags.rfInputs of
       Left err -> do
         TIO.hPutStrLn stderr (renderRuntimeError err)
@@ -263,9 +265,6 @@ dieUsage :: String -> IO ()
 dieUsage msg = do
   hPutStrLn stderr msg
   exitWith (ExitFailure 2)
-
-unless :: Bool -> IO () -> IO ()
-unless b a = if b then pure () else a
 
 resolveProvider :: String -> FilePath -> IO LlmProvider
 resolveProvider name catalog = case name of

@@ -25,6 +25,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
@@ -92,7 +93,7 @@ hostToolMeta = \case
       ( "fs_read",
         "Read a UTF-8 text file from the workspace",
         describedObjectSchema
-          [ ("path", t "FileRef", "Workspace-relative file path to read") ]
+          [("path", t "FileRef", "Workspace-relative file path to read")]
       )
   HostFsWrite ->
     Right
@@ -146,7 +147,7 @@ annotateProperties descs = \case
   Aeson.Object o ->
     let props = case KM.lookup "properties" o of
           Just (Aeson.Object ps) -> Aeson.Object (foldr addDescription ps descs)
-          other -> maybe (object []) id other
+          other -> fromMaybe (object []) other
      in Aeson.Object (KM.insert "properties" props o)
   other -> other
   where
@@ -292,7 +293,7 @@ expectString n args = case lookupNamed n args of
   Nothing -> Left (HostErr ("missing named argument: " <> unIdent n))
 
 lookupNamed :: Ident -> [(Maybe Ident, Value)] -> Maybe Value
-lookupNamed n args = lookup (Just n) args
+lookupNamed n = lookup (Just n)
 
 -- | Coerce model JSON arguments into runtime call args for a tool callee.
 coerceToolArgs :: ToolSpecValue -> Aeson.Value -> Either Text [(Maybe Ident, Value)]
