@@ -6,7 +6,7 @@ HTML and logic for the web. Inside those modules runs a **small ML-ish
 general-purpose language** with first-class LLM, filesystem, parallelism,
 human confirmation, and durable resume.
 
-Working name: **pml** (Prose ML). Rename at leisure.
+Working name: **hwfl** (Prose ML). Rename at leisure.
 
 ## Problem
 
@@ -62,7 +62,7 @@ We want language-level ergonomics **and** document-shaped authoring.
 ## Relationship to hwfi
 
 hwfi proved: markdown projects, type-checked load, resume frames, `par` +
-confirm, tools/skills/trace introspection. It failed as a *general*
+confirm, tools/skills/trace introspection. It failed as a _general_
 language (expression sub-language too weak; logic → micro-tools).
 
 **Reuse ideas and machine shape from hwfi; do not reuse the step DSL as
@@ -74,6 +74,6 @@ An author (human or agent) can write a non-trivial multi-step agent
 pipeline — including parallelism, human gates, and structured LLM JSON —
 in a handful of markdown modules, resume after crash mid-LLM-call, and
 inspect a span tree of what ran. **M8 showed this:** hwfi’s
-`semantic-check` (~74 tool files) collapsed to **one** pml module
+`semantic-check` (~74 tool files) collapsed to **one** hwfl module
 (`examples/semantic-check`) with the same layered review policy — proof
 the GP language replaces micro-tool fan-out.

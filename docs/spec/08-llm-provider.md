@@ -8,7 +8,7 @@ engine must not depend on that package directly.
 
 It must be possible to swap in a more production-ready client (official
 SDKs, gateway proxies, retry/backoff middleware, observability hooks)
-without changing pml modules.
+without changing hwfl modules.
 
 ## 2. Interface (`LlmProvider`)
 
@@ -37,23 +37,23 @@ invalid request, other).
 
 ### 2.1 Message / tool types
 
-Engine-owned ADTs in `Pml.Llm.Types` — **not** re-exported llm-simple
+Engine-owned ADTs in `Hwfl.Llm.Types` — **not** re-exported llm-simple
 types into Eval. Adapters convert both ways.
 
 ## 3. Wiring
 
 ```text
-pml run
+hwfl run
   → load model-catalog.json
   → select LlmProvider implementation (config / flag)
   → inject into HostEnv
   → llm.* host ops call Provider only
 ```
 
-Default: `Pml.Llm.Simple` wrapping llm-simple.
+Default: `Hwfl.Llm.Simple` wrapping llm-simple.
 
 Escape hatch: `--llm-provider=simple|…` or `project.json` /
-env `PML_LLM_PROVIDER`.
+env `HWFL_LLM_PROVIDER`.
 
 ## 4. Model catalog
 
@@ -72,11 +72,11 @@ may ignore llm-simple entirely but still honor the catalog.
 
 ## 5. Responsibilities split
 
-| Layer | Owns |
-|-------|------|
-| Host `llm.*` | typing, effects, spans, schema reflection, agent frame loop |
-| `LlmProvider` | HTTP/SDK, auth headers, raw retries if desired |
-| Catalog | model alias → provider route |
+| Layer         | Owns                                                        |
+| ------------- | ----------------------------------------------------------- |
+| Host `llm.*`  | typing, effects, spans, schema reflection, agent frame loop |
+| `LlmProvider` | HTTP/SDK, auth headers, raw retries if desired              |
+| Catalog       | model alias → provider route                                |
 
 Retries: **either** in the provider **or** in the host — pick one place
 in M4 and document. Recommendation: basic retries in provider adapter;
@@ -96,5 +96,5 @@ is what v0 guarantees.
 ## 7. Non-goals
 
 - Supporting every vendor surface area in v0
-- Exposing raw SDK types to pml authors
+- Exposing raw SDK types to hwfl authors
 - Hot-swapping provider mid-run (forbidden; config at start)

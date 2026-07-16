@@ -1,0 +1,157 @@
+cabal-version:      3.0
+name:               hwfl
+version:            0.1.0.0
+synopsis:           Markdown modules over a small typed ML kernel
+description:        A command-line engine that loads markdown modules,
+                    checks a small typed ML kernel, and evaluates with
+                    durable host-effect transitions.
+license:            BSD-3-Clause
+author:             Daniel van den Eijkel
+maintainer:         1515314+aische@users.noreply.github.com
+category:           Development
+build-type:         Simple
+
+common opts
+    default-language: GHC2021
+    default-extensions:
+        DerivingStrategies
+        LambdaCase
+        OverloadedStrings
+        OverloadedRecordDot
+    ghc-options:
+        -Wall
+        -Wunused-imports
+        -Werror=missing-fields
+
+library
+    import:           opts
+    hs-source-dirs:   src
+    exposed-modules:
+        Hwfl.Ast.Decl
+        Hwfl.Ast.Expr
+        Hwfl.Ast.Module
+        Hwfl.Ast.Name
+        Hwfl.Ast.Pat
+        Hwfl.Ast.Pretty
+        Hwfl.Ast.Type
+        Hwfl.Check.Effects
+        Hwfl.Check.Env
+        Hwfl.Check.Error
+        Hwfl.Check.Infer
+        Hwfl.Check.Module
+        Hwfl.Check.Overload
+        Hwfl.Check.Prelude
+        Hwfl.Check.Project
+        Hwfl.Check.Schema
+        Hwfl.Eval.Error
+        Hwfl.Eval.Module
+        Hwfl.Eval.Prelude
+        Hwfl.Eval.Pure
+        Hwfl.Eval.Value
+        Hwfl.Env
+        Hwfl.Llm.Mock
+        Hwfl.Llm.Provider
+        Hwfl.Llm.Simple
+        Hwfl.Llm.Types
+        Hwfl.Obs.Redact
+        Hwfl.Obs.Show
+        Hwfl.Obs.Span
+        Hwfl.Obs.Trace
+        Hwfl.Json.Encode
+        Hwfl.Project
+        Hwfl.Text.Corpus
+        Hwfl.Text.Markdown
+        Hwfl.Parse.Expr
+        Hwfl.Parse.Frontmatter
+        Hwfl.Parse.Lexer
+        Hwfl.Parse.Load
+        Hwfl.Parse.Markdown
+        Hwfl.Parse.Module
+        Hwfl.Parse.Pat
+        Hwfl.Parse.Section
+        Hwfl.Parse.Type
+        Hwfl.Runtime.Agent
+        Hwfl.Runtime.Error
+        Hwfl.Runtime.Eval
+        Hwfl.Runtime.Host
+        Hwfl.Runtime.Machine
+        Hwfl.Runtime.Run
+        Hwfl.Runtime.Snapshot
+        Hwfl.Runtime.Workspace
+        Hwfl.Source
+    build-depends:
+        base                 ^>=4.18,
+        aeson                >=2.0  && <2.3,
+        bytestring           >=0.11 && <0.13,
+        commonmark           >=0.2  && <0.3,
+        containers           ^>=0.6.7,
+        dotenv               >=0.11 && <0.12,
+        directory            >=1.3  && <1.4,
+        filepath             >=1.4  && <1.6,
+        llm-simple           ^>=0.1.0.1,
+        megaparsec           >=9.0  && <10,
+        parsec               >=3.1  && <3.2,
+        parser-combinators   >=1.2  && <1.4,
+        text                 >=1.2  && <2.2,
+        time                 >=1.11 && <1.15,
+        vector               >=0.12 && <0.14,
+        yaml                 >=0.11 && <0.12
+
+executable hwfl
+    import:           opts
+    hs-source-dirs:   app
+    main-is:          Main.hs
+    ghc-options:
+        -threaded
+        -rtsopts
+        "-with-rtsopts=-N"
+    build-depends:
+        base,
+        containers,
+        directory,
+        hwfl,
+        text
+
+test-suite hwfl-test
+    import:           opts
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Spec.hs
+    ghc-options:
+        -threaded
+        -rtsopts
+        "-with-rtsopts=-N"
+        -main-is Spec
+    other-modules:
+        Hwfl.Ast.PrettySpec
+        Hwfl.Check.ModuleSpec
+        Hwfl.Check.ProjectSpec
+        Hwfl.Check.SchemaSpec
+        Hwfl.Eval.PureSpec
+        Hwfl.Llm.ProviderSpec
+        Hwfl.Obs.SpanSpec
+        Hwfl.Parse.ExprSpec
+        Hwfl.Parse.LoadSpec
+        Hwfl.Parse.ModuleSpec
+        Hwfl.Parse.SectionSpec
+        Hwfl.Parse.TypeSpec
+        Hwfl.Runtime.AgentSpec
+        Hwfl.Runtime.AgentObjectSpec
+        Hwfl.Runtime.ConcurrentSpec
+        Hwfl.Runtime.ObjectSpec
+        Hwfl.Runtime.RunSpec
+        Hwfl.Runtime.SemanticCheckSpec
+        Hwfl.Runtime.WorkspaceSpec
+    build-depends:
+        base,
+        hwfl,
+        aeson,
+        bytestring,
+        containers,
+        directory,
+        filepath,
+        hspec                >=2.10 && <2.12,
+        megaparsec,
+        temporary            >=1.3  && <1.4,
+        text,
+        vector

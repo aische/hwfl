@@ -2,11 +2,11 @@
 name: workflows/b
 effects: []
 imports:
-  - workflows/a
+    - workflows/a
 ---
 
 ## body
 
-```pml
+```hwfl
 fun pong(_: Unit): Int = 2
 ```

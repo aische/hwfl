@@ -2,9 +2,9 @@
 name: workflows/agent-object
 inputs: {}
 outputs:
-  summary: String
-  score: Int
-  rounds: Int
+    summary: String
+    score: Int
+    rounds: Int
 effects: [Read, Net]
 ---
 
@@ -20,7 +20,7 @@ Never mix submit with other tool calls in the same round.
 
 ## body
 
-```pml
+```hwfl
 type Out = { summary: String, score: Int }
 
 fun search(q: String): String =

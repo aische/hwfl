@@ -14,7 +14,7 @@ streaming LLM spans.
   markdown sections for named aliases; parser + runtime reflection tests added
 - Builtin agent tools now advertise per-parameter JSON Schema descriptions
   (`fs.read.path`, `fs.write.path`, `fs.write.text`); regression test added
-- CLI loads `.env` from cwd at startup (`Pml.Env.loadDotenv`); missing or
+- CLI loads `.env` from cwd at startup (`Hwfl.Env.loadDotenv`); missing or
   unreadable files are ignored
 - Polymorphic `obs.span` complete (E16)
 - `llm.agent_object` with `schema(Out)` → `{ value: Out, rounds: Int }`
@@ -31,4 +31,4 @@ None.
 
 ## Open naming
 
-Working title **pml** / CLI `pml` / fence `pml` is provisional.
+Working title **hwfl** / CLI `hwfl` / fence `hwfl` is provisional.

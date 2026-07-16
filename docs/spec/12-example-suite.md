@@ -13,7 +13,7 @@ Legend: **P** = pure, **H** = host, **R** = resume-sensitive, **C** = confirm,
 
 ## E01 — Hello pure **P**
 
-```pml
+```hwfl
 fun main(_): { msg: String } =
   { msg = "hello" }
 ```
@@ -22,7 +22,7 @@ Spans: module only. Snapshots: entry/return optional.
 
 ## E02 — Let / match **P**
 
-```pml
+```hwfl
 fun pick(xs: List<Int>): Int =
   match xs with
   | [] => 0
@@ -54,7 +54,7 @@ Decode optional fields without null feet-guns.
 
 ## E07 — `par` map **H** **R**
 
-```pml
+```hwfl
 par(max = 4) for p in paths {
   fs.read(p)
 }
@@ -64,7 +64,7 @@ Ordered results; resume mid-pool restores slots.
 
 ## E08 — `par` + confirm **C** **R**
 
-Branch calls `exec.run` → confirm freezes pool. `pml approve --yes`
+Branch calls `exec.run` → confirm freezes pool. `hwfl approve --yes`
 continues.
 
 ## E09 — `join` two tasks **H**
@@ -81,7 +81,7 @@ Force provider failure; catch; return fallback string.
 
 ## E12 — Effect rejected **check**
 
-Module declares `effects: [Read]` but calls `llm.chat` ⇒ `pml check` fails.
+Module declares `effects: [Read]` but calls `llm.chat` ⇒ `hwfl check` fails.
 
 ## E13 — Exec allowlist **check/runtime**
 
@@ -89,14 +89,14 @@ Module declares `effects: [Read]` but calls `llm.chat` ⇒ `pml check` fails.
 
 ## E14 — `llm.object` + schema **H**
 
-```pml
+```hwfl
 type Out = { summary: String, score: Int }
 llm.object(..., schema = schema(Out), model = …) : Out
 ```
 
 **Shipped:** check infers `Out` when `schema = schema(Out)`; runtime host op +
 mock/simple providers via `chatResponseFormat`. Fixture:
-`test/Pml/Runtime/ObjectSpec.hs`.
+`test/Hwfl/Runtime/ObjectSpec.hs`.
 
 ## E15 — Agent with tools **A** **R**
 
@@ -105,20 +105,20 @@ model/tool rounds.
 
 ## E15b — Typed agent + submit **A** **R**
 
-```pml
+```hwfl
 type Out = { summary: String, score: Int }
 llm.agent_object(..., schema = schema(Out), tools = [...], …)
   : { value: Out, rounds: Int }
 ```
 
 Model gathers with tools then must call synthetic `submit` alone. Fixture:
-`test/Pml/Runtime/AgentObjectSpec.hs`; example `examples/agent-object.md`.
+`test/Hwfl/Runtime/AgentObjectSpec.hs`; example `examples/agent-object.md`.
 
 ## E16 — `obs.span` region **H**
 
 User span wraps a thunk; result type is the body type (not forced to Unit).
 Children host ops nest under the region span. Fixture in
-`test/Pml/Obs/SpanSpec.hs`; example `examples/obs-span.md`.
+`test/Hwfl/Obs/SpanSpec.hs`; example `examples/obs-span.md`.
 
 Surface (either form):
 
@@ -137,7 +137,7 @@ Change module source; resume refuses with exit code 4.
 
 ## E19 — Lib-only list helpers **P**
 
-`lib/list.unique_by` written in pml replaces hwfi `builtin/list-unique-by`.
+`lib/list.unique_by` written in hwfl replaces hwfi `builtin/list-unique-by`.
 
 ## E20 — Mini semantic gate **H**
 
@@ -152,17 +152,17 @@ check path (layer 3 pragmatic review deferred). Fixture:
 
 ## Contracts table (summary)
 
-| Id | Check | Run | Resume | Spans |
-|----|-------|-----|--------|-------|
-| E01 | ✓ | ✓ | — | module |
-| E03–E04 | ✓ | ✓ | mid-llm | fs?/llm/fs? |
-| E07–E08 | ✓ | ✓ | mid-par | par + children |
-| E12–E13 | fail closed | — | — | — |
-| E14 | ✓ | ✓ | — | llm.object |
-| E15 | ✓ | ✓ | mid-tool | agent tree |
-| E15b | ✓ | ✓ | mid-tool | agent_object + submit |
-| E16 | ✓ | ✓ | — | region `obs.span` |
-| E20 | ✓ | ✓ | optional | library spans |
+| Id      | Check       | Run | Resume   | Spans                 |
+| ------- | ----------- | --- | -------- | --------------------- |
+| E01     | ✓           | ✓   | —        | module                |
+| E03–E04 | ✓           | ✓   | mid-llm  | fs?/llm/fs?           |
+| E07–E08 | ✓           | ✓   | mid-par  | par + children        |
+| E12–E13 | fail closed | —   | —        | —                     |
+| E14     | ✓           | ✓   | —        | llm.object            |
+| E15     | ✓           | ✓   | mid-tool | agent tree            |
+| E15b    | ✓           | ✓   | mid-tool | agent_object + submit |
+| E16     | ✓           | ✓   | —        | region `obs.span`     |
+| E20     | ✓           | ✓   | optional | library spans         |
 
 ## Using the suite
 

@@ -1,6 +1,6 @@
 # 00 — Overview
 
-Normative product summary for **pml** (provisional name). Other `spec/*`
+Normative product summary for **hwfl** (provisional name). Other `spec/*`
 files refine this. Conflicts: newer dated decision-log entries win until
 specs are updated.
 
@@ -35,26 +35,26 @@ multi-tenant isolation, embedding JS/Python/Lua VMs.
 
 ## 3. Glossary
 
-| Term | Meaning |
-|------|---------|
-| **Module** | One markdown file declaring an interface + script / types |
-| **Project** | Directory with `project.json` + modules |
-| **Kernel** | The ML expression language inside ` ```pml ` fences |
-| **Host op** | Runtime-provided effectful primitive |
-| **Effect / capability** | Element of the effect lattice (`Read`, `Net`, …) |
-| **Transition** | Atomic durable step (usually one host op or control event) |
-| **Frame** | Continuation / stack frame in the machine |
-| **Snapshot** | Serializable machine state for resume |
-| **Span** | Timed, nested observation unit for a region or host op |
-| **Provider** | Implementation of `LlmProvider` (default: llm-simple) |
+| Term                    | Meaning                                                    |
+| ----------------------- | ---------------------------------------------------------- |
+| **Module**              | One markdown file declaring an interface + script / types  |
+| **Project**             | Directory with `project.json` + modules                    |
+| **Kernel**              | The ML expression language inside ` ```hwfl ` fences       |
+| **Host op**             | Runtime-provided effectful primitive                       |
+| **Effect / capability** | Element of the effect lattice (`Read`, `Net`, …)           |
+| **Transition**          | Atomic durable step (usually one host op or control event) |
+| **Frame**               | Continuation / stack frame in the machine                  |
+| **Snapshot**            | Serializable machine state for resume                      |
+| **Span**                | Timed, nested observation unit for a region or host op     |
+| **Provider**            | Implementation of `LlmProvider` (default: llm-simple)      |
 
 ## 4. Document status
 
-| Doc | Normative? |
-|-----|------------|
-| `00`–`10`, `11-grammar` | Yes for v0 intent |
-| `12-example-suite` | Design oracle; syntax may evolve but contracts stick |
-| `idea.md`, `architecture.md` | Guiding; defer to numbered specs on conflict |
+| Doc                          | Normative?                                           |
+| ---------------------------- | ---------------------------------------------------- |
+| `00`–`10`, `11-grammar`      | Yes for v0 intent                                    |
+| `12-example-suite`           | Design oracle; syntax may evolve but contracts stick |
+| `idea.md`, `architecture.md` | Guiding; defer to numbered specs on conflict         |
 
 ## 5. Versioning
 

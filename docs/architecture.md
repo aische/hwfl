@@ -2,10 +2,10 @@
 
 ## Three layers
 
-```text
+````text
 ┌─────────────────────────────────────────────────────────────┐
 │  L1 Surface — Markdown modules                              │
-│  frontmatter (I/O, effects) · prose sections · ```pml blocks │
+│  frontmatter (I/O, effects) · prose sections · ```hwfl blocks │
 └────────────────────────────┬────────────────────────────────┘
                              │ load + elaborate
 ┌────────────────────────────▼────────────────────────────────┐
@@ -17,7 +17,7 @@
 │  L3 Runtime — durable interpreter                           │
 │  frames · host ops · LlmProvider · snapshots · spans        │
 └─────────────────────────────────────────────────────────────┘
-```
+````
 
 **L1** is how humans and agents author.  
 **L2** is what is legal and ergonomic to compute.  
@@ -29,9 +29,9 @@ Do not put durability policy into L2 syntax (authors don’t write checkpoint pr
 ## Haskell package shape (suggested)
 
 ```text
-pml/
+hwfl/
   app/Main.hs                 # CLI
-  src/Pml/
+  src/Hwfl/
     Ast/                      # Expr, Decl, Type, Pat, Module
     Parse/                    # Kernel + markdown loader
     Check/                    # Types + effects + project graph
@@ -60,13 +60,13 @@ Exact module names are not normative; boundaries are.
 
 All side effects go through **host ops** registered in the runtime:
 
-| Category | Examples |
-|----------|----------|
-| FS | `fs.read`, `fs.write`, `fs.list`, … |
-| LLM | `llm.chat`, `llm.object`, `llm.agent` |
-| Process | `exec.run` |
-| Human | `human.confirm` |
-| Meta | `meta.eval_module`, `meta.list_runs`, `obs.log` |
+| Category    | Examples                                              |
+| ----------- | ----------------------------------------------------- |
+| FS          | `fs.read`, `fs.write`, `fs.list`, …                   |
+| LLM         | `llm.chat`, `llm.object`, `llm.agent`                 |
+| Process     | `exec.run`                                            |
+| Human       | `human.confirm`                                       |
+| Meta        | `meta.eval_module`, `meta.list_runs`, `obs.log`       |
 | Concurrency | `par` / `join` (runtime constructs, not user threads) |
 
 Host ops:
@@ -84,7 +84,7 @@ Workflow ──► llm.* host ops ──► LlmProvider ──► llm-simple
                                    └──► FutureProvider
 ```
 
-Workflows never import `llm-simple`. Only `Pml.Llm.Simple` (or equivalent)
+Workflows never import `llm-simple`. Only `Hwfl.Llm.Simple` (or equivalent)
 depends on it. See [spec/08-llm-provider.md](spec/08-llm-provider.md).
 
 ## Persistence layout (local v0)
@@ -92,7 +92,7 @@ depends on it. See [spec/08-llm-provider.md](spec/08-llm-provider.md).
 Per workspace (names illustrative):
 
 ```text
-.pml/
+.hwfl/
   runs/<run-id>/
     meta.json           # project hash, entry, started_at, status
     snapshot.json       # latest machine (or sequenced snapshots)
@@ -117,24 +117,24 @@ lib/*.md                # pure/effectful libraries
 ## Check vs run
 
 ```text
-pml check <project>     # load, parse, type, effects, graph — no host side effects
-pml run   <project> …   # check (or reuse) then evaluate
-pml step / resume / show / approve
+hwfl check <project>     # load, parse, type, effects, graph — no host side effects
+hwfl run   <project> …   # check (or reuse) then evaluate
+hwfl step / resume / show / approve
 ```
 
 ## Stdlib policy
 
-- Prefer **pml modules** under `lib/` for list/string/json helpers.
-- Host ops only when the implementation *must* be in Haskell (LLM, FS sandbox,
+- Prefer **hwfl modules** under `lib/` for list/string/json helpers.
+- Host ops only when the implementation _must_ be in Haskell (LLM, FS sandbox,
   process, snapshot, true parallelism).
 - Never grow the host op set to paper over a missing kernel feature.
 
 ## Relationship of control flow constructs
 
-| Construct | Layer | Notes |
-|-----------|-------|-------|
-| `let` / `fun` / `match` / `if` | L2 pure | No snapshot mid-reduction |
-| `par` / `join` | L3 sugar + frames | Structured concurrency |
-| `confirm` | L3 host / Human effect | Freezes `par` pool |
-| `try` / `catch` or `Result` | L2 (+ catch frames) | Catchable host errors |
-| Agent tool loop | L3 state machine | Like hwfi agent `Current` |
+| Construct                      | Layer                  | Notes                     |
+| ------------------------------ | ---------------------- | ------------------------- |
+| `let` / `fun` / `match` / `if` | L2 pure                | No snapshot mid-reduction |
+| `par` / `join`                 | L3 sugar + frames      | Structured concurrency    |
+| `confirm`                      | L3 host / Human effect | Freezes `par` pool        |
+| `try` / `catch` or `Result`    | L2 (+ catch frames)    | Catchable host errors     |
+| Agent tool loop                | L3 state machine       | Like hwfi agent `Current` |

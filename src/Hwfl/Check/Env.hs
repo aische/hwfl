@@ -1,0 +1,147 @@
+-- | Resolved type environments for checking.
+module Hwfl.Check.Env
+  ( TypeEnv (..),
+    ModuleExport (..),
+    emptyTypeEnv,
+    lookupVar,
+    extendVar,
+    extendVars,
+    lookupAlias,
+    insertAlias,
+    lookupImport,
+    setImports,
+    moduleExportRecord,
+    resolveType,
+    stripEffects,
+    typeEq,
+    primitiveNames,
+    isPrimitive,
+  )
+where
+
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Text (Text)
+import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Ast.Type (Effect, TypeExpr (..))
+import Hwfl.Check.Error (CheckError (..))
+
+data TypeEnv = TypeEnv
+  { teVars :: Map Ident TypeExpr,
+    teAliases :: Map TypeName TypeExpr,
+    teImports :: Map Text ModuleExport
+  }
+  deriving stock (Eq, Show)
+
+-- | Exported bindings from an imported module (qname key is slash text).
+data ModuleExport = ModuleExport
+  { meValues :: Map Ident TypeExpr,
+    meEffects :: Map Ident (Set Effect)
+  }
+  deriving stock (Eq, Show)
+
+emptyTypeEnv :: TypeEnv
+emptyTypeEnv = TypeEnv Map.empty Map.empty Map.empty
+
+lookupVar :: Ident -> TypeEnv -> Maybe TypeExpr
+lookupVar n env = Map.lookup n env.teVars
+
+extendVar :: Ident -> TypeExpr -> TypeEnv -> TypeEnv
+extendVar n t env = env {teVars = Map.insert n t env.teVars}
+
+extendVars :: [(Ident, TypeExpr)] -> TypeEnv -> TypeEnv
+extendVars bs env = foldr (uncurry extendVar) env bs
+
+lookupAlias :: TypeName -> TypeEnv -> Maybe TypeExpr
+lookupAlias n env = Map.lookup n env.teAliases
+
+lookupImport :: Text -> TypeEnv -> Maybe ModuleExport
+lookupImport q env = Map.lookup q env.teImports
+
+setImports :: Map Text ModuleExport -> TypeEnv -> TypeEnv
+setImports im env = env {teImports = im}
+
+moduleExportRecord :: ModuleExport -> TypeExpr
+moduleExportRecord ex =
+  TRecord [(n, t) | (n, t) <- Map.toList ex.meValues]
+
+insertAlias :: TypeName -> TypeExpr -> TypeEnv -> Either CheckError TypeEnv
+insertAlias n t env =
+  if Map.member n env.teAliases
+    then Left (DuplicateType n)
+    else Right env {teAliases = Map.insert n t env.teAliases}
+
+primitiveNames :: Set Text
+primitiveNames =
+  Set.fromList
+    [ "Unit",
+      "Bool",
+      "Int",
+      "Float",
+      "String",
+      "Bytes",
+      "Json",
+      "FileRef",
+      "Schema",
+      "ToolSpec",
+      "Error"
+    ]
+
+isPrimitive :: TypeName -> Bool
+isPrimitive (TypeName n) = Set.member n primitiveNames
+
+-- | Expand aliases (cycle-checked). Effect annotations on arrows are kept.
+resolveType :: TypeEnv -> TypeExpr -> Either CheckError TypeExpr
+resolveType env = go []
+  where
+    go stack = \case
+      TName n
+        | isPrimitive n -> Right (TName n)
+        | n `elem` stack -> Left (AliasCycle (reverse (n : stack)))
+        | otherwise -> case lookupAlias n env of
+            Nothing -> Left (UnboundType n)
+            Just t -> go (n : stack) t
+      TList t -> TList <$> go stack t
+      TOption t -> TOption <$> go stack t
+      TResult a b -> TResult <$> go stack a <*> go stack b
+      TSecret t -> TSecret <$> go stack t
+      TRecord fs -> TRecord <$> traverse (\(f, t) -> (f,) <$> go stack t) fs
+      TFun a b -> TFun <$> go stack a <*> go stack b
+      TEffFun a es b -> TEffFun <$> go stack a <*> pure es <*> go stack b
+
+-- | Erase effect annotations (type equality ignores the lattice).
+stripEffects :: TypeExpr -> TypeExpr
+stripEffects = \case
+  TList t -> TList (stripEffects t)
+  TOption t -> TOption (stripEffects t)
+  TResult a b -> TResult (stripEffects a) (stripEffects b)
+  TSecret t -> TSecret (stripEffects t)
+  TRecord fs -> TRecord [(f, stripEffects t) | (f, t) <- fs]
+  TFun a b -> TFun (stripEffects a) (stripEffects b)
+  TEffFun a _ b -> TFun (stripEffects a) (stripEffects b)
+  t -> t
+
+-- | Structural equality after stripping effects (records compared by field name).
+typeEq :: TypeExpr -> TypeExpr -> Bool
+typeEq a b = eq (stripEffects a) (stripEffects b)
+  where
+    eq (TList x) (TList y) = eq x y
+    eq (TOption x) (TOption y) = eq x y
+    eq (TResult x1 y1) (TResult x2 y2) = eq x1 x2 && eq y1 y2
+    eq (TSecret x) (TSecret y) = eq x y
+    eq (TRecord fs) (TRecord gs) =
+      Map.keysSet (Map.fromList fs) == Map.keysSet (Map.fromList gs)
+        && and
+          [ eq t u
+            | (n, t) <- fs,
+              Just u <- [lookup n gs]
+          ]
+        && length fs == length (Map.fromList fs)
+        && length gs == length (Map.fromList gs)
+    eq (TFun x1 y1) (TFun x2 y2) = eq x1 x2 && eq y1 y2
+    eq (TEffFun x1 _ y1) (TEffFun x2 _ y2) = eq x1 x2 && eq y1 y2
+    eq (TEffFun x1 _ y1) (TFun x2 y2) = eq x1 x2 && eq y1 y2
+    eq (TFun x1 y1) (TEffFun x2 _ y2) = eq x1 x2 && eq y1 y2
+    eq x y = x == y

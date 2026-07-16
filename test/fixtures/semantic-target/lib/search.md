@@ -2,7 +2,7 @@
 name: lib/search
 inputs: {}
 outputs:
-  hit: String
+    hit: String
 effects: []
 ---
 
@@ -12,7 +12,7 @@ You must return a single hit string. Always prefer exact matches.
 
 ## body
 
-```pml
+```hwfl
 fun main(_): { hit: String } =
   { hit = "x" }
 ```

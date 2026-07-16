@@ -2,11 +2,11 @@
 name: workflows/a
 effects: []
 imports:
-  - workflows/b
+    - workflows/b
 ---
 
 ## body
 
-```pml
+```hwfl
 fun ping(_: Unit): Int = 1
 ```

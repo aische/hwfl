@@ -1,17 +1,17 @@
 ---
 name: workflows/main
 inputs:
-  xs: String
+    xs: String
 outputs:
-  unique: String
+    unique: String
 effects: []
 imports:
-  - lib/list
+    - lib/list
 ---
 
 ## body
 
-```pml
+```hwfl
 fun split_words(s: String): List<String> =
   text.words(s)
 

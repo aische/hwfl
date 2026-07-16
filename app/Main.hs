@@ -5,20 +5,20 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Pml.Ast.Module (LoadedModule (lmBody))
-import Pml.Ast.Name (Ident (..))
-import Pml.Ast.Pretty (prettyModuleBody)
-import Pml.Check.Error (renderCheckError)
-import Pml.Check.Module (checkLoadedModule)
-import Pml.Check.Project (checkProject, checkProjectLoaded, renderProjectCheckError)
-import Pml.Env (loadDotenv)
-import Pml.Eval.Value (Value, renderValue)
-import Pml.Llm.Mock (mockProvider)
-import Pml.Llm.Provider (LlmProvider (..))
-import Pml.Llm.Simple (mkSimpleProvider)
-import Pml.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
-import Pml.Parse.Load (loadModule)
-import Pml.Project
+import Hwfl.Ast.Module (LoadedModule (lmBody))
+import Hwfl.Ast.Name (Ident (..))
+import Hwfl.Ast.Pretty (prettyModuleBody)
+import Hwfl.Check.Error (renderCheckError)
+import Hwfl.Check.Module (checkLoadedModule)
+import Hwfl.Check.Project (checkProject, checkProjectLoaded, renderProjectCheckError)
+import Hwfl.Env (loadDotenv)
+import Hwfl.Eval.Value (Value, renderValue)
+import Hwfl.Llm.Mock (mockProvider)
+import Hwfl.Llm.Provider (LlmProvider (..))
+import Hwfl.Llm.Simple (mkSimpleProvider)
+import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
+import Hwfl.Parse.Load (loadModule)
+import Hwfl.Project
   ( LoadedProject (..),
     ProjectConfig (..),
     isProjectDir,
@@ -26,10 +26,10 @@ import Pml.Project
     modulePathForQname,
     projectHashForModules,
   )
-import Pml.Runtime.Error (RuntimeError (..), renderRuntimeError)
-import Pml.Runtime.Eval (StepMode (..))
-import Pml.Runtime.Machine (MachineStatus (..))
-import Pml.Runtime.Run
+import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
+import Hwfl.Runtime.Eval (StepMode (..))
+import Hwfl.Runtime.Machine (MachineStatus (..))
+import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     approveRun,
@@ -38,7 +38,7 @@ import Pml.Runtime.Run
     runLoadedModule,
     stepRun,
   )
-import Pml.Source (renderDiagnostics)
+import Hwfl.Source (renderDiagnostics)
 import System.Directory (getCurrentDirectory)
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (ExitCode (..), exitWith)
@@ -51,7 +51,7 @@ main = do
   case args of
     ["parse", path] -> cmdParse path
     ["check", path] -> cmdCheck path
-    ["version"] -> putStrLn "pml 0.1.0.0"
+    ["version"] -> putStrLn "hwfl 0.1.0.0"
     ("run" : rest) -> cmdRun rest
     ("step" : rest) -> cmdStep rest
     ("resume" : rest) -> cmdResume rest
@@ -63,16 +63,16 @@ usage :: IO ()
 usage = do
   hPutStrLn
     stderr
-    "usage: pml parse|check <project|module.md> | pml run <project|module.md> [options]"
+    "usage: hwfl parse|check <project|module.md> | hwfl run <project|module.md> [options]"
   hPutStrLn
     stderr
-    "       pml step|resume <workspace> <run-id> [--llm-provider mock|simple]"
+    "       hwfl step|resume <workspace> <run-id> [--llm-provider mock|simple]"
   hPutStrLn
     stderr
-    "       pml approve <workspace> <run-id> --yes|--no [--llm-provider mock|simple]"
+    "       hwfl approve <workspace> <run-id> --yes|--no [--llm-provider mock|simple]"
   hPutStrLn
     stderr
-    "       pml show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
+    "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
     "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step"
@@ -126,7 +126,7 @@ cmdRun rest = case parseRunFlags rest of
     hPutStrLn stderr msg
     exitWith (ExitFailure 2)
   Right flags0 -> do
-    envProv <- lookupEnv "PML_LLM_PROVIDER"
+    envProv <- lookupEnv "HWFL_LLM_PROVIDER"
     let flags =
           case (flagProviderSet rest, envProv) of
             (True, _) -> flags0
@@ -154,7 +154,7 @@ runProject flags ws inputs provider = do
       exitWith (ExitFailure 1)
     Right lp -> do
       unless flags.rfNoCheck $ do
-        hPutStrLn stderr "pml run: checking project…"
+        hPutStrLn stderr "hwfl run: checking project…"
         case checkProjectLoaded lp of
           Left err -> do
             TIO.hPutStrLn stderr (renderProjectCheckError err)
@@ -189,7 +189,7 @@ runSingleModule flags ws inputs provider = do
       exitWith (ExitFailure 1)
     Right loaded -> do
       unless flags.rfNoCheck $ do
-        hPutStrLn stderr "pml run: checking module…"
+        hPutStrLn stderr "hwfl run: checking module…"
         case checkLoadedModule loaded of
           Left err -> do
             TIO.hPutStrLn stderr (renderCheckError err)
@@ -298,7 +298,7 @@ parseRunFlags args = do
           rfCatalog = "model-catalog.json",
           rfStep = False
         }
-    takeModule [] _ = Left "pml run: missing <module.md>"
+    takeModule [] _ = Left "hwfl run: missing <module.md>"
     takeModule (x : xs) f
       | x == "--workspace" = case xs of
           (d : rest) -> takeModule rest f {rfWorkspace = Just d}
@@ -340,7 +340,7 @@ parseWsRun = go Nothing Nothing "simple" "model-catalog.json"
     go mWs mId prov catalog = \case
       [] -> case (mWs, mId) of
         (Just ws, Just rid) -> Right (ws, rid, prov, catalog)
-        _ -> Left "usage: pml step|resume <workspace> <run-id> [options]"
+        _ -> Left "usage: hwfl step|resume <workspace> <run-id> [options]"
       ("--llm-provider" : p : rest) -> go mWs mId p catalog rest
       ("--model-catalog" : c : rest) -> go mWs mId prov c rest
       (x : rest)
@@ -356,8 +356,8 @@ parseApprove = go Nothing Nothing Nothing "simple" "model-catalog.json"
     go mWs mId mYes prov catalog = \case
       [] -> case (mWs, mId, mYes) of
         (Just ws, Just rid, Just yes) -> Right (ws, rid, yes, prov, catalog)
-        (_, _, Nothing) -> Left "pml approve needs --yes or --no"
-        _ -> Left "usage: pml approve <workspace> <run-id> --yes|--no"
+        (_, _, Nothing) -> Left "hwfl approve needs --yes or --no"
+        _ -> Left "usage: hwfl approve <workspace> <run-id> --yes|--no"
       ("--yes" : rest) -> go mWs mId (Just True) prov catalog rest
       ("--no" : rest) -> go mWs mId (Just False) prov catalog rest
       ("--llm-provider" : p : rest) -> go mWs mId mYes p catalog rest
@@ -382,7 +382,7 @@ parseShow = go Nothing Nothing ShowSummary Nothing
                 soMode = mode,
                 soFilter = filt
               }
-        _ -> Left "usage: pml show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
+        _ -> Left "usage: hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
       ("--tree" : rest) -> go mWs mId ShowTree filt rest
       ("--spans" : rest) -> go mWs mId ShowSpans filt rest
       ("--snapshot" : rest) -> go mWs mId ShowSnapshot filt rest

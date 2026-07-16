@@ -1,18 +1,18 @@
 # 09 — CLI
 
-Executable name provisional: **`pml`**.
+Executable name provisional: **`hwfl`**.
 
 ## 1. Commands (v0)
 
-| Command | Purpose |
-|---------|---------|
-| `pml check <project>` | Load + type + effects + graph; exit ≠0 on error |
-| `pml run <project> [--workspace <dir>] [--input k=v…]` | Check (unless `--no-check`) + execute entrypoint |
-| `pml step <workspace> <run-id>` | One transition, then pause |
-| `pml resume <workspace> <run-id>` | Continue until end / pause / fail |
-| `pml approve <workspace> <run-id> [--yes\|--no]` | Resolve confirm gate |
-| `pml show <workspace> <run-id> [flags]` | Spans / status / redacted snapshot |
-| `pml version` | |
+| Command                                                 | Purpose                                          |
+| ------------------------------------------------------- | ------------------------------------------------ |
+| `hwfl check <project>`                                  | Load + type + effects + graph; exit ≠0 on error  |
+| `hwfl run <project> [--workspace <dir>] [--input k=v…]` | Check (unless `--no-check`) + execute entrypoint |
+| `hwfl step <workspace> <run-id>`                        | One transition, then pause                       |
+| `hwfl resume <workspace> <run-id>`                      | Continue until end / pause / fail                |
+| `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |
+| `hwfl show <workspace> <run-id> [flags]`                | Spans / status / redacted snapshot               |
+| `hwfl version`                                          |                                                  |
 
 ### Flags (common)
 
@@ -25,7 +25,7 @@ Executable name provisional: **`pml`**.
 Prefer:
 
 ```bash
-pml run ./examples/hello --workspace /tmp/ws --input path=README.md
+hwfl run ./examples/hello --workspace /tmp/ws --input path=README.md
 ```
 
 Typed coercion from CLI strings per `inputs` types (`FileRef`, `String`,
@@ -33,13 +33,13 @@ Typed coercion from CLI strings per `inputs` types (`FileRef`, `String`,
 
 ## 3. Exit codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | success |
-| 1 | check / runtime failure |
-| 2 | usage error |
-| 3 | paused awaiting confirm (optional convention) |
-| 4 | stale project / resume refused |
+| Code | Meaning                                       |
+| ---- | --------------------------------------------- |
+| 0    | success                                       |
+| 1    | check / runtime failure                       |
+| 2    | usage error                                   |
+| 3    | paused awaiting confirm (optional convention) |
+| 4    | stale project / resume refused                |
 
 Exact codes may adjust in M4; stay stable after first release tag.
 
@@ -47,8 +47,8 @@ Exact codes may adjust in M4; stay stable after first release tag.
 
 - Human logs on stderr
 - Primary result JSON on stdout for `run` when `--output json` **[recommend]**
-- Spans always on disk under `.pml/runs/…`
+- Spans always on disk under `.hwfl/runs/…`
 
 ## 5. Completions / UX
 
-Nice-to-have **[defer]**: shell completions, `pml init` scaffold.
+Nice-to-have **[defer]**: shell completions, `hwfl init` scaffold.

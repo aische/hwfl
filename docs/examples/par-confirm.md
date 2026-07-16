@@ -12,7 +12,7 @@ effects: [Exec, Parallel, Human]
 
 ## body
 
-```pml
+```hwfl
 fun main(inputs): { results: List<{ name: String, ok: Bool }> } =
   let results =
     par(max = 2) for name in inputs.packages {

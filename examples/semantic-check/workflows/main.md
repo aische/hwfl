@@ -1,24 +1,24 @@
 ---
 name: workflows/main
 inputs:
-  entry: String
+    entry: String
 outputs:
-  report_path: String
-  ok: Bool
-  finding_count: Int
+    report_path: String
+    ok: Bool
+    finding_count: Int
 effects: [Read, Write, Meta]
 ---
 
 ## overview
 
-Deterministic semantic review (layers 0–2b) written in pml. Workspace is the
+Deterministic semantic review (layers 0–2b) written in hwfl. Workspace is the
 target project. Layer 0 uses `meta.check_module`; layers 1–2b use in-language
 list recursion over `list.length` / `list.concat` plus pure `text` / `md`
 helpers. No micro-tool fan-out.
 
 ## body
 
-```pml
+```hwfl
 type Finding = {
   severity: String,
   category: String,
@@ -296,7 +296,7 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
     findings = findings
   }
   let report = json.encode(report_obj)
-  let report_path = $".pml/runs/{ctx.run.id}/semantic-report.json"
+  let report_path = $".hwfl/runs/{ctx.run.id}/semantic-report.json"
   let _ = fs.write(path = report_path, text = report)
   {
     report_path = report_path,

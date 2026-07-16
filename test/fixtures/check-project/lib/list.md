@@ -5,7 +5,7 @@ effects: []
 
 ## body
 
-```pml
+```hwfl
 fun unique_by(xs: List<String>, i: Int, n: Int, seen: List<String>): List<String> =
   if i >= n then []
   else

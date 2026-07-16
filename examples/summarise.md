@@ -1,9 +1,9 @@
 ---
 name: workflows/summarise
 inputs:
-  path: FileRef
+    path: FileRef
 outputs:
-  summary: String
+    summary: String
 effects: [Read, Net]
 ---
 
@@ -13,7 +13,7 @@ You are a concise summariser. Return one paragraph, no preamble.
 
 ## body
 
-```pml
+```hwfl
 fun main(inputs): { summary: String } =
   let contents = fs.read(inputs.path)
   let summary = llm.chat(

@@ -23,20 +23,20 @@ lib/                        # optional libraries
 
 ```json
 {
-  "name": "example",
-  "version": "0.1.0",
-  "entrypoint": "workflows/main",
-  "env": [],
-  "effects": {
-    "default": ["Read", "Net"],
-    "deny": []
-  },
-  "exec": {
-    "allow": ["git", "cabal"],
-    "env": ["PATH", "HOME"],
-    "timeout_ms": 120000,
-    "max_output_bytes": 1048576
-  }
+    "name": "example",
+    "version": "0.1.0",
+    "entrypoint": "workflows/main",
+    "env": [],
+    "effects": {
+        "default": ["Read", "Net"],
+        "deny": []
+    },
+    "exec": {
+        "allow": ["git", "cabal"],
+        "env": ["PATH", "HOME"],
+        "timeout_ms": 120000,
+        "max_output_bytes": 1048576
+    }
 }
 ```
 
@@ -53,22 +53,22 @@ lib/                        # optional libraries
 A module is:
 
 1. YAML frontmatter
-2. Markdown body: prose headings + at most one primary ` ```pml ` block
-   (libraries may use multiple named blocks — **[defer]**; v0: one `pml`
+2. Markdown body: prose headings + at most one primary ` ```hwfl ` block
+   (libraries may use multiple named blocks — **[defer]**; v0: one `hwfl`
    block that defines the module body)
 
 ### 2.1 Frontmatter
 
 Common fields:
 
-| Field | Required | Meaning |
-|-------|----------|---------|
-| `name` | yes | Must equal file qname |
-| `kind` | no | `module` (default), `type-alias`, … |
-| `inputs` | for entry | Record of `name: Type` |
-| `outputs` | for entry | Record of `name: Type` |
-| `effects` | no | Allowed effect set (subset of lattice) |
-| `imports` | no | List of qnames or `pml/...` stdlib paths |
+| Field     | Required  | Meaning                                   |
+| --------- | --------- | ----------------------------------------- |
+| `name`    | yes       | Must equal file qname                     |
+| `kind`    | no        | `module` (default), `type-alias`, …       |
+| `inputs`  | for entry | Record of `name: Type`                    |
+| `outputs` | for entry | Record of `name: Type`                    |
+| `effects` | no        | Allowed effect set (subset of lattice)    |
+| `imports` | no        | List of qnames or `hwfl/...` stdlib paths |
 
 Example:
 
@@ -76,12 +76,12 @@ Example:
 ---
 name: workflows/summarise
 inputs:
-  path: FileRef
+    path: FileRef
 outputs:
-  summary: String
+    summary: String
 effects: [Read, Net]
 imports:
-  - lib/text
+    - lib/text
 ---
 ```
 
@@ -89,7 +89,7 @@ imports:
 
 H2/H3 headings define **named sections**. Section body is the raw markdown
 between this heading and the next heading of equal or higher level
-(excluding fenced `pml` code, which is not part of prose bindings).
+(excluding fenced `hwfl` code, which is not part of prose bindings).
 
 In kernel code, `@section-slug` (or `section("slug")`) evaluates to that
 string. Used for prompts and documentation reuse.
@@ -99,7 +99,7 @@ Documented and tested.
 
 ### 2.3 Code fence
 
-Info string `pml` (provisional; rename with product). The block contains
+Info string `hwfl` (provisional; rename with product). The block contains
 kernel declarations and/or an entry expression.
 
 For entry modules (`workflows/*` by convention):
@@ -127,13 +127,13 @@ non-`_` names.
 Scripts may read a structured ambient value `ctx` (effect `Read` or
 `Meta` as appropriate):
 
-| Path | Meaning |
-|------|---------|
-| `ctx.run.id` | Current run id |
-| `ctx.run.started_at` | Timestamp |
-| `ctx.workspace` | Workspace root (logical) |
-| `ctx.span` | Current span id |
-| `ctx.env` | Whitelisted env map |
+| Path                 | Meaning                  |
+| -------------------- | ------------------------ |
+| `ctx.run.id`         | Current run id           |
+| `ctx.run.started_at` | Timestamp                |
+| `ctx.workspace`      | Workspace root (logical) |
+| `ctx.span`           | Current span id          |
+| `ctx.env`            | Whitelisted env map      |
 
 Full prior `ctx.trace` as a giant list is **discouraged** as the primary
 API (hwfi pain). Prefer `obs.spans` queries / `meta.read_run` for agents.
@@ -142,7 +142,7 @@ v0 may still expose a compact recent-events slice.
 ## 5. Type-alias modules
 
 `kind: type-alias` modules declare shared types without a script, or
-`types/*.md` may contain only `type` declarations in a `pml` fence.
+`types/*.md` may contain only `type` declarations in a `hwfl` fence.
 Cycles among aliases are rejected.
 
 ## 6. Authoring example
@@ -151,9 +151,9 @@ Cycles among aliases are rejected.
 ---
 name: workflows/summarise
 inputs:
-  path: FileRef
+    path: FileRef
 outputs:
-  summary: String
+    summary: String
 effects: [Read, Net]
 ---
 
@@ -165,7 +165,7 @@ You are a concise summariser. One paragraph, no preamble.
 
 Read a workspace file and summarise it with an LLM.
 
-```pml
+```hwfl
 fun main(inputs): { summary: String } =
   let contents = fs.read(inputs.path)
   let summary = llm.chat(

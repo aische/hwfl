@@ -8,11 +8,11 @@
 
 ## 2. Dual channels
 
-| Channel | File (illustrative) | Role |
-|---------|---------------------|------|
-| **Spans** | `spans.jsonl` | Primary UX + agent introspection |
-| **Events** | `events.jsonl` | Fine-grained audit / debug |
-| **Snapshot** | `snapshot.json` | Control-flow truth |
+| Channel      | File (illustrative) | Role                             |
+| ------------ | ------------------- | -------------------------------- |
+| **Spans**    | `spans.jsonl`       | Primary UX + agent introspection |
+| **Events**   | `events.jsonl`      | Fine-grained audit / debug       |
+| **Snapshot** | `snapshot.json`     | Control-flow truth               |
 
 Spans are nested. Events may hang off a span id.
 
@@ -54,10 +54,10 @@ obs.span("review_gate") { … }
 ## 6. CLI
 
 ```text
-pml show <ws> <run>           # human summary + tree
-pml show --tree
-pml show --spans --filter llm
-pml show --snapshot           # debug machine (redacted)
+hwfl show <ws> <run>           # human summary + tree
+hwfl show --tree
+hwfl show --spans --filter llm
+hwfl show --snapshot           # debug machine (redacted)
 ```
 
 ## 7. Agent-facing read APIs

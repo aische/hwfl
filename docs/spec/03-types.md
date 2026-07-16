@@ -53,12 +53,12 @@ Surface may put effects on `fun` / module and infer for locals.
 
 ### 2.5 Special types
 
-| Type | Role |
-|------|------|
-| `Json` | Untyped JSON; prefer structured records at boundaries |
-| `Secret<T>` | Non-interpolable; redacted in spans |
-| `Schema` | Reflected type for LLM structured output |
-| `ModuleRef` / `FunRef` | **[defer]** first-class refs |
+| Type                   | Role                                                  |
+| ---------------------- | ----------------------------------------------------- |
+| `Json`                 | Untyped JSON; prefer structured records at boundaries |
+| `Secret<T>`            | Non-interpolable; redacted in spans                   |
+| `Schema`               | Reflected type for LLM structured output              |
+| `ModuleRef` / `FunRef` | **[defer]** first-class refs                          |
 
 ## 3. Checking discipline
 
@@ -107,13 +107,13 @@ make `String` and `FileRef` interchangeable elsewhere (e.g. no `String` `+`).
 ### 5.2 Overloaded operators
 
 Applications of `+ - * /`, `== !=`, and ordered comparisons are overloaded
-by operand sort (`Pml.Check.Overload`):
+by operand sort (`Hwfl.Check.Overload`):
 
-| Class | Allowed same-sort operands | Result |
-|-------|------------------------------|--------|
-| arith | `Int` or `Float` (no mix, no `String`) | same numeric type |
-| eq | comparable bases; structural `List`/`Record` of comparables; path rule | `Bool` |
-| ord | `Int` \| `Float` \| `String` \| `FileRef` | `Bool` |
+| Class | Allowed same-sort operands                                             | Result            |
+| ----- | ---------------------------------------------------------------------- | ----------------- |
+| arith | `Int` or `Float` (no mix, no `String`)                                 | same numeric type |
+| eq    | comparable bases; structural `List`/`Record` of comparables; path rule | `Bool`            |
+| ord   | `Int` \| `Float` \| `String` \| `FileRef`                              | `Bool`            |
 
 Bare overloaded operators (not applied) are check errors.
 

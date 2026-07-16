@@ -2,7 +2,7 @@
 name: workflows/ok
 inputs: {}
 outputs:
-  msg: String
+    msg: String
 effects: []
 ---
 
@@ -12,7 +12,7 @@ You must call lib/search when needed. Prefer tools/helper for lookup.
 
 ## body
 
-```pml
+```hwfl
 fun main(_): { msg: String } =
   { msg = "ok" }
 ```

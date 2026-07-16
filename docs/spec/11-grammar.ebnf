@@ -1,7 +1,7 @@
-(* pml kernel grammar sketch — provisional, informative for M0.
+(* hwfl kernel grammar sketch — provisional, informative for M0.
    Not frozen; adjust during parser implementation but keep coverage. *)
 
-(* --- Modules (body of ```pml fence) --- *)
+(* --- Modules (body of ```hwfl fence) --- *)
 
 ModuleBody   = Decl* Expr? ;
 Decl         = TypeDecl | FunDecl ;

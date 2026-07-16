@@ -2,8 +2,8 @@
 name: workflows/agent-tools
 inputs: {}
 outputs:
-  text: String
-  rounds: Int
+    text: String
+    rounds: Int
 effects: [Read, Net]
 ---
 
@@ -14,7 +14,7 @@ lookup queries.
 
 ## body
 
-```pml
+```hwfl
 fun search(q: String): String =
   $"hit:{q}"
 
