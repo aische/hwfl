@@ -174,7 +174,8 @@ spec = describe "runtime agent (M7)" $ do
                   roRunId = Just "e15",
                   roEntry = path,
                   roMode = StepRun,
-                  roProjectHash = Nothing
+                  roProjectHash = Nothing,
+                    roExec = Nothing
                 }
               loaded
           case outcome of
@@ -215,7 +216,8 @@ spec = describe "runtime agent (M7)" $ do
                   roRunId = Just "e15-step",
                   roEntry = path,
                   roMode = StepOnce,
-                  roProjectHash = Nothing
+                  roProjectHash = Nothing,
+                    roExec = Nothing
                 }
               loaded
           case outcome0 of

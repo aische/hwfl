@@ -93,7 +93,8 @@ spec = describe "runtime run (M4/M5)" $ do
                     roRunId = Just "test-e03",
                     roEntry = dir </> "e03.md",
                     roMode = StepRun,
-                    roProjectHash = Nothing
+                    roProjectHash = Nothing,
+                    roExec = Nothing
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -120,7 +121,8 @@ spec = describe "runtime run (M4/M5)" $ do
                     roRunId = Just "test-e04",
                     roEntry = dir </> "summarise.md",
                     roMode = StepRun,
-                    roProjectHash = Nothing
+                    roProjectHash = Nothing,
+                    roExec = Nothing
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -173,7 +175,8 @@ spec = describe "runtime run (M4/M5)" $ do
                     roRunId = Just "test-escape",
                     roEntry = "escape.md",
                     roMode = StepRun,
-                    roProjectHash = Nothing
+                    roProjectHash = Nothing,
+                    roExec = Nothing
                   }
           outcome <- runLoadedModule opts loaded
           outcome `shouldSatisfy` isFailed

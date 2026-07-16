@@ -54,7 +54,9 @@ data ExecPolicy = ExecPolicy
   { execAllow :: [Text],
     execEnv :: [Text],
     execTimeoutMs :: Maybe Int,
-    execMaxOutputBytes :: Maybe Int
+    execMaxOutputBytes :: Maybe Int,
+    -- | When 'True' (default), @exec.run@ pauses for human confirm before spawn.
+    execConfirm :: Bool
   }
   deriving stock (Eq, Show)
 
@@ -104,12 +106,14 @@ instance FromJSON ExecPolicy where
     env <- o .:? "env" .!= ([] :: [Text])
     timeout <- o .:? "timeout_ms"
     maxOut <- o .:? "max_output_bytes"
+    confirm <- o .:? "confirm" .!= True
     pure
       ExecPolicy
         { execAllow = allow,
           execEnv = env,
           execTimeoutMs = timeout,
-          execMaxOutputBytes = maxOut
+          execMaxOutputBytes = maxOut,
+          execConfirm = confirm
         }
 
 instance FromJSON ProjectConfig where

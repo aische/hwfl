@@ -176,7 +176,8 @@ runProject flags ws inputs provider = do
                     roRunId = Nothing,
                     roEntry = entryPath,
                     roMode = if flags.rfStep then StepOnce else StepRun,
-                    roProjectHash = hash
+                    roProjectHash = hash,
+                    roExec = lp.lpConfig.pcExec
                   }
           handleOutcome =<< runLoadedModule opts loaded
 
@@ -203,7 +204,8 @@ runSingleModule flags ws inputs provider = do
                 roRunId = Nothing,
                 roEntry = flags.rfModule,
                 roMode = if flags.rfStep then StepOnce else StepRun,
-                roProjectHash = Nothing
+                roProjectHash = Nothing,
+                    roExec = Nothing
               }
       handleOutcome =<< runLoadedModule opts loaded
 

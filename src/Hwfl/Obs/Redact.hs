@@ -105,6 +105,30 @@ hostOpenAttrs op args = case op of
       [ "op" .= hostOpName op,
         "glob" .= stringAttr (Ident "glob") args
       ]
+  HostFsList ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args
+      ]
+  HostFsEdit ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args,
+        "old_len" .= textLenAttr (Ident "old") args,
+        "new_len" .= textLenAttr (Ident "new") args
+      ]
+  HostFsGrep ->
+    object
+      [ "op" .= hostOpName op,
+        "pattern" .= stringAttr (Ident "pattern") args,
+        "glob" .= stringAttr (Ident "glob") args
+      ]
+  HostExecRun ->
+    object
+      [ "op" .= hostOpName op,
+        "program" .= stringAttr (Ident "program") args,
+        "args_len" .= listLenAttr (Ident "args") args
+      ]
   HostMetaCheckModule ->
     object
       [ "op" .= hostOpName op,
@@ -190,6 +214,11 @@ regionNameAttr args = case lookupNamed (Ident "name") args `orElse` lookupPos 0 
 
 toolsLenAttr :: [(Maybe Ident, Value)] -> Aeson.Value
 toolsLenAttr args = case lookupNamed (Ident "tools") args of
+  Just (VList xs) -> Aeson.Number (fromIntegral (length xs))
+  _ -> Aeson.Null
+
+listLenAttr :: Ident -> [(Maybe Ident, Value)] -> Aeson.Value
+listLenAttr n args = case lookupNamed n args of
   Just (VList xs) -> Aeson.Number (fromIntegral (length xs))
   _ -> Aeson.Null
 

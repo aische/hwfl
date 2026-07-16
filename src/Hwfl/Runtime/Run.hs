@@ -41,6 +41,7 @@ import Hwfl.Obs.Trace
     openSpan,
     setSpanStack,
   )
+import Hwfl.Project (ExecPolicy (..), ProjectConfig (..), loadProjectConfig)
 import Hwfl.Parse.Load (loadModule)
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Eval
@@ -63,7 +64,9 @@ data RunOptions = RunOptions
     roRunId :: Maybe Text,
     roEntry :: FilePath,
     roMode :: StepMode,
-    roProjectHash :: Maybe Text
+    roProjectHash :: Maybe Text,
+    -- | Exec policy from @project.json@; 'Nothing' disables @exec.run@.
+    roExec :: Maybe ExecPolicy
   }
 
 data RunOutcome
@@ -135,6 +138,7 @@ runLoadedModule opts loaded = do
         HostEnv
           { heWorkspace = ws,
             heProvider = opts.roProvider,
+            heExec = opts.roExec,
             heLog = \msg -> hPutStrLn stderr (T.unpack msg)
           }
       ctx =
@@ -231,6 +235,7 @@ mkCtx ::
   IO RunCtx
 mkCtx provider wsRoot loaded store hash runId started seqRef spans = do
   ws <- newWorkspace wsRoot
+  execPol <- loadExecPolicy wsRoot
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
       typeEnv = loadTypeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
@@ -238,6 +243,7 @@ mkCtx provider wsRoot loaded store hash runId started seqRef spans = do
         HostEnv
           { heWorkspace = ws,
             heProvider = provider,
+            heExec = execPol,
             heLog = \msg -> hPutStrLn stderr (T.unpack msg)
           }
   pure
@@ -253,6 +259,14 @@ mkCtx provider wsRoot loaded store hash runId started seqRef spans = do
         rcSeq = seqRef,
         rcSpans = spans
       }
+
+-- | Load @exec@ policy from workspace @project.json@ when present.
+loadExecPolicy :: FilePath -> IO (Maybe ExecPolicy)
+loadExecPolicy root = do
+  cfgE <- loadProjectConfig root
+  pure $ case cfgE of
+    Right cfg -> cfg.pcExec
+    Left _ -> Nothing
 
 loadExisting ::
   FilePath ->

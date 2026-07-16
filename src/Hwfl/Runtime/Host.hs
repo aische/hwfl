@@ -1,11 +1,12 @@
 -- | Host op values and dispatch. Surface names match Check.Prelude stubs
--- (@fs.read@, @fs.write@, @llm.chat@) — one API surface, check-time types +
--- runtime implementations.
+-- (@fs.read@, @fs.write@, @llm.chat@, @exec.run@, …) — one API surface,
+-- check-time types + runtime implementations.
 module Hwfl.Runtime.Host
   ( HostEnv (..),
     HostResult (..),
     hostOpsEnv,
     runHostOp,
+    execNeedsConfirm,
   )
 where
 
@@ -33,15 +34,28 @@ import Hwfl.Llm.Types
     renderProviderError,
   )
 import Hwfl.Parse.Load (loadModuleText)
+import Hwfl.Project (ExecPolicy (..))
 import Hwfl.Runtime.Error (RuntimeError (..))
-import Hwfl.Runtime.Workspace (Workspace, findFiles, readTextFile, workspaceRoot, writeTextFile)
+import Hwfl.Runtime.Exec (ExecArgs (..), ExecOutcome (..), runExec)
+import Hwfl.Runtime.Workspace
+  ( Workspace,
+    editFile,
+    findFiles,
+    grepFiles,
+    listDir,
+    readTextFile,
+    workspaceRoot,
+    writeTextFile,
+  )
 import Hwfl.Source (renderDiagnostics)
 import System.FilePath ((</>))
 
--- | Effectful dependencies for host ops (workspace + provider).
+-- | Effectful dependencies for host ops (workspace + provider + exec policy).
 data HostEnv = HostEnv
   { heWorkspace :: Workspace,
     heProvider :: LlmProvider,
+    -- | 'Nothing' when no project @exec@ policy is configured.
+    heExec :: Maybe ExecPolicy,
     heLog :: Text -> IO ()
   }
 
@@ -51,6 +65,12 @@ data HostResult = HostResult
     hrCloseAttrs :: Aeson.Value
   }
 
+-- | Whether @exec.run@ should pause for human confirm before spawn.
+execNeedsConfirm :: HostEnv -> Bool
+execNeedsConfirm env = case env.heExec of
+  Just pol -> pol.execConfirm
+  Nothing -> False
+
 -- | Eval bindings for host modules — mirrors Check.Prelude record shapes.
 hostOpsEnv :: Env
 hostOpsEnv =
@@ -59,7 +79,15 @@ hostOpsEnv =
         VRecord
           [ (Ident "read", VHostOp HostFsRead),
             (Ident "write", VHostOp HostFsWrite),
-            (Ident "find", VHostOp HostFsFind)
+            (Ident "find", VHostOp HostFsFind),
+            (Ident "list", VHostOp HostFsList),
+            (Ident "edit", VHostOp HostFsEdit),
+            (Ident "grep", VHostOp HostFsGrep)
+          ]
+      ),
+      ( Ident "exec",
+        VRecord
+          [ (Ident "run", VHostOp HostExecRun)
           ]
       ),
       ( Ident "llm",
@@ -91,7 +119,7 @@ hostOpsEnv =
 
 -- | Execute one host op (one transition / snapshot boundary).
 -- @human.confirm@ / @obs.span@ / @obs.log@ / @llm.agent@ / @llm.agent_object@
--- are handled by the machine driver.
+-- / confirm-gated @exec.run@ are handled by the machine driver.
 runHostOp ::
   HostEnv ->
   HostOpId ->
@@ -101,6 +129,10 @@ runHostOp env op args = case op of
   HostFsRead -> doFsRead env args
   HostFsWrite -> doFsWrite env args
   HostFsFind -> doFsFind env args
+  HostFsList -> doFsList env args
+  HostFsEdit -> doFsEdit env args
+  HostFsGrep -> doFsGrep env args
+  HostExecRun -> doExecRun env args
   HostMetaCheckModule -> doMetaCheckModule env args
   HostMetaCheckProject -> doMetaCheckProject env args
   HostLlmChat -> doLlmChat env args
@@ -163,6 +195,101 @@ doFsFind env args = case globArg args of
               (VList (map VString paths))
               (object ["count" .= length paths])
           )
+
+doFsList :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsList env args = case fileRefArg args of
+  Left e -> pure (Left e)
+  Right path -> do
+    env.heLog ("fs.list " <> path)
+    result <- listDir env.heWorkspace path
+    pure $ case result of
+      Left e -> Left e
+      Right entries ->
+        Right
+          ( HostResult
+              ( VList
+                  [ VRecord
+                      [ (Ident "name", VString name),
+                        (Ident "kind", VString kind)
+                      ]
+                    | (name, kind) <- entries
+                  ]
+              )
+              (object ["count" .= length entries])
+          )
+
+doFsEdit :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsEdit env args = case parseEditArgs args of
+  Left e -> pure (Left e)
+  Right (path, old, new) -> do
+    env.heLog ("fs.edit " <> path)
+    result <- editFile env.heWorkspace path old new
+    pure $ case result of
+      Left e -> Left e
+      Right (ok, n) ->
+        Right
+          ( HostResult
+              (VRecord [(Ident "ok", VBool ok)])
+              (object ["replacements" .= n, "ok" .= ok])
+          )
+
+doFsGrep :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsGrep env args = case parseGrepArgs args of
+  Left e -> pure (Left e)
+  Right (pattern, glob) -> do
+    env.heLog ("fs.grep " <> pattern)
+    result <- grepFiles env.heWorkspace pattern glob
+    pure $ case result of
+      Left e -> Left e
+      Right hits ->
+        Right
+          ( HostResult
+              ( VList
+                  [ VRecord
+                      [ (Ident "file", VString file),
+                        (Ident "line", VInt (fromIntegral line)),
+                        (Ident "text", VString text)
+                      ]
+                    | (file, line, text) <- hits
+                  ]
+              )
+              (object ["count" .= length hits])
+          )
+
+doExecRun :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doExecRun env args = case env.heExec of
+  Nothing ->
+    pure
+      ( Left
+          ( HostErr
+              "exec.run requires project.json exec.allow (Exec effect not configured)"
+          )
+      )
+  Just policy -> case parseExecArgs args of
+    Left e -> pure (Left e)
+    Right ea -> do
+      env.heLog ("exec.run " <> ea.eaProgram)
+      result <- runExec env.heWorkspace policy ea
+      pure $ case result of
+        Left e -> Left e
+        Right eo ->
+          Right
+            ( HostResult
+                ( VRecord
+                    [ (Ident "exit_code", VInt (fromIntegral eo.eoExitCode)),
+                      (Ident "stdout", VString eo.eoStdout),
+                      (Ident "stderr", VString eo.eoStderr),
+                      (Ident "timed_out", VBool eo.eoTimedOut)
+                    ]
+                )
+                ( object
+                    [ "exit_code" .= eo.eoExitCode,
+                      "stdout_bytes" .= eo.eoStdoutBytes,
+                      "stderr_bytes" .= eo.eoStderrBytes,
+                      "timed_out" .= eo.eoTimedOut
+                    ]
+                )
+            )
 
 doMetaCheckProject :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doMetaCheckProject env args = case fileRefArg args of
@@ -228,6 +355,57 @@ globArg args = case lookupNamed (Ident "glob") args of
   Nothing -> case lookupPositional 0 args of
     Just (VString t) -> Right t
     _ -> Left (HostErr "fs.find expects glob: String")
+
+parseEditArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text, Text)
+parseEditArgs args = do
+  path <- case lookupNamed (Ident "path") args of
+    Just v -> fileRefValue v
+    Nothing -> case lookupPositional 0 args of
+      Just v -> fileRefValue v
+      Nothing -> Left (HostErr "fs.edit expects path: FileRef")
+  old <- expectStringOrPos (Ident "old") 1 args
+  new <- expectStringOrPos (Ident "new") 2 args
+  pure (path, old, new)
+
+parseGrepArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text)
+parseGrepArgs args = do
+  pattern <- expectStringOrPos (Ident "pattern") 0 args
+  let glob = case lookupNamed (Ident "glob") args of
+        Just (VString t) -> t
+        Just _ -> ""
+        Nothing -> case lookupPositional 1 args of
+          Just (VString t) -> t
+          _ -> ""
+  pure (pattern, glob)
+
+parseExecArgs :: [(Maybe Ident, Value)] -> Either RuntimeError ExecArgs
+parseExecArgs args = do
+  program <- expectString (Ident "program") args
+  argv <- expectStringList (Ident "args") args
+  stdin <- case lookupNamed (Ident "stdin") args of
+    Just (VString t) -> Right t
+    Just _ -> Left (HostErr "expected String for stdin")
+    Nothing -> Right ""
+  pure ExecArgs {eaProgram = program, eaArgs = argv, eaStdin = stdin}
+
+expectStringList :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError [Text]
+expectStringList n args = case lookupNamed n args of
+  Just (VList xs) -> traverse asString xs
+  Just _ -> Left (HostErr ("expected List<String> for " <> unIdent n))
+  Nothing -> Left (HostErr ("missing named argument: " <> unIdent n))
+  where
+    asString = \case
+      VString t -> Right t
+      _ -> Left (HostErr ("expected String elements in " <> unIdent n))
+
+expectStringOrPos :: Ident -> Int -> [(Maybe Ident, Value)] -> Either RuntimeError Text
+expectStringOrPos n i args = case lookupNamed n args of
+  Just (VString t) -> Right t
+  Just (VSecret _) -> Left (HostErr ("secret not allowed for " <> unIdent n))
+  Just _ -> Left (HostErr ("expected String for " <> unIdent n))
+  Nothing -> case lookupPositional i args of
+    Just (VString t) -> Right t
+    _ -> Left (HostErr ("missing argument: " <> unIdent n))
 
 doLlmChat :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doLlmChat env args = case parseChatArgs args of

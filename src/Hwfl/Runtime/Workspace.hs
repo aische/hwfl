@@ -9,11 +9,15 @@ module Hwfl.Runtime.Workspace
     readTextFile,
     writeTextFile,
     findFiles,
+    listDir,
+    editFile,
+    grepFiles,
   )
 where
 
 import Control.Exception (IOException, try)
 import Data.ByteString qualified as BS
+import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
@@ -22,6 +26,8 @@ import System.Directory
   ( canonicalizePath,
     createDirectoryIfMissing,
     doesDirectoryExist,
+    doesFileExist,
+    getFileSize,
     listDirectory,
   )
 import System.FilePath
@@ -34,6 +40,8 @@ import System.FilePath
     takeFileName,
     (</>),
   )
+import Text.Regex.TDFA (Regex, defaultCompOpt, defaultExecOpt, matchTest)
+import Text.Regex.TDFA.String (compile)
 
 -- | Canonicalised workspace root.
 newtype Workspace = Workspace {workspaceRoot :: FilePath}
@@ -190,3 +198,136 @@ matchPat :: GlobPat -> FilePath -> Bool
 matchPat pat name = case pat of
   GlobRecursiveExt ext -> takeExtension name == ext
   GlobRootExt ext -> takeExtension name == ext
+
+-- | List a workspace directory as @{ name, kind }@ entries (@file@ / @dir@).
+listDir :: Workspace -> Text -> IO (Either RuntimeError [(Text, Text)])
+listDir ws rel = do
+  resolved <- resolveContainedPath ws rel
+  case resolved of
+    Left e -> pure (Left e)
+    Right path -> do
+      exists <- doesDirectoryExist path
+      if not exists
+        then pure (Left (HostErr ("not a directory: '" <> rel <> "'")))
+        else do
+          result <- try (listDirectory path) :: IO (Either IOException [FilePath])
+          case result of
+            Left ex ->
+              pure (Left (HostErr ("list failed for '" <> rel <> "': " <> T.pack (show ex))))
+            Right entries -> do
+              kinds <- traverse (classify path) (sort entries)
+              pure (Right kinds)
+  where
+    classify parent name = do
+      isDir <- doesDirectoryExist (parent </> name)
+      pure (T.pack name, if isDir then "dir" else "file")
+
+-- | Literal whole-string replacement. Returns @(ok, replacements)@ where
+-- @ok@ is true iff at least one occurrence was replaced. Empty @old@ is an error.
+editFile :: Workspace -> Text -> Text -> Text -> IO (Either RuntimeError (Bool, Int))
+editFile ws rel old new
+  | T.null old = pure (Left (HostErr "fs.edit 'old' must be a non-empty string"))
+  | otherwise = do
+      r <- readTextFile ws rel
+      case r of
+        Left e -> pure (Left e)
+        Right text -> do
+          let n = T.count old text
+          if n == 0
+            then pure (Right (False, 0))
+            else do
+              w <- writeTextFile ws rel (T.replace old new text)
+              pure $ case w of
+                Left e -> Left e
+                Right () -> Right (True, n)
+
+maxGrepFileBytes :: Integer
+maxGrepFileBytes = 1024 * 1024
+
+binarySniffBytes :: Int
+binarySniffBytes = 8000
+
+-- | Regex-search workspace files. @glob@ empty ⇒ all text files under the
+-- workspace root; otherwise the same globs as 'findFiles' (@**\/*.ext@ / @*.ext@).
+-- Hits are @(file, 1-based line, line text)@.
+grepFiles :: Workspace -> Text -> Text -> IO (Either RuntimeError [(Text, Int, Text)])
+grepFiles ws pattern glob = case compileRegex pattern of
+  Left e -> pure (Left e)
+  Right regex -> do
+    filesE <-
+      if T.null (T.strip glob)
+        then listAllTextFiles ws
+        else findFiles ws glob
+    case filesE of
+      Left e -> pure (Left e)
+      Right files -> do
+        hits <- concat <$> traverse (grepOne ws regex) files
+        pure (Right hits)
+
+compileRegex :: Text -> Either RuntimeError Regex
+compileRegex pattern = case compile defaultCompOpt defaultExecOpt (T.unpack pattern) of
+  Left err -> Left (HostErr ("invalid grep pattern: " <> T.pack err))
+  Right r -> Right r
+
+grepOne :: Workspace -> Regex -> Text -> IO [(Text, Int, Text)]
+grepOne ws regex rel = do
+  resolved <- resolveContainedPath ws rel
+  case resolved of
+    Left _ -> pure []
+    Right path -> do
+      skip <- isBinaryOrBig path
+      if skip
+        then pure []
+        else do
+          result <- try (BS.readFile path) :: IO (Either IOException BS.ByteString)
+          pure $ case result of
+            Left _ -> []
+            Right bytes -> case decodeUtf8' bytes of
+              Left _ -> []
+              Right content ->
+                [ (rel, n, line)
+                  | (n, line) <- zip [1 ..] (T.lines content),
+                    matchTest regex (T.unpack line)
+                ]
+
+isBinaryOrBig :: FilePath -> IO Bool
+isBinaryOrBig path = do
+  sizeE <- try (getFileSize path) :: IO (Either IOException Integer)
+  case sizeE of
+    Left _ -> pure True
+    Right sz
+      | sz > maxGrepFileBytes -> pure True
+      | otherwise -> do
+          sniffE <- try (BS.readFile path) :: IO (Either IOException BS.ByteString)
+          pure $ case sniffE of
+            Left _ -> True
+            Right bs -> 0 `BS.elem` BS.take binarySniffBytes bs
+
+listAllTextFiles :: Workspace -> IO (Either RuntimeError [Text])
+listAllTextFiles ws = do
+  paths <- try (walkAll (workspaceRoot ws) "") :: IO (Either IOException [FilePath])
+  pure $ case paths of
+    Left ex -> Left (HostErr ("fs.grep walk failed: " <> T.pack (show ex)))
+    Right ps -> Right (map T.pack (sort ps))
+
+walkAll :: FilePath -> FilePath -> IO [FilePath]
+walkAll absRoot relDir = do
+  let absDir = if null relDir then absRoot else absRoot </> relDir
+  names <- listDirectory absDir
+  fmap concat $ traverse (oneFile absRoot relDir) names
+
+oneFile :: FilePath -> FilePath -> FilePath -> IO [FilePath]
+oneFile absRoot relDir name
+  | "." `T.isPrefixOf` T.pack name && name /= "." && name /= ".." = pure []
+  | otherwise = do
+      let rel = if null relDir then name else relDir </> name
+          absPath = absRoot </> rel
+      isDir <- doesDirectoryExist absPath
+      if isDir
+        then
+          if name == ".hwfl"
+            then pure []
+            else walkAll absRoot rel
+        else do
+          isFile <- doesFileExist absPath
+          pure (if isFile then [rel] else [])

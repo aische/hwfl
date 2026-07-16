@@ -504,6 +504,9 @@ frameToJson = \case
     object ["tag" .= String "match", "env" .= envToJson env, "arms" .= showText arms]
   FrPar pjs -> object ["tag" .= String "par", "par" .= parToJson pjs]
   FrConfirm c -> object ["tag" .= String "confirm", "confirm" .= confirmToJson c]
+  FrAfterConfirm cur ->
+    object ["tag" .= String "after_confirm", "current" .= currentToJson cur]
+  FrExecApproved -> object ["tag" .= String "exec_approved"]
   FrRegion sid -> object ["tag" .= String "region", "span_id" .= sid]
   FrJoin acc env es ->
     object
@@ -558,6 +561,8 @@ parseFrame = withObject "Frame" $ \o -> do
       FrMatch <$> (o .: "env" >>= parseEnv) <*> (o .: "arms" >>= readText)
     "par" -> FrPar <$> (o .: "par" >>= parsePar)
     "confirm" -> FrConfirm <$> (o .: "confirm" >>= parseConfirm)
+    "after_confirm" -> FrAfterConfirm <$> (o .: "current" >>= parseCurrent)
+    "exec_approved" -> pure FrExecApproved
     "region" -> FrRegion <$> o .: "span_id"
     "join" ->
       FrJoin
@@ -776,6 +781,10 @@ parseHostOp = \case
   "fs.read" -> pure HostFsRead
   "fs.write" -> pure HostFsWrite
   "fs.find" -> pure HostFsFind
+  "fs.list" -> pure HostFsList
+  "fs.edit" -> pure HostFsEdit
+  "fs.grep" -> pure HostFsGrep
+  "exec.run" -> pure HostExecRun
   "llm.chat" -> pure HostLlmChat
   "llm.object" -> pure HostLlmObject
   "llm.agent" -> pure HostLlmAgent

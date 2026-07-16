@@ -72,6 +72,10 @@ data HostOpId
   = HostFsRead
   | HostFsWrite
   | HostFsFind
+  | HostFsList
+  | HostFsEdit
+  | HostFsGrep
+  | HostExecRun
   | HostLlmChat
   | HostLlmObject
   | HostLlmAgent
@@ -151,6 +155,10 @@ hostOpName = \case
   HostFsRead -> "fs.read"
   HostFsWrite -> "fs.write"
   HostFsFind -> "fs.find"
+  HostFsList -> "fs.list"
+  HostFsEdit -> "fs.edit"
+  HostFsGrep -> "fs.grep"
+  HostExecRun -> "exec.run"
   HostLlmChat -> "llm.chat"
   HostLlmObject -> "llm.object"
   HostLlmAgent -> "llm.agent"

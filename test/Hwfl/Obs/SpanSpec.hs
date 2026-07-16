@@ -143,7 +143,8 @@ spec = describe "observability (M6)" $ do
                     roRunId = Just "e16",
                     roEntry = path,
                     roMode = StepRun,
-                    roProjectHash = Nothing
+                    roProjectHash = Nothing,
+                    roExec = Nothing
                   }
                 loaded
             case outcome of
@@ -173,7 +174,8 @@ spec = describe "observability (M6)" $ do
                       roRunId = Just "test-obs",
                       roEntry = dir </> "e03.md",
                       roMode = StepRun,
-                      roProjectHash = Nothing
+                      roProjectHash = Nothing,
+                    roExec = Nothing
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of

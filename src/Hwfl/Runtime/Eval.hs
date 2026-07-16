@@ -66,7 +66,7 @@ import Hwfl.Runtime.Agent
     valueToJsonText,
   )
 import Hwfl.Runtime.Error (RuntimeError (..))
-import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), runHostOp)
+import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), execNeedsConfirm, runHostOp)
 import Hwfl.Runtime.Machine
 import Hwfl.Runtime.Snapshot (RunStore (..), persistTransition)
 
@@ -254,6 +254,13 @@ doHost ctx mode m op args
   | op == HostHumanConfirm = case confirmArgs args of
       Left e -> pure (Left e)
       Right c -> doConfirm ctx m c
+  | op == HostExecRun =
+      case m.mFrames of
+        FrExecApproved : rest ->
+          doHostRun ctx mode (m {mFrames = rest}) op args
+        _
+          | execNeedsConfirm ctx.rcHost -> doExecConfirm ctx m args
+          | otherwise -> doHostRun ctx mode m op args
   | op == HostObsSpan = case parseObsSpan args of
       Right _ -> doObsSpan ctx mode m args
       Left e ->
@@ -285,26 +292,73 @@ doHost ctx mode m op args
           model
           maxRounds
           (Just schema)
-  | otherwise = do
-      sid <-
-        openSpan
-          ctx.rcStore
-          ctx.rcSpans
-          (hostOpName op)
-          SkHost
-          (hostOpenAttrs op args)
-      result <- runHostOp ctx.rcHost op args
-      case result of
-        Left e -> do
-          let m' = m {mStatus = MsFailed, mError = Just e}
-          seqNo <- persist ctx (Just op) Nothing MsFailed (Just m')
-          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) (Just seqNo)
-          pure (Left e)
-        Right hr -> do
-          let m' = pauseIfStep mode (m {mCurrent = CurReturn hr.hrValue})
-          seqNo <- persist ctx (Just op) (Just hr.hrValue) m'.mStatus (Just m')
-          closeSpan ctx.rcStore ctx.rcSpans sid SsOk hr.hrCloseAttrs (Just seqNo)
-          pure (Right (StepResult m' True))
+  | otherwise = doHostRun ctx mode m op args
+
+-- | Open span, run host op, close span (standard host transition).
+doHostRun ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  HostOpId ->
+  [(Maybe Ident, Value)] ->
+  IO (Either RuntimeError StepResult)
+doHostRun ctx mode m op args = do
+  sid <-
+    openSpan
+      ctx.rcStore
+      ctx.rcSpans
+      (hostOpName op)
+      SkHost
+      (hostOpenAttrs op args)
+  result <- runHostOp ctx.rcHost op args
+  case result of
+    Left e -> do
+      let m' = m {mStatus = MsFailed, mError = Just e}
+      seqNo <- persist ctx (Just op) Nothing MsFailed (Just m')
+      closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) (Just seqNo)
+      pure (Left e)
+    Right hr -> do
+      let m' = pauseIfStep mode (m {mCurrent = CurReturn hr.hrValue})
+      seqNo <- persist ctx (Just op) (Just hr.hrValue) m'.mStatus (Just m')
+      closeSpan ctx.rcStore ctx.rcSpans sid SsOk hr.hrCloseAttrs (Just seqNo)
+      pure (Right (StepResult m' True))
+
+-- | Pause for human confirm before @exec.run@ when @exec.confirm@ is true.
+doExecConfirm ::
+  RunCtx ->
+  Machine ->
+  [(Maybe Ident, Value)] ->
+  IO (Either RuntimeError StepResult)
+doExecConfirm ctx m args =
+  let program = case lookup (Just (Ident "program")) args of
+        Just (VString p) -> p
+        _ -> "exec"
+      detailArgs = case lookup (Just (Ident "args")) args of
+        Just (VList xs) ->
+          T.intercalate " " [t | VString t <- xs]
+        _ -> ""
+      c =
+        ConfirmRequest
+          { crTitle = "exec.run " <> program,
+            crDetail = detailArgs,
+            crBranchIndex = Nothing
+          }
+      m' =
+        m
+          { mStatus = MsPaused (PauseAwaitingConfirm c),
+            mCurrent = CurAwaitConfirm c,
+            mFrames = FrAfterConfirm (CurHost HostExecRun args) : m.mFrames
+          }
+   in do
+        _ <-
+          openSpan
+            ctx.rcStore
+            ctx.rcSpans
+            "human.confirm"
+            SkHost
+            (hostOpenAttrs HostHumanConfirm [(Just (Ident "title"), VString c.crTitle)])
+        _ <- persist ctx (Just HostHumanConfirm) Nothing (MsPaused (PauseAwaitingConfirm c)) (Just m')
+        pure (Right (StepResult m' True))
 
 -------------------------------------------------------------------------------
 -- Agent loop (llm.agent / llm.agent_object)
@@ -908,6 +962,23 @@ approveMachine yes m = case m.mStatus of
   MsPaused (PauseAwaitingConfirm c) ->
     case (m.mFrames, m.mCurrent) of
       (FrPar pjs : rest, _) -> Right (approvePar yes c pjs rest m)
+      (FrAfterConfirm next : rest, _) ->
+        if yes
+          then
+            Right
+              m
+                { mStatus = MsRunning,
+                  mCurrent = next,
+                  mFrames = FrExecApproved : rest
+                }
+          else
+            Right
+              m
+                { mStatus = MsFailed,
+                  mError = Just (HostErr "exec.run denied by operator"),
+                  mCurrent = CurReturn VUnit,
+                  mFrames = rest
+                }
       (FrConfirm _ : rest, _) ->
         Right
           m
@@ -1464,6 +1535,10 @@ crunchReturn ctx m v = case m.mFrames of
                   mFrames = FrConfirm c : rest
                 }
           )
+    FrAfterConfirm _ ->
+      Left (EvalErr (Trap "unexpected return into FrAfterConfirm"))
+    FrExecApproved ->
+      Left (EvalErr (Trap "unexpected return into FrExecApproved"))
     FrRegion sid ->
       Right (Just m {mCurrent = CurCloseRegion sid v, mFrames = rest})
     FrJoin acc env es -> case es of

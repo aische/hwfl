@@ -4,18 +4,18 @@ Last updated: 2026-07-16
 
 ## Current focus
 
-**Coding-agent readiness** — close host gaps (`exec.run`, richer FS) so a
-real edit/test agent example can dogfood the runtime; then author-facing
-docs (language reference + tutorial).
+**Coding-agent dogfood** — P0 host gaps closed; next is a real edit/test
+agent example + tutorial, then CLI `--debug`.
 
 ## Done recently
 
-- Priority reorder: coding-agent host primitives and docs ahead of streaming,
-  DB run store, skills, Servant, and MCP (see log)
-- `schema(T)` optional field docs from `## schema Typename` markdown sections
-- Builtin agent-tool parameter descriptions; `.env` load at CLI startup
-- Polymorphic `obs.span` (E16); `llm.agent_object` + submit tool
-- M0–M9 complete (check / run / step / resume / show / semantic-check dogfood)
+- P0: runtime `exec.run` (allowlist + `exec.confirm` from `project.json`)
+- P0: `fs.list` / `fs.edit` / `fs.grep` (+ agent tool metadata)
+- P0: [language-reference.md](language-reference.md) card
+- Priority reorder: coding-agent host primitives ahead of streaming / DB /
+  skills / Servant / MCP
+- `schema(T)` optional field docs; builtin tool descriptions; `.env` load
+- M0–M9 complete
 
 ## Blockers
 
@@ -23,16 +23,14 @@ None.
 
 ## Next up
 
-1. Host gaps for coding agents: `exec.run` (runtime; already check-typed) +
-   FS `list` / `edit` / `grep` (and related write helpers as needed)
-2. Language reference card (keywords, builtins, host ops + signatures)
-3. Real coding-agent example + short tutorial
-4. CLI `--debug` / richer verbose (alongside existing `hwfl show`)
-5. Streaming LLM spans
-6. Semantic-check deepen (optional LLM layer; packaging)
-7. Skills ([skills-plan.md](skills-plan.md))
-8. Run-store interface → optional DB; later Servant API; later MCP client
-9. Alternate `LlmProvider` — low priority
+1. Real coding-agent example (sandbox edit / test loop using exec + FS)
+2. Tutorial: module → `check` → `run` → `resume` → `show`
+3. CLI `--debug` (and complete `-v` / `--json` where thin)
+4. Streaming LLM spans
+5. Semantic-check deepen (optional LLM layer; packaging)
+6. Skills ([skills-plan.md](skills-plan.md))
+7. Run-store interface → optional DB; later Servant API; later MCP client
+8. Alternate `LlmProvider` — low priority
 
 ## Open naming
 

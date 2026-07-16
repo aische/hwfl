@@ -20,6 +20,7 @@ Start sessions from [STATUS.md](STATUS.md) and [TASKS.md](TASKS.md).
 | [spec/](spec/)                         | Normative specification          |
 | [examples/](examples/)                 | Design examples (contracts)      |
 | [stdlib.md](stdlib.md)                 | What belongs in-language vs host |
+| [language-reference.md](language-reference.md) | Keywords, types, prelude + host ops |
 
 ### Spec suite (`spec/`)
 

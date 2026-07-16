@@ -104,6 +104,42 @@ hostToolMeta = \case
             ("text", t "String", "UTF-8 text content to write to the file")
           ]
       )
+  HostFsList ->
+    Right
+      ( "fs_list",
+        "List files and directories in a workspace path",
+        describedObjectSchema
+          [("path", t "FileRef", "Workspace-relative directory to list")]
+      )
+  HostFsEdit ->
+    Right
+      ( "fs_edit",
+        "Replace occurrences of a literal string in a workspace file",
+        describedObjectSchema
+          [ ("path", t "FileRef", "Workspace-relative file path to edit"),
+            ("old", t "String", "Literal substring to find"),
+            ("new", t "String", "Replacement text")
+          ]
+      )
+  HostFsGrep ->
+    Right
+      ( "fs_grep",
+        "Regex-search workspace files; empty glob searches the whole workspace",
+        describedObjectSchema
+          [ ("pattern", t "String", "Regular expression to match against each line"),
+            ("glob", t "String", "Optional file glob (**/*.ext or *.ext); empty = all files")
+          ]
+      )
+  HostExecRun ->
+    Right
+      ( "exec_run",
+        "Run an allowlisted program in the workspace (see project.json exec.allow)",
+        describedObjectSchema
+          [ ("program", t "String", "Bare program basename (must be allowlisted)"),
+            ("args", TList (t "String"), "Command-line arguments"),
+            ("stdin", t "String", "Standard input text")
+          ]
+      )
   other ->
     Left (HostErr ("host op not agent-eligible as tool: " <> hostOpName other))
 
@@ -314,6 +350,48 @@ coerceToolArgs ts json = case ts.tvsCallee of
           (Just (Ident "text"), VString text)
         ]
     _ -> Left "fs_write arguments must be an object"
+  VHostOp HostFsList -> case json of
+    Aeson.Object o -> case KM.lookup "path" o of
+      Just (Aeson.String p) -> Right [(Just (Ident "path"), VString p)]
+      Just _ -> Left "fs_list.path must be a string"
+      Nothing -> Left "fs_list missing path"
+    Aeson.String p -> Right [(Nothing, VString p)]
+    _ -> Left "fs_list arguments must be an object or string path"
+  VHostOp HostFsEdit -> case json of
+    Aeson.Object o -> do
+      path <- stringField o "path"
+      old <- stringField o "old"
+      new <- stringField o "new"
+      Right
+        [ (Just (Ident "path"), VString path),
+          (Just (Ident "old"), VString old),
+          (Just (Ident "new"), VString new)
+        ]
+    _ -> Left "fs_edit arguments must be an object"
+  VHostOp HostFsGrep -> case json of
+    Aeson.Object o -> do
+      pattern <- stringField o "pattern"
+      let glob = case KM.lookup "glob" o of
+            Just (Aeson.String g) -> g
+            _ -> ""
+      Right
+        [ (Just (Ident "pattern"), VString pattern),
+          (Just (Ident "glob"), VString glob)
+        ]
+    _ -> Left "fs_grep arguments must be an object"
+  VHostOp HostExecRun -> case json of
+    Aeson.Object o -> do
+      program <- stringField o "program"
+      argv <- stringListField o "args"
+      let stdin = case KM.lookup "stdin" o of
+            Just (Aeson.String s) -> s
+            _ -> ""
+      Right
+        [ (Just (Ident "program"), VString program),
+          (Just (Ident "args"), VList (map VString argv)),
+          (Just (Ident "stdin"), VString stdin)
+        ]
+    _ -> Left "exec_run arguments must be an object"
   VTopFun {} -> namedObjectArgs json
   VClosure {} -> namedObjectArgs json
   _ -> Left "unsupported tool callee"
@@ -322,6 +400,16 @@ coerceToolArgs ts json = case ts.tvsCallee of
       Just (Aeson.String s) -> Right s
       Just _ -> Left (k <> " must be a string")
       Nothing -> Left ("missing " <> k)
+    stringListField o k = case KM.lookup (Key.fromText k) o of
+      Just (Aeson.Array arr) ->
+        traverse
+          ( \case
+              Aeson.String s -> Right s
+              _ -> Left (k <> " elements must be strings")
+          )
+          (V.toList arr)
+      Just _ -> Left (k <> " must be an array of strings")
+      Nothing -> Right []
     namedObjectArgs = \case
       Aeson.Object o ->
         Right

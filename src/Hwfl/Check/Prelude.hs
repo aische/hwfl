@@ -91,6 +91,46 @@ fsType =
           (TRecord [(Ident "glob", t "String")])
           [EffRead]
           (TList (t "FileRef"))
+      ),
+      ( Ident "list",
+        TEffFun
+          (t "FileRef")
+          [EffRead]
+          ( TList
+              ( TRecord
+                  [ (Ident "name", t "String"),
+                    (Ident "kind", t "String")
+                  ]
+              )
+          )
+      ),
+      ( Ident "edit",
+        TEffFun
+          ( TRecord
+              [ (Ident "path", t "FileRef"),
+                (Ident "old", t "String"),
+                (Ident "new", t "String")
+              ]
+          )
+          [EffWrite]
+          (TRecord [(Ident "ok", t "Bool")])
+      ),
+      ( Ident "grep",
+        TEffFun
+          ( TRecord
+              [ (Ident "pattern", t "String"),
+                (Ident "glob", t "String")
+              ]
+          )
+          [EffRead]
+          ( TList
+              ( TRecord
+                  [ (Ident "file", t "String"),
+                    (Ident "line", t "Int"),
+                    (Ident "text", t "String")
+                  ]
+              )
+          )
       )
     ]
 
@@ -206,7 +246,13 @@ execType =
               ]
           )
           [EffExec]
-          (t "Unit")
+          ( TRecord
+              [ (Ident "exit_code", t "Int"),
+                (Ident "stdout", t "String"),
+                (Ident "stderr", t "String"),
+                (Ident "timed_out", t "Bool")
+              ]
+          )
       )
     ]
 

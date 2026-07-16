@@ -144,7 +144,8 @@ spec = describe "runtime llm.agent_object" $ do
                   roRunId = Just "ao1",
                   roEntry = path,
                   roMode = StepRun,
-                  roProjectHash = Nothing
+                  roProjectHash = Nothing,
+                    roExec = Nothing
                 }
               loaded
           case outcome of
@@ -171,7 +172,8 @@ spec = describe "runtime llm.agent_object" $ do
                   roRunId = Just "ao-plain",
                   roEntry = path,
                   roMode = StepRun,
-                  roProjectHash = Nothing
+                  roProjectHash = Nothing,
+                    roExec = Nothing
                 }
               loaded
           case outcome of

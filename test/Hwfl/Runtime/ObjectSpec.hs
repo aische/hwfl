@@ -67,7 +67,8 @@ spec = describe "runtime llm.object (E14)" $ do
                   roRunId = Just "e14",
                   roEntry = path,
                   roMode = StepRun,
-                  roProjectHash = Nothing
+                  roProjectHash = Nothing,
+                    roExec = Nothing
                 }
               loaded
           case outcome of

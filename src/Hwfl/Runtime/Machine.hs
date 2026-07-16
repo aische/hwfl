@@ -116,6 +116,11 @@ data Frame
   | FrPar ParJoinState
   | -- | After approve, continue with Bool into prior kont.
     FrConfirm ConfirmRequest
+  | -- | After approve of @exec.run@ confirm gate: resume the stored 'Current'
+    -- (usually 'CurHost' 'HostExecRun') or fail if denied.
+    FrAfterConfirm Current
+  | -- | One-shot: next @exec.run@ may spawn without re-confirming.
+    FrExecApproved
   | -- | Open @obs.span@ region; close when value returns.
     FrRegion Text
   | FrJoin [Value] Env [Expr]
