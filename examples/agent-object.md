@@ -13,6 +13,11 @@ effects: [Read, Net]
 Use tools when needed, then call submit alone with the structured result.
 Never mix submit with other tool calls in the same round.
 
+## schema Out
+
+- summary: One-sentence summary of the scored content.
+- score: Integer score from 1 (poor) to 10 (excellent).
+
 ## body
 
 ```pml
@@ -27,8 +32,8 @@ fun main(_): { summary: String, score: Int, rounds: Int } =
     prompt = "score the note",
     tools = [tool(fs.read), tool(search)],
     schema = schema(Out),
-    model = "gpt-5",
-    max_rounds = 4
+    model = "deepseek4flash",
+    max_rounds = 10
   )
   { summary = result.value.summary, score = result.value.score, rounds = result.rounds }
 ```

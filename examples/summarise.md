@@ -19,7 +19,7 @@ fun main(inputs): { summary: String } =
   let summary = llm.chat(
     system = @system,
     prompt = $"Summarise the following:\n\n{contents.text}",
-    model = "gpt-5"
+    model = "deepseek4flash"
   )
   { summary }
 ```
