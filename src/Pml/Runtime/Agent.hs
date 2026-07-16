@@ -91,13 +91,17 @@ hostToolMeta = \case
     Right
       ( "fs_read",
         "Read a UTF-8 text file from the workspace",
-        objectSchema [("path", t "FileRef")]
+        describedObjectSchema
+          [ ("path", t "FileRef", "Workspace-relative file path to read") ]
       )
   HostFsWrite ->
     Right
       ( "fs_write",
         "Write a UTF-8 text file in the workspace",
-        objectSchema [("path", t "FileRef"), ("text", t "String")]
+        describedObjectSchema
+          [ ("path", t "FileRef", "Workspace-relative file path to write"),
+            ("text", t "String", "UTF-8 text content to write to the file")
+          ]
       )
   other ->
     Left (HostErr ("host op not agent-eligible as tool: " <> hostOpName other))
@@ -130,6 +134,29 @@ objectSchema fields =
           "properties" .= object [],
           "additionalProperties" .= True
         ]
+
+describedObjectSchema :: [(Text, TypeExpr, Text)] -> Aeson.Value
+describedObjectSchema fields =
+  annotateProperties
+    [(name, desc) | (name, _, desc) <- fields]
+    (objectSchema [(name, ty) | (name, ty, _) <- fields])
+
+annotateProperties :: [(Text, Text)] -> Aeson.Value -> Aeson.Value
+annotateProperties descs = \case
+  Aeson.Object o ->
+    let props = case KM.lookup "properties" o of
+          Just (Aeson.Object ps) -> Aeson.Object (foldr addDescription ps descs)
+          other -> maybe (object []) id other
+     in Aeson.Object (KM.insert "properties" props o)
+  other -> other
+  where
+    addDescription (name, desc) props =
+      case KM.lookup (Key.fromText name) props of
+        Just v -> KM.insert (Key.fromText name) (annotateDescription desc v) props
+        Nothing -> props
+    annotateDescription desc = \case
+      Aeson.Object p -> Aeson.Object (KM.insert "description" (Aeson.String desc) p)
+      other -> other
 
 t :: Text -> TypeExpr
 t = TName . TypeName

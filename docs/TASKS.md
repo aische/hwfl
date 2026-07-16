@@ -4,7 +4,6 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now
 
-- [ ] Add parameter descriptions to builtin agent tools
 - [ ] Allow optional `## schema Typename` sections in module markdown for
   `schema(T)` field descriptions
 - [ ] Streaming LLM spans
@@ -41,3 +40,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] `llm.object` + schema reflection at runtime (E14) (2026-07-15)
 - [x] `llm.agent_object` + synthetic `submit` tool (2026-07-15)
 - [x] Polymorphic `obs.span` check type (E16) (2026-07-15)
+- [x] Add parameter descriptions to builtin agent tools (2026-07-16)

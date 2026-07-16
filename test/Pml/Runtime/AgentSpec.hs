@@ -6,7 +6,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Pml.Ast.Name (Ident (..))
 import Pml.Check.Module (checkLoadedModule)
-import Pml.Eval.Value (Value (..))
+import Pml.Eval.Value (HostOpId (..), ToolSpecValue (..), Value (..))
 import Pml.Llm.Mock (mockProviderWith)
 import Pml.Llm.Provider (LlmProvider (..))
 import Pml.Llm.Types
@@ -19,6 +19,7 @@ import Pml.Llm.Types
   )
 import Pml.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Pml.Parse.Load (loadModuleText)
+import Pml.Runtime.Agent (buildToolSpec)
 import Pml.Runtime.Eval (StepMode (..))
 import Pml.Runtime.Machine (MachineStatus (..), PauseReason (..))
 import Pml.Runtime.Run
@@ -102,6 +103,59 @@ agentMock = mockProviderWith reply
 
 spec :: Spec
 spec = describe "runtime agent (M7)" $ do
+  it "builtin tool schemas include parameter descriptions" $ do
+    buildToolSpec mempty (VHostOp HostFsRead)
+      `shouldBe` Right
+        ( VToolSpec
+            ToolSpecValue
+              { tvsName = "fs_read",
+                tvsDescription = "Read a UTF-8 text file from the workspace",
+                tvsParameters =
+                  object
+                    [ "type" .= ("object" :: Text),
+                      "properties"
+                        .= object
+                          [ "path"
+                              .= object
+                                [ "type" .= ("string" :: Text),
+                                  "description" .= ("Workspace-relative file path to read" :: Text)
+                                ]
+                          ],
+                      "required" .= [("path" :: Text)],
+                      "additionalProperties" .= False
+                    ],
+                tvsCallee = VHostOp HostFsRead
+              }
+        )
+    buildToolSpec mempty (VHostOp HostFsWrite)
+      `shouldBe` Right
+        ( VToolSpec
+            ToolSpecValue
+              { tvsName = "fs_write",
+                tvsDescription = "Write a UTF-8 text file in the workspace",
+                tvsParameters =
+                  object
+                    [ "type" .= ("object" :: Text),
+                      "properties"
+                        .= object
+                          [ "path"
+                              .= object
+                                [ "type" .= ("string" :: Text),
+                                  "description" .= ("Workspace-relative file path to write" :: Text)
+                                ],
+                            "text"
+                              .= object
+                                [ "type" .= ("string" :: Text),
+                                  "description" .= ("UTF-8 text content to write to the file" :: Text)
+                                ]
+                          ],
+                      "required" .= [("path" :: Text), ("text" :: Text)],
+                      "additionalProperties" .= False
+                    ],
+                tvsCallee = VHostOp HostFsWrite
+              }
+        )
+
   it "E15 agent calls fs.read + user search then finishes" $
     withSystemTempDirectory "pml-agent" $ \dir -> do
       writeFile (dir </> "note.txt") "hello from note"
