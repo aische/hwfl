@@ -9,6 +9,7 @@ import Pml.Ast.Pretty (prettyModuleBody)
 import Pml.Check.Error (renderCheckError)
 import Pml.Check.Module (checkLoadedModule)
 import Pml.Check.Project (checkProject, checkProjectLoaded, renderProjectCheckError)
+import Pml.Env (loadDotenv)
 import Pml.Eval.Value (Value, renderValue)
 import Pml.Llm.Mock (mockProvider)
 import Pml.Llm.Provider (LlmProvider (..))
@@ -43,6 +44,7 @@ import System.IO (hPutStrLn, stderr)
 
 main :: IO ()
 main = do
+  loadDotenv
   args <- getArgs
   case args of
     ["parse", path] -> cmdParse path

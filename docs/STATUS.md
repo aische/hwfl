@@ -1,20 +1,17 @@
 # Status
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 ## Current focus
 
-**Polymorphic `obs.span` complete** (check return type = body type; E16).
+**CLI ergonomics** — `.env` auto-load for provider keys.
 
 ## Done recently
 
-- Polymorphic `obs.span`: Infer special-cases `(name, fun () -> a) -> a`
-  (curried or two-arg); runtime region/span unchanged; empty `fun ()`
-  bindings fixed; 102 tests
-- `llm.agent_object`: multi-transition agent loop with `schema = schema(Out)` →
-  `{ value: Out, rounds: Int }`; injects terminating `submit` tool; plain-text
-  finish is fatal; mixed submit rounds recover without running tools
-- Surface name uses underscore (`agent_object`) — kernel idents disallow `-`
+- CLI loads `.env` from cwd at startup (`Pml.Env.loadDotenv`); missing or
+  unreadable files are ignored; 102 tests
+- Polymorphic `obs.span` complete (E16)
+- `llm.agent_object` with `schema(Out)` → `{ value: Out, rounds: Int }`
 
 ## Blockers
 
