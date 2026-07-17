@@ -1,14 +1,14 @@
 # Semantic-check — research plan (“semantic type system”)
 
 **Status:** exploratory backlog. **S2** (obligation graph), **S1** (role
-typing), and **S5** (prose↔code contracts) shipped. Remaining phases S3–S4 /
-S6 not scheduled in [TASKS.md](TASKS.md) Now. Ship increments inside
-`examples/semantic-check/` (same-run layers; policy in workflow; no semantic
-host-op fan-out).
+typing), **S5** (prose↔code contracts), and **S3** (proposition algebra)
+shipped. Remaining phases S4 / S6 not scheduled in [TASKS.md](TASKS.md) Now.
+Ship increments inside `examples/semantic-check/` (same-run layers; policy in
+workflow; no semantic host-op fan-out).
 
 **Related:** [idea.md](idea.md) goal 8 (dogfood semantic analysis),
 `examples/semantic-check/`, [spec/12-example-suite.md](spec/12-example-suite.md)
-E20, log entries 2026-07-17 (deepen / noise fix / A+B / S2 / S1 / S5).
+E20, log entries 2026-07-17 (deepen / noise fix / A+B / S2 / S1 / S5 / S3).
 
 ## 1. Stance (metaphor, not claim)
 
@@ -52,9 +52,10 @@ Implemented in `examples/semantic-check/workflows/main.md`:
 | 2b | Speech-act heuristic | agent/system sections should contain directives |
 | 3 | Policy conflict | skills / system / rules → `check_internal_conflict` (**A**); quoted `quote_a` / `quote_b` / `why` |
 | 3b | Obligation graph | extract `{actor, modality, action, object, condition?, quote}` on gated reviews; deterministic must∧must_not / system must vs skill may / catalog-missing object (**S2**) |
+| 3c | Proposition algebra | `must`/`must_not`/`prefer`/`prefer_not` (+ condition); Must∧MustNot and Must vs Prefer(~a); conditional discharge (**S3**) |
 | 3a | Illocutionary role | forced `role` + quoted `mismatched_sentences`; Policy/System need directives; Example must not smuggle hard constraints (**S1**) |
 | 2c | Prose↔code contract | dead bindable `@section`; prose host-op vs `effects`/`tools`; schema field vs `outputs:`; skill `exec.run` vs caller effects (**S5**) |
-| — | Gate discipline | body-bearing `review_gate`; unique by `(slice_id, review_task)`; policy first; cap 8; H1-only skills get synthetic `{path}/skill` slices |
+| — | Gate discipline | body-bearing `review_gate`; unique by `(slice_id, review_task)`; policy first; cap 10; H1-only skills get synthetic `{path}/skill` slices |
 
 Scan scope: `workflows/` / `skills/` / `lib/` / `types/` only.
 
@@ -122,18 +123,25 @@ Report: `obligations` + `pragmatic_findings` with `category: obligation`.
 Fixtures: `require-search` / `forbid-search` / `ghost-tool`. Still gated
 `llm.object` + quotes; no open-world NLI.
 
-### Phase S3 — Narrow propositional projection
+### Phase S3 — Narrow propositional projection — **shipped**
 
 Only for normative sentences already selected by speech-act / policy /
-obligation gates. Emit a small algebra, e.g.:
+obligation gates. Emit a small algebra:
 
-`Must(a)` | `MustNot(a)` | `If(c, Must(a))` | `Prefer(a)`
+`Must(a)` | `MustNot(a)` | `If(c, Must(a))` | `Prefer(a)` | `Prefer(~a)`
+
+(`prefer_not` = Prefer(~a); non-empty `condition` = If(c, …).)
 
 Check only obvious clashes (`Must(a) ∧ MustNot(a)`, unconditioned
-`Must` vs `Prefer(¬a)`). Preserve conditional discharge (situation A vs B
+`Must` vs `Prefer(~a)`). Preserve conditional discharge (situation A vs B
 both OK) — same rule as today’s conflict reviewer.
 
-Avoid full FOL / open entailment.
+Implementation: `PragmaticOut.propositions` on policy gates + deterministic
+projection from stamped obligations; merge/dedupe; ≤4/slice, ≤12 graph
+rows; finding caps 4; `category: proposition`; report lists `propositions`.
+Fixture: `prefer-no-search` (with require/forbid for Must∧MustNot). Gate
+cap raised 8→10 so planted policy fixtures stay gated. Avoid full FOL /
+open entailment.
 
 ### Phase S4 — Info-theoretic routing (not findings)
 
@@ -210,6 +218,6 @@ separate workflow over `.hwfl/runs` rather than static module scan.
 1. ~~**S2 obligation graph**~~ **done**
 2. ~~**S1 role typing**~~ **done**
 3. ~~**S5 prose↔code contracts**~~ **done**
-4. **S3** only if S2’s claim schema stays stable
+4. ~~**S3 proposition algebra**~~ **done**
 5. **S4** as gate features while doing the above
 6. **S6** when run-store / span APIs make dynamic checks cheap

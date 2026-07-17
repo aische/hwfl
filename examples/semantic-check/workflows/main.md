@@ -25,12 +25,15 @@ vs caller effects; category `contract`, cap 16). Pragmatic: gated `llm.object`
 including **internal conflict** on policy slices (skills, system, rules) plus
 **obligation extraction** (policy gates only, ≤4 per slice); deterministic
 graph checks on the extracted set (must∧must_not, system must vs skill
-may/should, catalog-missing objects; ≤12 rows, finding caps 4). Every gated
-review also assigns an **illocutionary role** (`System`/`Policy`/`Procedure`/
-`Example`/`Rationale`/`ToolDoc`) and quotes role-mismatched sentences;
-deterministic Policy/System and Example felicity checks (category `role`).
-Gate capped at 8. Set `mode=pragmatic` + catalog `model` for LLM;
-`mode=deterministic` skips LLM calls.
+may/should, catalog-missing objects; ≤12 rows, finding caps 4). Same gates
+also emit a **narrow proposition algebra** (`must` / `must_not` / `prefer` /
+`prefer_not`, optional condition); deterministic clashes Must∧MustNot and
+unconditioned Must vs Prefer(¬a) (category `proposition`; ≤12 rows, caps 4).
+Every gated review also assigns an **illocutionary role**
+(`System`/`Policy`/`Procedure`/`Example`/`Rationale`/`ToolDoc`) and quotes
+role-mismatched sentences; deterministic Policy/System and Example felicity
+checks (category `role`). Gate capped at 10. Set `mode=pragmatic` + catalog
+`model` for LLM; `mode=deterministic` skips LLM calls.
 
 ## reviewer
 
@@ -56,6 +59,13 @@ Rules:
   `action`, `object`, optional `condition` (empty if unconditioned), and a
   **verbatim** `quote` from the body. Prefer a short list (≤8) over guessing.
   Do not invent modules or tools.
+- On the same task, also fill `propositions`: a narrow projection of those
+  norms. Each row: `form` exactly one of `must` | `must_not` | `prefer` |
+  `prefer_not`, short `atom` (shared key for clashes, e.g. `use lib/search`),
+  optional `condition` (empty if unconditioned; non-empty means If(c, …)),
+  and a **verbatim** `quote`. Use `prefer_not` for soft preferences against
+  an atom (Prefer(¬a)). Empty list when the task is not
+  `check_internal_conflict`. Prefer ≤8 rows; do not invent atoms.
 - Always set `role` to exactly one of: `System` | `Policy` | `Procedure` |
   `Example` | `Rationale` | `ToolDoc`. Choose the dominant speech-act of the
   slice (skills/rules → `Policy`; agent/system prompts → `System`; how-to
@@ -142,6 +152,21 @@ type RoleRow = {
   slice_id: String
 }
 
+type PropExtract = {
+  form: String,
+  atom: String,
+  condition: String,
+  quote: String
+}
+
+type PropRow = {
+  form: String,
+  atom: String,
+  condition: String,
+  quote: String,
+  file: String
+}
+
 type SkillExecHint = {
   id: String,
   file: String,
@@ -151,6 +176,7 @@ type SkillExecHint = {
 type ReviewPack = {
   findings: List<Finding>,
   obligations: List<OblRow>,
+  propositions: List<PropRow>,
   roles: List<RoleRow>
 }
 
@@ -160,6 +186,7 @@ type PragmaticOut = {
   contradictions: List<Contradiction>,
   clarity_score: Float,
   obligations: List<ObligationExtract>,
+  propositions: List<PropExtract>,
   role: String,
   mismatched_sentences: List<RoleMismatch>
 }
@@ -597,7 +624,7 @@ fun build_gate(slices: List<Slice>, prose: List<Finding>, speech: List<Finding>)
   let merged1 = gate_merge(merged0, sp, 0, list.length(sp))
   let merged2 = gate_merge(merged1, pr, 0, list.length(pr))
   let merged3 = gate_merge(merged2, sim, 0, list.length(sim))
-  take_gates(merged3, 8, 0, list.length(merged3))
+  take_gates(merged3, 10, 0, list.length(merged3))
 
 fun bleed_felicity(s: String): Bool =
   text.contains(s, "entropy")
@@ -903,9 +930,165 @@ fun obligation_graph_findings(obs: List<OblRow>, names: List<String>): List<Find
   let dead = dead_ref_findings(capped, names, 0, n, 4)
   concat3(hard, soft, dead)
 
+fun normalize_atom(a: String): String =
+  text.trim(a)
+
+fun normalize_prop_form(f: String): String =
+  if f == "Must" then "must"
+  else if f == "MustNot" || f == "must not" || f == "Must_not" then "must_not"
+  else if f == "Prefer" then "prefer"
+  else if f == "PreferNot" || f == "prefer not" || f == "Prefer_not" then "prefer_not"
+  else if f == "If" || f == "if_must" then "must"
+  else f
+
+fun prop_usable(p: PropRow): Bool =
+  not(p.quote == "")
+    && not(p.atom == "")
+    && not(p.form == "")
+
+fun stamp_props(xs: List<PropExtract>, file: String, i: Int, n: Int, remaining: Int): List<PropRow> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else if i >= 16 then []
+  else
+    let x = xs[i]
+    let row = {
+      form = normalize_prop_form(x.form),
+      atom = normalize_atom(x.atom),
+      condition = x.condition,
+      quote = x.quote,
+      file = file
+    }
+    if not(prop_usable(row)) then stamp_props(xs, file, i + 1, n, remaining)
+    else list.concat([row], stamp_props(xs, file, i + 1, n, remaining - 1))
+
+fun obl_to_prop_form(m: String): String =
+  if is_must_mod(m) then "must"
+  else if is_must_not_mod(m) then "must_not"
+  else if is_soft_mod(m) then "prefer"
+  else ""
+
+fun project_one_obl(o: OblRow): List<PropRow> =
+  let form = obl_to_prop_form(o.modality)
+  if form == "" then []
+  else
+    [{
+      form = form,
+      atom = normalize_atom($"{o.action} {o.object}"),
+      condition = o.condition,
+      quote = o.quote,
+      file = o.file
+    }]
+
+fun project_props_from_obs(obs: List<OblRow>, i: Int, n: Int, remaining: Int): List<PropRow> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else
+    let here = project_one_obl(obs[i])
+    let used = list.length(here)
+    list.concat(here, project_props_from_obs(obs, i + 1, n, remaining - used))
+
+fun prop_has_key(xs: List<PropRow>, form: String, atom: String, cond: String, file: String, i: Int, n: Int): Bool =
+  if i >= n then false
+  else
+    let p = xs[i]
+    if p.form == form && p.atom == atom && p.condition == cond && p.file == file then true
+    else prop_has_key(xs, form, atom, cond, file, i + 1, n)
+
+fun merge_prop(acc: List<PropRow>, p: PropRow): List<PropRow> =
+  if prop_has_key(acc, p.form, p.atom, p.condition, p.file, 0, list.length(acc)) then acc
+  else list.concat(acc, [p])
+
+fun merge_props(acc: List<PropRow>, xs: List<PropRow>, i: Int, n: Int): List<PropRow> =
+  if i >= n then acc
+  else merge_props(merge_prop(acc, xs[i]), xs, i + 1, n)
+
+fun take_props(xs: List<PropRow>, k: Int, i: Int, n: Int): List<PropRow> =
+  if i >= n || k <= 0 then []
+  else list.concat([xs[i]], take_props(xs, k - 1, i + 1, n))
+
+fun same_prop_atom(a: PropRow, b: PropRow): Bool =
+  a.atom == b.atom
+
+fun prop_cond_compatible(a: PropRow, b: PropRow): Bool =
+  (a.condition == "" && b.condition == "") || a.condition == b.condition
+
+fun is_must_form(f: String): Bool =
+  f == "must"
+
+fun is_must_not_form(f: String): Bool =
+  f == "must_not"
+
+fun is_prefer_not_form(f: String): Bool =
+  f == "prefer_not"
+
+fun prop_polarity_pair(a: PropRow, b: PropRow): Bool =
+  same_prop_atom(a, b)
+    && prop_cond_compatible(a, b)
+    && ((is_must_form(a.form) && is_must_not_form(b.form))
+      || (is_must_not_form(a.form) && is_must_form(b.form)))
+
+fun prop_prefer_clash(a: PropRow, b: PropRow): Bool =
+  same_prop_atom(a, b)
+    && a.condition == ""
+    && b.condition == ""
+    && ((is_must_form(a.form) && is_prefer_not_form(b.form))
+      || (is_prefer_not_form(a.form) && is_must_form(b.form)))
+
+fun prop_polarity_findings(ps: List<PropRow>, i: Int, j: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else if j >= n then prop_polarity_findings(ps, i + 1, i + 2, n, remaining)
+  else
+    let a = ps[i]
+    let b = ps[j]
+    if not(prop_polarity_pair(a, b)) then prop_polarity_findings(ps, i, j + 1, n, remaining)
+    else
+      list.concat(
+        [{
+          severity = "warning",
+          category = "proposition",
+          file = a.file,
+          claim = $"Must(a) vs MustNot(a) on atom `{a.atom}`",
+          evidence = $"A: {a.quote} ({a.file}) | B: {b.quote} ({b.file})",
+          suggestion = "Reconcile hard norms or scope with distinguishing conditions"
+        }],
+        prop_polarity_findings(ps, i, j + 1, n, remaining - 1)
+      )
+
+fun prop_prefer_findings(ps: List<PropRow>, i: Int, j: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else if j >= n then prop_prefer_findings(ps, i + 1, i + 2, n, remaining)
+  else
+    let a = ps[i]
+    let b = ps[j]
+    if not(prop_prefer_clash(a, b)) then prop_prefer_findings(ps, i, j + 1, n, remaining)
+    else
+      list.concat(
+        [{
+          severity = "warning",
+          category = "proposition",
+          file = a.file,
+          claim = $"Must(a) vs Prefer(~a) on atom `{a.atom}`",
+          evidence = $"A: {a.quote} ({a.file}) | B: {b.quote} ({b.file})",
+          suggestion = "Drop the soft preference against a required atom, or weaken the must"
+        }],
+        prop_prefer_findings(ps, i, j + 1, n, remaining - 1)
+      )
+
+fun proposition_findings(ps: List<PropRow>): List<Finding> =
+  let capped = take_props(ps, 12, 0, list.length(ps))
+  let n = list.length(capped)
+  let hard = prop_polarity_findings(capped, 0, 1, n, 4)
+  let soft = prop_prefer_findings(capped, 0, 1, n, 4)
+  list.concat(hard, soft)
+
 fun empty_findings(_: Unit): List<Finding> = []
 
 fun empty_obligations(_: Unit): List<OblRow> = []
+
+fun empty_propositions(_: Unit): List<PropRow> = []
 
 fun empty_roles(_: Unit): List<RoleRow> = []
 
@@ -913,6 +1096,7 @@ fun empty_pack(_: Unit): ReviewPack =
   {
     findings = empty_findings(()),
     obligations = empty_obligations(()),
+    propositions = empty_propositions(()),
     roles = empty_roles(())
   }
 
@@ -939,9 +1123,17 @@ fun review_one_pack(item: GateItem, model: String): ReviewPack =
       stamp_obs(out.obligations, item.file, 0, list.length(out.obligations), 4)
     else
       empty_obligations(())
+  let from_llm =
+    if wants_obligations(item) then
+      stamp_props(out.propositions, item.file, 0, list.length(out.propositions), 4)
+    else
+      empty_propositions(())
+  let from_obs = project_props_from_obs(obs, 0, list.length(obs), 4)
+  let props = merge_props(from_obs, from_llm, 0, list.length(from_llm))
   {
     findings = pragmatic_to_findings(out, item),
     obligations = obs,
+    propositions = props,
     roles = [stamp_role(out.role, item)]
   }
 
@@ -953,6 +1145,7 @@ fun review_all_pack(gate: List<GateItem>, model: String, i: Int, n: Int): Review
     {
       findings = list.concat(here.findings, rest.findings),
       obligations = list.concat(here.obligations, rest.obligations),
+      propositions = list.concat(here.propositions, rest.propositions),
       roles = list.concat(here.roles, rest.roles)
     }
 
@@ -1268,7 +1461,8 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
     else
       empty_pack(())
   let graph = obligation_graph_findings(pack.obligations, names)
-  let pragmatic = list.concat(pack.findings, graph)
+  let props = proposition_findings(pack.propositions)
+  let pragmatic = list.concat(pack.findings, list.concat(graph, props))
   let okv = all_ok(rows, 0, list.length(rows))
   let report_obj = {
     schema = "semantic-report/v1",
@@ -1278,6 +1472,7 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
     review_gate = gate,
     findings = findings,
     obligations = pack.obligations,
+    propositions = pack.propositions,
     roles = pack.roles,
     pragmatic_findings = pragmatic
   }

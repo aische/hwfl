@@ -83,6 +83,7 @@ emptyPragmatic =
       "contradictions" .= Aeson.Array V.empty,
       "clarity_score" .= Aeson.Number 1.0,
       "obligations" .= Aeson.Array V.empty,
+      "propositions" .= Aeson.Array V.empty,
       "role" .= Aeson.String "Unknown",
       "mismatched_sentences" .= Aeson.Array V.empty
     ]
@@ -93,16 +94,18 @@ pragmaticObject ::
   Aeson.Array ->
   Double ->
   Aeson.Array ->
+  Aeson.Array ->
   Text ->
   Aeson.Array ->
   Aeson.Value
-pragmaticObject force felicity contradictions score obligations role mismatches =
+pragmaticObject force felicity contradictions score obligations propositions role mismatches =
   object
     [ "illocutionary_force" .= Aeson.String force,
       "felicity_violations" .= Aeson.Array felicity,
       "contradictions" .= Aeson.Array contradictions,
       "clarity_score" .= Aeson.Number (realToFrac score),
       "obligations" .= Aeson.Array obligations,
+      "propositions" .= Aeson.Array propositions,
       "role" .= Aeson.String role,
       "mismatched_sentences" .= Aeson.Array mismatches
     ]
@@ -114,6 +117,15 @@ obligationRow actor modality action obj quote =
       "modality" .= Aeson.String modality,
       "action" .= Aeson.String action,
       "object" .= Aeson.String obj,
+      "condition" .= Aeson.String "",
+      "quote" .= Aeson.String quote
+    ]
+
+propRow :: Text -> Text -> Text -> Aeson.Value
+propRow form atom quote =
+  object
+    [ "form" .= Aeson.String form,
+      "atom" .= Aeson.String atom,
       "condition" .= Aeson.String "",
       "quote" .= Aeson.String quote
     ]
@@ -145,6 +157,7 @@ chattyObligationsReply _req =
           V.empty
           0.7
           obs
+          V.empty
           "Policy"
           V.empty
    in Right
@@ -155,7 +168,7 @@ chattyObligationsReply _req =
             prFinishReason = FinishStop
           }
 
--- | Planted conflicts / obligations / role mismatches; else empty lists.
+-- | Planted conflicts / obligations / role mismatches / propositions; else empty.
 conflictAwareReply :: ChatRequest -> Either ProviderError ProviderResult
 conflictAwareReply req =
   let prompt = lastUserText req
@@ -173,6 +186,7 @@ conflictAwareReply req =
               )
               0.5
               V.empty
+              V.empty
               "Policy"
               V.empty
         | T.isInfixOf "must never skip skill.load before the first write" prompt =
@@ -181,6 +195,7 @@ conflictAwareReply req =
               V.empty
               V.empty
               0.6
+              V.empty
               V.empty
               "Example"
               ( V.singleton $
@@ -202,6 +217,12 @@ conflictAwareReply req =
                     "lib/search"
                     "The agent must use lib/search for all catalog lookups."
               )
+              ( V.singleton $
+                  propRow
+                    "must"
+                    "use lib/search"
+                    "The agent must use lib/search for all catalog lookups."
+              )
               "Policy"
               V.empty
         | T.isInfixOf "must not use lib/search under any circumstance" prompt =
@@ -217,6 +238,34 @@ conflictAwareReply req =
                     "use"
                     "lib/search"
                     "The agent must not use lib/search under any circumstance."
+              )
+              ( V.singleton $
+                  propRow
+                    "must_not"
+                    "use lib/search"
+                    "The agent must not use lib/search under any circumstance."
+              )
+              "Policy"
+              V.empty
+        | T.isInfixOf "should preferably not use lib/search" prompt =
+            pragmaticObject
+              "directive"
+              V.empty
+              V.empty
+              0.8
+              ( V.singleton $
+                  obligationRow
+                    "agent"
+                    "should"
+                    "avoid"
+                    "lib/search"
+                    "The agent should preferably not use lib/search when answering catalog questions."
+              )
+              ( V.singleton $
+                  propRow
+                    "prefer_not"
+                    "use lib/search"
+                    "The agent should preferably not use lib/search when answering catalog questions."
               )
               "Policy"
               V.empty
@@ -234,6 +283,7 @@ conflictAwareReply req =
                     "skills/does-not-exist"
                     "The agent must load skills/does-not-exist before any edit."
               )
+              V.empty
               "Policy"
               V.empty
         | otherwise = emptyPragmatic
@@ -396,6 +446,28 @@ spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
           report `shouldSatisfy` T.isInfixOf "example-hard-rule"
         other -> expectationFailure ("expected completed run, got: " <> show other)
 
+  it "pragmatic mode flags Prefer(¬a) vs Must (S3 proposition algebra)" $
+    withSystemTempDirectory "hwfl-semcheck-prop" $ \tmp -> do
+      copyTree fixtureRoot tmp
+      let inputs =
+            [ (Ident "entry", VString "workflows/ok"),
+              (Ident "mode", VString "pragmatic"),
+              (Ident "model", VString "mock")
+            ]
+          provider = mockProviderWith conflictAwareReply
+      outcome <- runChecker tmp inputs "e20s3" provider
+      case outcome of
+        OutcomeCompleted (VRecord fs) _store _n -> do
+          lookup (Ident "ok") fs `shouldBe` Just (VBool False)
+          report <- TIO.readFile (tmp </> ".hwfl/runs/e20s3/semantic-report.json")
+          report `shouldSatisfy` T.isInfixOf "\"propositions\""
+          report `shouldSatisfy` T.isInfixOf "\"category\":\"proposition\""
+          report `shouldSatisfy` T.isInfixOf "Must(a) vs MustNot(a)"
+          report `shouldSatisfy` T.isInfixOf "Must(a) vs Prefer"
+          report `shouldSatisfy` T.isInfixOf "use lib/search"
+          report `shouldSatisfy` T.isInfixOf "prefer-no-search"
+        other -> expectationFailure ("expected completed run, got: " <> show other)
+
 copyTree :: FilePath -> FilePath -> IO ()
 copyTree src dst = do
   createDirectoryIfMissing True (dst </> "workflows")
@@ -415,5 +487,6 @@ copyTree src dst = do
       "skills/forbid-search.md",
       "skills/ghost-tool.md",
       "skills/example-hard-rule.md",
+      "skills/prefer-no-search.md",
       "skills/recommend-exec.md"
     ]

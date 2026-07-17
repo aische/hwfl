@@ -141,15 +141,16 @@ Change module source; resume refuses with exit code 4.
 
 ## E20 — Mini semantic gate **H**
 
-**Shipped (M8 + deepen + S2 + S1 + S5):** `examples/semantic-check/workflows/main.md` —
+**Shipped (M8 + deepen + S2 + S1 + S5 + S3):** `examples/semantic-check/workflows/main.md` —
 layers 0–2c deterministic review (structural, prose refs, corpus, speech-act
-hints, prose↔code contracts) + body-bearing `review_gate` (max 8). Optional
+hints, prose↔code contracts) + body-bearing `review_gate` (max 10). Optional
 same-run layer 3 (`mode=pragmatic`) via `llm.object` on gated slices →
 `pragmatic_findings`; obligation extraction + deterministic graph
-(must∧must_not, soft system/skill, catalog-missing objects); illocutionary
-role typing (`role` + mismatched sentences; Policy/Example felicity). One
-module; uses `meta.check_module`, `fs.find`, pure `list` / `text` / `md`
-prelude helpers. Fixture: `test/fixtures/semantic-target`.
+(must∧must_not, soft system/skill, catalog-missing objects); proposition
+algebra (Must∧MustNot, Must vs Prefer(~a)); illocutionary role typing
+(`role` + mismatched sentences; Policy/Example felicity). One module; uses
+`meta.check_module`, `fs.find`, pure `list` / `text` / `md` prelude helpers.
+Fixture: `test/fixtures/semantic-target`.
 
 ## E21 — Universal coding agent **A** **H**
 

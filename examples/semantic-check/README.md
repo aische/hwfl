@@ -1,4 +1,4 @@
-# semantic-check (M8 + deepen + S2 + S1 + S5)
+# semantic-check (M8 + deepen + S2 + S1 + S5 + S3)
 
 Semantic review written **in hwfl**, not as a fan-out of micro-tools.
 
@@ -19,7 +19,8 @@ directory and is executed with `--workspace` pointed at the project to scan.
 | 3 | Gated `llm.object`: dead-ref / speech / similarity peers + **policy
       slices** (`skills/*`, system/rules) with `check_internal_conflict`;
       same calls extract **obligations** (`must`/`should`/`may`/`must_not`)
-      and assign an **illocutionary role** |
+      and **propositions** (`must`/`must_not`/`prefer`/`prefer_not`) and
+      assign an **illocutionary role** |
 | 3a | **Role typing** (S1): forced role per gated slice
       (`System`/`Policy`/`Procedure`/`Example`/`Rationale`/`ToolDoc`);
       quoted `mismatched_sentences`; deterministic Policy/System and
@@ -28,11 +29,16 @@ directory and is executed with `--workspace` pointed at the project to scan.
       must∧must_not, system must vs skill may/should, catalog-missing
       objects; policy gates only; ≤4 obs/slice, ≤12 graph rows; finding
       caps 4; quoted evidence |
+| 3c | **Proposition algebra** (S3): project norms to Must / MustNot /
+      Prefer / Prefer(~a) (LLM + obligation projection); clashes
+      Must∧MustNot and unconditioned Must vs Prefer(~a); conditional
+      discharge preserved; `category: proposition`; ≤12 rows; caps 4 |
 
-Scans `workflows/`, `skills/`, `lib/`, and `types/` only. Gate ≤ 8 items.
+Scans `workflows/`, `skills/`, `lib/`, and `types/` only. Gate ≤ 10 items.
 Deterministic mode needs no API keys. Pragmatic mode fills
-`pragmatic_findings` (quoted contradictions + role + obligation-graph
-findings) and reports `roles` / `obligations` extracted from gated slices.
+`pragmatic_findings` (quoted contradictions + role + obligation +
+proposition findings) and reports `roles` / `obligations` /
+`propositions` extracted from gated slices.
 
 ## Run
 
