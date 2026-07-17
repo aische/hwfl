@@ -34,6 +34,39 @@ Active work only. Archive completed sections to `log/archive/` weekly.
       `fs.write` creates parent dirs; `fs.read_slice` / `fs.remove` shipped)
 - [ ] `hwfl init` / shell completions
 
+## Future / nice-to-have (coding-agent capability)
+
+Toward a Cursor-class **headless** agent. Prefer MCP / workflow modules over
+growing the host-op set. Streaming, MCP, `meta.invoke`, and concurrent
+`par` host IO are listed above — not repeated here.
+
+### Tier A — credible autonomous coding agent (backend)
+
+- [ ] `fs.patch` (or structured multi-hunk edit) — reliable edits beyond
+      literal `fs.edit` string replace
+- [ ] Git host ops (read-heavy first): status / diff / log with sandbox
+      policy; avoid brittle shell parsing
+- [ ] Persistent terminal sessions (`term.*` or MCP terminal) — long test
+      runs, dev servers, output tail (vs one-shot `exec.run`)
+- [ ] Context pre-pass workflow module — rank / inject workspace files
+      under a token budget before the agent loop
+
+### Tier B — Cursor-class context
+
+- [ ] Codebase index (embeddings and/or tree-sitter + ripgrep) for
+      “find the right file” without many grep rounds
+- [ ] LSP bridge host op — go-to-definition, references, diagnostics
+- [ ] Project rules / hooks as always-loaded instruction skills (`.cursor/rules`
+      equivalent; no hidden injection into every agent)
+- [ ] Automatic context assembly — @file / open buffers / recent edits /
+      failing tests → prompt prefix
+- [ ] Multi-model routing — fast model for plan/grep; strong model for edits
+
+### Explicitly out of scope (Tier C / product)
+
+IDE surface, inline diff UX, background-agent notifications, browser /
+multimodal — separate product; hwfl stays the orchestration kernel.
+
 ## Done
 
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9

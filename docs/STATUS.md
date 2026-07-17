@@ -41,6 +41,11 @@ None.
   transition at a time; blocking host ops stall the whole driver). Future:
   async at host boundaries without changing `par` language semantics.
   See [spec/06-runtime.md](spec/06-runtime.md) §10.
+- **Coding-agent capability (Tier A/B)** — `fs.patch`, git host ops,
+  persistent terminals, context pre-pass; then codebase index, LSP bridge,
+  rules/hooks skills, auto context assembly, multi-model routing. See
+  [TASKS.md](TASKS.md) “Future / nice-to-have”. Prefer MCP over host growth.
+  IDE / product shell (Tier C) remains out of scope.
 
 ## Open naming
 
