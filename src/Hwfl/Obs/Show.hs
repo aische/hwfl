@@ -58,7 +58,7 @@ showStore store mode filt = do
   records <- readSpanRecords store
   case (mMeta, mSnap) of
     (Nothing, Nothing) ->
-      pure (Left ("no run found at " <> T.pack (store.storeRoot)))
+      pure (Left ("no run found at " <> T.pack store.storeRoot))
     _ ->
       pure . Right $ case mode of
         ShowSummary ->
@@ -101,9 +101,9 @@ cursorSummary = \case
   Just snap -> case snap.rsStatus of
     MsCompleted -> "completed"
     MsFailed -> "failed"
-    MsPaused _ -> "paused; last_host=" <> maybe "-" id snap.rsLastHost
-    MsRunning -> "running; last_host=" <> maybe "-" id snap.rsLastHost
-    MsDraining -> "draining; last_host=" <> maybe "-" id snap.rsLastHost
+    MsPaused _ -> "paused; last_host=" <> fromMaybe "-" snap.rsLastHost
+    MsRunning -> "running; last_host=" <> fromMaybe "-" snap.rsLastHost
+    MsDraining -> "draining; last_host=" <> fromMaybe "-" snap.rsLastHost
 
 formatSpanTree :: [SpanNode] -> [Text]
 formatSpanTree = concatMap (go 0)

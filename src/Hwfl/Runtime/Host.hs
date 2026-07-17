@@ -557,7 +557,7 @@ fileRefValue = \case
   _ -> Left (HostErr "FileRef must be a path string at runtime")
 
 lookupNamed :: Ident -> [(Maybe Ident, Value)] -> Maybe Value
-lookupNamed n args = lookup (Just n) args
+lookupNamed n = lookup (Just n)
 
 lookupPositional :: Int -> [(Maybe Ident, Value)] -> Maybe Value
 lookupPositional i args =

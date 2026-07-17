@@ -20,9 +20,9 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString.Lazy qualified as LBS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Scientific (toRealFloat)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Scientific (toRealFloat)
 import GHC.Generics (Generic)
 import Hwfl.Llm.Types (ProviderResult (..), TokenUsage (..))
 import System.Directory (doesFileExist)
@@ -116,9 +116,7 @@ costPair pricing model tin tout =
 providerCloseAttrs :: ModelPricing -> Text -> ProviderResult -> Aeson.Value
 providerCloseAttrs pricing model pr =
   object $
-    [ Key.fromText "reply_len" .= T.length pr.prContent
-    ]
-      ++ usageCostAttrs pricing model pr.prUsage
+    (Key.fromText "reply_len" .= T.length pr.prContent) : usageCostAttrs pricing model pr.prUsage
 
 providerRoundCloseAttrs :: ModelPricing -> Text -> ProviderResult -> Aeson.Value
 providerRoundCloseAttrs pricing model pr =

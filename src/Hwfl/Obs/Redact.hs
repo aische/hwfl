@@ -20,6 +20,7 @@ import Data.Vector qualified as V
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Eval.Value (HostOpId (..), ToolSpecValue (..), Value (..), hostOpName)
 import Hwfl.Llm.Types (ToolCall (..))
+import Data.Char (isDigit, isAsciiUpper, isAsciiLower)
 
 redactMarker :: Text
 redactMarker = "[REDACTED]"
@@ -81,12 +82,12 @@ looksLikeSecret :: Text -> Bool
 looksLikeSecret t =
   T.isPrefixOf "sk-" t
     || T.isPrefixOf "rk-" t
-    || (T.length t >= 40 && T.all isSecretChar t && T.any (\c -> c >= 'A' && c <= 'Z') t)
+    || (T.length t >= 40 && T.all isSecretChar t && T.any isAsciiUpper t)
   where
     isSecretChar c =
-      (c >= 'a' && c <= 'z')
-        || (c >= 'A' && c <= 'Z')
-        || (c >= '0' && c <= '9')
+      isAsciiLower c
+        || isAsciiUpper c
+        || isDigit c
         || c == '_'
         || c == '-'
 
@@ -261,7 +262,7 @@ listLenAttr n args = case lookupNamed n args of
   _ -> Aeson.Null
 
 lookupNamed :: Ident -> [(Maybe Ident, Value)] -> Maybe Value
-lookupNamed n args = lookup (Just n) args
+lookupNamed n = lookup (Just n)
 
 lookupPos :: Int -> [(Maybe Ident, Value)] -> Maybe Value
 lookupPos i args =

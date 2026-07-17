@@ -533,8 +533,7 @@ parseFrame = withObject "Frame" $ \o -> do
   tag <- o .: "tag"
   case tag :: Text of
     "let" ->
-      FrLet
-        <$> (Ident <$> o .: "name")
+      (FrLet . Ident <$> (o .: "name"))
         <*> (o .: "env" >>= parseEnv)
         <*> (o .: "body" >>= readText)
     "app_fun" ->
@@ -639,8 +638,7 @@ parsePar = withObject "ParJoinState" $ \o -> do
 
 parseActive :: Aeson.Value -> Parser (Map Int BranchMachine)
 parseActive = withObject "active" $ \km ->
-  fmap Map.fromList $
-    traverse
+  Map.fromList <$> traverse
       ( \(k, v) -> do
           m <- parseMachine v
           case readMaybe (T.unpack (Key.toText k)) of
@@ -707,8 +705,7 @@ envToJson env =
 
 parseEnv :: Aeson.Value -> Parser Env
 parseEnv = withObject "Env" $ \km ->
-  fmap Map.fromList $
-    traverse
+  Map.fromList <$> traverse
       (\(k, v) -> (Ident (Key.toText k),) <$> parseValue v)
       (KM.toList km)
 

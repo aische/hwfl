@@ -107,8 +107,8 @@ runExec ws policy args
         Right (Just (ec, out, err)) -> Right (mkOutcome ec out err)
   where
     program = args.eaProgram
-    cap = maybe defaultExecMaxOutputBytes id policy.execMaxOutputBytes
-    effectiveTimeout = maybe defaultExecTimeoutMs id policy.execTimeoutMs
+    cap = Data.Maybe.fromMaybe defaultExecMaxOutputBytes policy.execMaxOutputBytes
+    effectiveTimeout = Data.Maybe.fromMaybe defaultExecTimeoutMs policy.execTimeoutMs
 
     runIt cfg = withProcessTerm cfg $ \p -> do
       ec <- waitExitCode p

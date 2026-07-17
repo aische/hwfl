@@ -27,7 +27,7 @@ import Data.Aeson.Types (Parser, parseEither)
 import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
@@ -226,8 +226,7 @@ appendSpanLine store v =
 
 isoNow :: IO Text
 isoNow = do
-  now <- getCurrentTime
-  pure (T.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now))
+  T.pack . formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" <$> getCurrentTime
 
 -------------------------------------------------------------------------------
 -- Read / tree (for show — not used on the hot step path)
@@ -297,7 +296,7 @@ parseRecord = withObject "span" $ \o -> do
         srTStart = tStart,
         srTEnd = tEnd,
         srStatus = statusTxt >>= parseSpanStatus,
-        srAttrs = maybe Null id attrs,
+        srAttrs = fromMaybe Null attrs,
         srSnapshotSeq = seqNo
       }
 
@@ -312,8 +311,8 @@ buildSpanForest records =
           [ ( o.srId,
               SpanNode
                 { snId = o.srId,
-                  snName = maybe "?" id o.srName,
-                  snKind = maybe SkHost id o.srKind,
+                  snName = fromMaybe "?" o.srName,
+                  snKind = fromMaybe SkHost o.srKind,
                   snTStart = o.srTStart,
                   snTEnd = Map.lookup o.srId closeMap >>= (.srTEnd),
                   snStatus = Map.lookup o.srId closeMap >>= (.srStatus),
