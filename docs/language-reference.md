@@ -113,6 +113,19 @@ basename on the allowlist. Child env = keys in `exec.env` only.
 | `meta.check_module` | Meta, Read | `(path: FileRef) -> { ok, error, name }` |
 | `meta.check_project` | Meta, Read | `(path: FileRef) -> { ok, error }` |
 
+### Skills
+
+| Op | Effects | Signature |
+|----|---------|-----------|
+| `skill.discover` | Meta, Read | `{ query, kinds, limit } -> { ok, skills, error }` |
+| `skill.load` | Meta, Read | `{ id } -> { ok, kind, loaded, content, error }` |
+
+`skills` entries from discover are metadata only (`id`, `kind`, `summary`,
+`tags`, `checked`, `agent_eligible`). Inside an agent, `load` injects
+instruction context or expands tools; outside, instruction returns `content`.
+List both ops in `tools = […]` when needed — no auto-injection. Budgets:
+optional `project.json` `skills` stanza. See [skills-plan.md](skills-plan.md).
+
 ## Control sugar
 
 ```text

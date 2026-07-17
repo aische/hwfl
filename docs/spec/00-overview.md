@@ -47,7 +47,8 @@ multi-tenant isolation, embedding JS/Python/Lua VMs.
 | **Snapshot**            | Serializable machine state for resume                      |
 | **Span**                | Timed, nested observation unit for a region or host op     |
 | **Provider**            | Implementation of `LlmProvider` (default: llm-simple)      |
-| **Skill**               | Project `skills/*` module: callable tool or instruction guide (planned; [skills-plan.md](../skills-plan.md)) |
+| **Skill**               | Project `skills/*` module: callable tool or instruction guide ([skills-plan.md](../skills-plan.md)) |
+
 
 ## 4. Document status
 
@@ -56,7 +57,8 @@ multi-tenant isolation, embedding JS/Python/Lua VMs.
 | `00`–`10`, `11-grammar`      | Yes for v0 intent                                    |
 | `12-example-suite`           | Design oracle; syntax may evolve but contracts stick |
 | `idea.md`, `architecture.md` | Guiding; defer to numbered specs on conflict         |
-| `skills-plan.md`             | Planned feature design; not normative until shipped  |
+| `skills-plan.md`             | Design + acceptance for skills (A–C shipped; phase D optional) |
+
 
 ## 5. Versioning
 

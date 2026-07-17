@@ -227,10 +227,11 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | Doc / example | When |
 | ------------- | ---- |
 | [language-reference.md](language-reference.md) | Keywords, types, prelude, host ops |
-| `examples/coding-agent` | Full agent loop over a workspace |
+| `examples/coding-agent` | Full agent loop + stack skills over a workspace |
+| `examples/skills` | Minimal `skill.discover` / `skill.load` demo |
 | `examples/semantic-check` | Multi-layer review workflow |
-| [skills-plan.md](skills-plan.md) | Planned progressive-disclosure skills |
+| [skills-plan.md](skills-plan.md) | Skills design, acceptance, phase D |
 | `docs/spec/09-cli.md` | Normative CLI surface |
 
-Skills (discover / load mid-agent) are not in this tutorial; they will get
-their own chapter once shipped.
+The coding-agent lists `skill.discover` / `skill.load` explicitly and loads
+stack instruction skills (python / react / haskell / rust) mid-loop.

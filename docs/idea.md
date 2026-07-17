@@ -67,8 +67,8 @@ language (expression sub-language too weak; logic → micro-tools).
 
 **Reuse ideas and machine shape from hwfi; do not reuse the step DSL as
 the computation substrate.** See [hwfi-reference.md](hwfi-reference.md).
-Skills (progressive disclosure) are planned for hwfl — see
-[skills-plan.md](skills-plan.md); not required for v0.
+Skills (progressive disclosure) ship as `skills/` + `skill.discover` /
+`skill.load` — see [skills-plan.md](skills-plan.md).
 
 ## Success intuition
 

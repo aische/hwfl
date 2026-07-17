@@ -9,7 +9,7 @@ model-catalog.json          # required once LLM is used
 workflows/
   main.md
 tools/                      # optional callable modules
-skills/                     # optional agent skills — [defer]; see skills-plan.md
+skills/                     # optional agent skills (callable / instruction)
 types/                      # optional shared type alias modules
 lib/                        # optional libraries
 ```
@@ -37,6 +37,11 @@ lib/                        # optional libraries
         "env": ["PATH", "HOME"],
         "timeout_ms": 120000,
         "max_output_bytes": 1048576
+    },
+    "skills": {
+        "max_instruction_loads": 5,
+        "max_instruction_chars": 12000,
+        "max_callable_loads": 20
     }
 }
 ```
@@ -46,6 +51,7 @@ lib/                        # optional libraries
 - `exec`: optional; **absent ⇒ `Exec` effect unavailable** and `exec.*`
   rejected at check time (hwfi policy).
 - `effects.default`: default allow-set for modules that omit `effects`.
+- `skills`: optional budgets for `skill.load` (defaults apply when absent).
 - Provider keys (`OPENAI_API_KEY`, etc.) are consumed by the host gateway
   loader and must not appear in script-visible env by default.
 
@@ -66,10 +72,23 @@ Common fields:
 | --------- | --------- | ----------------------------------------- |
 | `name`    | yes       | Must equal file qname                     |
 | `kind`    | no        | `module` (default), `type-alias`, …       |
+| `skill`   | skills/*  | Nested map: `kind`, `summary`, `tags` (see below) |
 | `inputs`  | for entry | Record of `name: Type`                    |
 | `outputs` | for entry | Record of `name: Type`                    |
 | `effects` | no        | Allowed effect set (subset of lattice)    |
 | `imports` | no        | List of qnames or `hwfl/...` stdlib paths |
+
+Under `skills/`, missing `skill:` defaults to **callable**. Nested fields:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `skill.kind` | no | `callable` (default) or `instruction` |
+| `skill.summary` | recommended | Indexed by `skill.discover` |
+| `skill.tags` | no | List of strings; indexed by discover |
+
+**Instruction** skills are prose-only: no ` ```hwfl ` fence (rejected), no
+typed `inputs`/`outputs`. **Callable** skills are ordinary typed modules
+(same check path as `tools/`). Full behaviour: [skills-plan.md](../skills-plan.md).
 
 Example:
 

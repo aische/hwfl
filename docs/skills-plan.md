@@ -1,7 +1,8 @@
 # Skills — implementation plan
 
-**Status:** implemented (phases A–C). Normative behaviour should move into
-`spec/01-modules.md`, `spec/05-host-ops.md`, and `spec/06-runtime.md`.
+**Status:** implemented (phases A–C). Normative sketches live in
+`spec/01-modules.md`, `spec/05-host-ops.md`, and `spec/06-runtime.md`;
+this file remains the design + acceptance reference (phase D optional).
 
 **Reference:** hwfi `docs/skills-design.md`, spec §6.6–§6.7, and
 `Hwfi.SkillCatalog` / `Hwfi.Runtime.Skills`. Reuse behaviour and tests;

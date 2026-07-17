@@ -102,17 +102,27 @@ as long as host ops inside are correct.
 | `meta.read_spans` | query spans for a run **[defer]** |
 | `meta.read_snapshot` | **careful** — may expose secrets; redact **[defer]** |
 
-## 6.1 Skills (`Meta` / `Read`) — **[defer]**
+## 6.1 Skills (`Meta` / `Read`)
 
-Progressive-disclosure skill catalog for agents. Full plan:
-[skills-plan.md](../skills-plan.md). Not implemented yet.
+Progressive-disclosure skill catalog for agents. Design + acceptance:
+[skills-plan.md](../skills-plan.md). Phases A–C shipped.
 
-| Op | Notes |
-|----|-------|
-| `skill.discover` | metadata filter over checked `skills/` catalog |
-| `skill.load` | instruction → agent context; callable → active tool set |
+| Op | Effects | Signature (sketch) |
+|----|---------|-------------------|
+| `skill.discover` | Meta, Read | `{ query, kinds, limit } -> { ok, skills, error }` |
+| `skill.load` | Meta, Read | `{ id } -> { ok, kind, loaded, content, error }` |
 
-Do not treat `fs.read` of `skills/*.md` as a substitute inside agents.
+- `discover` returns metadata only (`id`, `kind`, `summary`, `tags`,
+  `checked`, `agent_eligible`) — never instruction bodies.
+- `load` inside `llm.agent` / `llm.agent_object`: instruction → inject
+  context next round; callable → expand active tool set if eligible.
+  Outside an agent: instruction returns body in `content`; callable is
+  metadata-only (no global tool install).
+- Failures are recoverable (`ok = false`), including unknown id, ineligible
+  callable, and `project.json` skill budget overflow.
+- Authors must list `tool(skill.discover)` / `tool(skill.load)` explicitly —
+  no auto-injection into every agent.
+- Do not treat `fs.read` of `skills/*.md` as a substitute inside agents.
 
 `meta.check_module` signature (sketch):
 

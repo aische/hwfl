@@ -110,7 +110,7 @@ model-catalog.json      # models ↔ providers (provider-agnostic config)
 .env                    # API keys (host only; never in ctx)
 workflows/*.md
 tools/*.md              # optional libraries / callable modules
-skills/*.md             # planned: agent skills (see skills-plan.md)
+skills/*.md             # agent skills (callable / instruction; see skills-plan.md)
 types/*.md              # shared type aliases (optional; or in-language types)
 lib/*.md                # pure/effectful libraries
 ```
@@ -139,4 +139,4 @@ hwfl step / resume / show / approve
 | `confirm`                      | L3 host / Human effect | Freezes `par` pool        |
 | `try` / `catch` or `Result`    | L2 (+ catch frames)    | Catchable host errors     |
 | Agent tool loop                | L3 state machine       | Like hwfi agent `Current` |
-| Skills discover / load         | L3 host + agent state  | Planned: [skills-plan.md](skills-plan.md) |
+| Skills discover / load         | L3 host + agent state  | [skills-plan.md](skills-plan.md) |
