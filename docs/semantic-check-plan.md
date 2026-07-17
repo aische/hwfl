@@ -1,13 +1,13 @@
 # Semantic-check — research plan (“semantic type system”)
 
-**Status:** exploratory backlog. **S2 shipped** (obligation graph). Remaining
-phases S1/S3–S6 not scheduled in [TASKS.md](TASKS.md) Now. Ship increments
-inside `examples/semantic-check/` (same-run layers; policy in workflow; no
-semantic host-op fan-out).
+**Status:** exploratory backlog. **S2** (obligation graph) and **S1** (role
+typing) shipped. Remaining phases S3–S6 not scheduled in [TASKS.md](TASKS.md)
+Now. Ship increments inside `examples/semantic-check/` (same-run layers;
+policy in workflow; no semantic host-op fan-out).
 
 **Related:** [idea.md](idea.md) goal 8 (dogfood semantic analysis),
 `examples/semantic-check/`, [spec/12-example-suite.md](spec/12-example-suite.md)
-E20, log entries 2026-07-17 (deepen / noise fix / A+B / S2).
+E20, log entries 2026-07-17 (deepen / noise fix / A+B / S2 / S1).
 
 ## 1. Stance (metaphor, not claim)
 
@@ -51,6 +51,7 @@ Implemented in `examples/semantic-check/workflows/main.md`:
 | 2b | Speech-act heuristic | agent/system sections should contain directives |
 | 3 | Policy conflict | skills / system / rules → `check_internal_conflict` (**A**); quoted `quote_a` / `quote_b` / `why` |
 | 3b | Obligation graph | extract `{actor, modality, action, object, condition?, quote}` on gated reviews; deterministic must∧must_not / system must vs skill may / catalog-missing object (**S2**) |
+| 3a | Illocutionary role | forced `role` + quoted `mismatched_sentences`; Policy/System need directives; Example must not smuggle hard constraints (**S1**) |
 | — | Gate discipline | body-bearing `review_gate`; unique by `(slice_id, review_task)`; policy first; cap 8; H1-only skills get synthetic `{path}/skill` slices |
 
 Scan scope: `workflows/` / `skills/` / `lib/` / `types/` only.
@@ -73,23 +74,24 @@ Promote one at a time into semantic-check (or a sibling module). Keep
 caps, quotes, and same-run layer 3 unless a milestone explicitly splits
 packaging.
 
-### Phase S1 — Illocutionary role typing
+### Phase S1 — Illocutionary role typing — **shipped**
 
 Assign each gated section a forced role and check felicity.
 
-Suggested roles: `System` | `Policy` | `Procedure` | `Example` |
+Roles: `System` | `Policy` | `Procedure` | `Example` |
 `Rationale` | `ToolDoc`.
 
-Checks (examples):
+Checks:
 
-- `Policy` must contain directives (must / should / never), not only vibes
-- `Example` must not introduce hard constraints unless marked normative
-- `Procedure` steps mostly imperatives / ordered
-- Role mismatch: policy-shaped bullet inside an example → felicity warning
+- `Policy` / `System` must contain directives (must / should / never)
+- `Example` must not introduce hard constraints unless marked normative /
+  illustrative
+- Role mismatch: LLM quotes sentences that break the assigned role
 
-Schema-forced LLM output (`role`, `mismatched_sentences[]` with quotes).
-Closest thing to a **type** for prose sections: role ≈ kind; felicity ≈
-intro/elim rules.
+Schema-forced LLM output (`role`, `mismatched_sentences[]` with `quote` /
+`why`). Deterministic felicity on the assigned role (no extra gate slots).
+Report: `roles` + `pragmatic_findings` with `category: role`. Fixture:
+`example-hard-rule`.
 
 ### Phase S2 — Obligation graph — **shipped**
 
@@ -199,7 +201,7 @@ separate workflow over `.hwfl/runs` rather than static module scan.
 ## 8. Suggested order when resumed
 
 1. ~~**S2 obligation graph**~~ **done**
-2. **S1 role typing** (sharpens speech-act layer already present)
+2. ~~**S1 role typing**~~ **done**
 3. **S5 prose↔code contracts** (unique to hwfl modules)
 4. **S3** only if S2’s claim schema stays stable
 5. **S4** as gate features while doing the above

@@ -23,7 +23,10 @@ quoted sentence redundancy** (capped). Pragmatic: gated `llm.object` including
 **internal conflict** on policy slices (skills, system, rules) plus **obligation
 extraction** (policy gates only, ≤4 per slice); deterministic graph checks on
 the extracted set (must∧must_not, system must vs skill may/should,
-catalog-missing objects; ≤12 rows, finding caps 4). Gate capped at 8.
+catalog-missing objects; ≤12 rows, finding caps 4). Every gated review also
+assigns an **illocutionary role** (`System`/`Policy`/`Procedure`/`Example`/
+`Rationale`/`ToolDoc`) and quotes role-mismatched sentences; deterministic
+Policy/System and Example felicity checks (category `role`). Gate capped at 8.
 Set `mode=pragmatic` + catalog `model` for LLM; `mode=deterministic` skips
 LLM calls.
 
@@ -51,6 +54,15 @@ Rules:
   `action`, `object`, optional `condition` (empty if unconditioned), and a
   **verbatim** `quote` from the body. Prefer a short list (≤8) over guessing.
   Do not invent modules or tools.
+- Always set `role` to exactly one of: `System` | `Policy` | `Procedure` |
+  `Example` | `Rationale` | `ToolDoc`. Choose the dominant speech-act of the
+  slice (skills/rules → `Policy`; agent/system prompts → `System`; how-to
+  steps → `Procedure`; sample sessions → `Example`; why-prose → `Rationale`;
+  tool/API docs → `ToolDoc`).
+- Fill `mismatched_sentences` with body sentences that break that role
+  (e.g. hard `must`/`never` constraints inside an `Example`, or vibe-only
+  advice inside `Policy`). Each row needs a **verbatim** `quote` and short
+  `why`. Empty list if the slice fits its role.
 
 ## body
 
@@ -117,9 +129,21 @@ type OblRow = {
   file: String
 }
 
+type RoleMismatch = {
+  quote: String,
+  why: String
+}
+
+type RoleRow = {
+  role: String,
+  file: String,
+  slice_id: String
+}
+
 type ReviewPack = {
   findings: List<Finding>,
-  obligations: List<OblRow>
+  obligations: List<OblRow>,
+  roles: List<RoleRow>
 }
 
 type PragmaticOut = {
@@ -127,7 +151,9 @@ type PragmaticOut = {
   felicity_violations: List<String>,
   contradictions: List<Contradiction>,
   clarity_score: Float,
-  obligations: List<ObligationExtract>
+  obligations: List<ObligationExtract>,
+  role: String,
+  mismatched_sentences: List<RoleMismatch>
 }
 
 fun has_string(xs: List<String>, q: String, i: Int, n: Int): Bool =
@@ -612,10 +638,120 @@ fun contradiction_findings(xs: List<Contradiction>, file: String, i: Int, n: Int
         contradiction_findings(xs, file, i + 1, n, remaining - 1)
       )
 
+fun is_policy_role(r: String): Bool =
+  r == "Policy" || r == "policy" || r == "System" || r == "system"
+
+fun is_example_role(r: String): Bool =
+  r == "Example" || r == "example"
+
+fun normalize_role(r: String): String =
+  if r == "System" || r == "system" then "System"
+  else if r == "Policy" || r == "policy" then "Policy"
+  else if r == "Procedure" || r == "procedure" then "Procedure"
+  else if r == "Example" || r == "example" then "Example"
+  else if r == "Rationale" || r == "rationale" then "Rationale"
+  else if r == "ToolDoc" || r == "tooldoc" || r == "Tooldoc" then "ToolDoc"
+  else if r == "" then "Unknown"
+  else "Unknown"
+
+fun any_directive(sents: List<String>, i: Int, n: Int): Bool =
+  if i >= n then false
+  else if is_directive(sents[i]) then true
+  else any_directive(sents, i + 1, n)
+
+fun body_has_directive(body: String): Bool =
+  let sents = text.split_sentences(body)
+  any_directive(sents, 0, list.length(sents))
+
+fun example_marked(s: String): Bool =
+  text.contains(s, "example")
+    || text.contains(s, "Example")
+    || text.contains(s, "illustrat")
+    || text.contains(s, "Illustrat")
+    || text.contains(s, "for instance")
+    || text.contains(s, "sample")
+    || text.contains(s, "Sample")
+    || text.contains(s, "normative")
+    || text.contains(s, "Normative")
+
+fun role_mismatch_findings(xs: List<RoleMismatch>, file: String, i: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else
+    let m = xs[i]
+    if m.quote == "" then role_mismatch_findings(xs, file, i + 1, n, remaining)
+    else if i >= 16 then []
+    else
+      list.concat(
+        [{
+          severity = "warning",
+          category = "role",
+          file = file,
+          claim = if m.why == "" then "Sentence does not fit the assigned illocutionary role" else m.why,
+          evidence = m.quote,
+          suggestion = "Move the sentence to a matching section, or mark it as normative/example explicitly"
+        }],
+        role_mismatch_findings(xs, file, i + 1, n, remaining - 1)
+      )
+
+fun role_policy_findings(role: String, body: String, file: String, slice_id: String): List<Finding> =
+  if not(is_policy_role(role)) then []
+  else if body_has_directive(body) then []
+  else
+    [{
+      severity = "warning",
+      category = "role",
+      file = file,
+      claim = "Policy/System role lacks directive language",
+      evidence = slice_id,
+      suggestion = "Add explicit must/should/never guidance, or retitle as Rationale/Example"
+    }]
+
+fun example_constraint_sents(sents: List<String>, file: String, i: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else
+    let sent = sents[i]
+    let rest = example_constraint_sents(sents, file, i + 1, n, remaining)
+    if not(is_directive(sent)) then rest
+    else if example_marked(sent) then rest
+    else
+      list.concat(
+        [{
+          severity = "warning",
+          category = "role",
+          file = file,
+          claim = "Hard constraint inside an Example role",
+          evidence = sent,
+          suggestion = "Move normative rules to Policy/System, or mark the sentence as illustrative only"
+        }],
+        example_constraint_sents(sents, file, i + 1, n, remaining - 1)
+      )
+
+fun role_example_findings(role: String, body: String, file: String): List<Finding> =
+  if not(is_example_role(role)) then []
+  else
+    let sents = text.split_sentences(body)
+    example_constraint_sents(sents, file, 0, list.length(sents), 4)
+
+fun role_findings(out: PragmaticOut, item: GateItem): List<Finding> =
+  let role = normalize_role(out.role)
+  let quoted = role_mismatch_findings(
+    out.mismatched_sentences,
+    item.file,
+    0,
+    list.length(out.mismatched_sentences),
+    4
+  )
+  let policy = role_policy_findings(role, item.body, item.file, item.slice_id)
+  let example = role_example_findings(role, item.body, item.file)
+  concat3(quoted, policy, example)
+
 fun pragmatic_to_findings(out: PragmaticOut, item: GateItem): List<Finding> =
-  list.concat(
+  concat3(
     felicity_findings(out.felicity_violations, item.file, 0, list.length(out.felicity_violations), 4),
-    contradiction_findings(out.contradictions, item.file, 0, list.length(out.contradictions), 4)
+    contradiction_findings(out.contradictions, item.file, 0, list.length(out.contradictions), 4),
+    role_findings(out, item)
   )
 
 fun peer_block(item: GateItem): String =
@@ -763,11 +899,24 @@ fun empty_findings(_: Unit): List<Finding> = []
 
 fun empty_obligations(_: Unit): List<OblRow> = []
 
+fun empty_roles(_: Unit): List<RoleRow> = []
+
 fun empty_pack(_: Unit): ReviewPack =
-  { findings = empty_findings(()), obligations = empty_obligations(()) }
+  {
+    findings = empty_findings(()),
+    obligations = empty_obligations(()),
+    roles = empty_roles(())
+  }
 
 fun wants_obligations(item: GateItem): Bool =
   item.review_task == "check_internal_conflict"
+
+fun stamp_role(role: String, item: GateItem): RoleRow =
+  {
+    role = normalize_role(role),
+    file = item.file,
+    slice_id = item.slice_id
+  }
 
 fun review_one_pack(item: GateItem, model: String): ReviewPack =
   let prompt =
@@ -784,7 +933,8 @@ fun review_one_pack(item: GateItem, model: String): ReviewPack =
       empty_obligations(())
   {
     findings = pragmatic_to_findings(out, item),
-    obligations = obs
+    obligations = obs,
+    roles = [stamp_role(out.role, item)]
   }
 
 fun review_all_pack(gate: List<GateItem>, model: String, i: Int, n: Int): ReviewPack =
@@ -794,7 +944,8 @@ fun review_all_pack(gate: List<GateItem>, model: String, i: Int, n: Int): Review
     let rest = review_all_pack(gate, model, i + 1, n)
     {
       findings = list.concat(here.findings, rest.findings),
-      obligations = list.concat(here.obligations, rest.obligations)
+      obligations = list.concat(here.obligations, rest.obligations),
+      roles = list.concat(here.roles, rest.roles)
     }
 
 fun is_module_path(p: String): Bool =
@@ -846,6 +997,7 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
     review_gate = gate,
     findings = findings,
     obligations = pack.obligations,
+    roles = pack.roles,
     pragmatic_findings = pragmatic
   }
   let report = json.encode(report_obj)

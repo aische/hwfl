@@ -82,7 +82,29 @@ emptyPragmatic =
       "felicity_violations" .= Aeson.Array V.empty,
       "contradictions" .= Aeson.Array V.empty,
       "clarity_score" .= Aeson.Number 1.0,
-      "obligations" .= Aeson.Array V.empty
+      "obligations" .= Aeson.Array V.empty,
+      "role" .= Aeson.String "Unknown",
+      "mismatched_sentences" .= Aeson.Array V.empty
+    ]
+
+pragmaticObject ::
+  Text ->
+  Aeson.Array ->
+  Aeson.Array ->
+  Double ->
+  Aeson.Array ->
+  Text ->
+  Aeson.Array ->
+  Aeson.Value
+pragmaticObject force felicity contradictions score obligations role mismatches =
+  object
+    [ "illocutionary_force" .= Aeson.String force,
+      "felicity_violations" .= Aeson.Array felicity,
+      "contradictions" .= Aeson.Array contradictions,
+      "clarity_score" .= Aeson.Number (realToFrac score),
+      "obligations" .= Aeson.Array obligations,
+      "role" .= Aeson.String role,
+      "mismatched_sentences" .= Aeson.Array mismatches
     ]
 
 obligationRow :: Text -> Text -> Text -> Text -> Text -> Aeson.Value
@@ -94,6 +116,13 @@ obligationRow actor modality action obj quote =
       "object" .= Aeson.String obj,
       "condition" .= Aeson.String "",
       "quote" .= Aeson.String quote
+    ]
+
+roleMismatch :: Text -> Text -> Aeson.Value
+roleMismatch quote why =
+  object
+    [ "quote" .= Aeson.String quote,
+      "why" .= Aeson.String why
     ]
 
 -- | Many distinct obligations (stress pair-scan / stamp caps).
@@ -110,13 +139,14 @@ chattyObligationsReply _req =
             | i <- [1 :: Int .. 40]
           ]
       body =
-        object
-          [ "illocutionary_force" .= Aeson.String "directive",
-            "felicity_violations" .= Aeson.Array V.empty,
-            "contradictions" .= Aeson.Array V.empty,
-            "clarity_score" .= Aeson.Number 0.7,
-            "obligations" .= Aeson.Array obs
-          ]
+        pragmaticObject
+          "directive"
+          V.empty
+          V.empty
+          0.7
+          obs
+          "Policy"
+          V.empty
    in Right
         ProviderResult
           { prContent = TE.decodeUtf8 (BL.toStrict (encode body)),
@@ -125,78 +155,87 @@ chattyObligationsReply _req =
             prFinishReason = FinishStop
           }
 
--- | Planted conflicts → quoted contradiction / obligations; else empty lists.
+-- | Planted conflicts / obligations / role mismatches; else empty lists.
 conflictAwareReply :: ChatRequest -> Either ProviderError ProviderResult
 conflictAwareReply req =
   let prompt = lastUserText req
       body
         | T.isInfixOf "GHC2021" prompt && T.isInfixOf "Haskell2010" prompt =
-            object
-              [ "illocutionary_force" .= Aeson.String "directive",
-                "felicity_violations" .= Aeson.Array V.empty,
-                "contradictions"
-                  .= Aeson.Array
-                    ( V.singleton $
-                        object
-                          [ "quote_a" .= Aeson.String "Pin the project to GHC2021 for all modules.",
-                            "quote_b" .= Aeson.String "Always use Haskell2010 as the language standard.",
-                            "why" .= Aeson.String "Cannot pin both GHC2021 and Haskell2010"
-                          ]
-                    ),
-                "clarity_score" .= Aeson.Number 0.5,
-                "obligations" .= Aeson.Array V.empty
-              ]
+            pragmaticObject
+              "directive"
+              V.empty
+              ( V.singleton $
+                  object
+                    [ "quote_a" .= Aeson.String "Pin the project to GHC2021 for all modules.",
+                      "quote_b" .= Aeson.String "Always use Haskell2010 as the language standard.",
+                      "why" .= Aeson.String "Cannot pin both GHC2021 and Haskell2010"
+                    ]
+              )
+              0.5
+              V.empty
+              "Policy"
+              V.empty
+        | T.isInfixOf "must never skip skill.load before the first write" prompt =
+            pragmaticObject
+              "assertive"
+              V.empty
+              V.empty
+              0.6
+              V.empty
+              "Example"
+              ( V.singleton $
+                  roleMismatch
+                    "The agent must never skip skill.load before the first write."
+                    "Hard constraint inside an Example section"
+              )
         | T.isInfixOf "must use lib/search for all catalog lookups" prompt =
-            object
-              [ "illocutionary_force" .= Aeson.String "directive",
-                "felicity_violations" .= Aeson.Array V.empty,
-                "contradictions" .= Aeson.Array V.empty,
-                "clarity_score" .= Aeson.Number 0.8,
-                "obligations"
-                  .= Aeson.Array
-                    ( V.singleton $
-                        obligationRow
-                          "agent"
-                          "must"
-                          "use"
-                          "lib/search"
-                          "The agent must use lib/search for all catalog lookups."
-                    )
-              ]
+            pragmaticObject
+              "directive"
+              V.empty
+              V.empty
+              0.8
+              ( V.singleton $
+                  obligationRow
+                    "agent"
+                    "must"
+                    "use"
+                    "lib/search"
+                    "The agent must use lib/search for all catalog lookups."
+              )
+              "Policy"
+              V.empty
         | T.isInfixOf "must not use lib/search under any circumstance" prompt =
-            object
-              [ "illocutionary_force" .= Aeson.String "directive",
-                "felicity_violations" .= Aeson.Array V.empty,
-                "contradictions" .= Aeson.Array V.empty,
-                "clarity_score" .= Aeson.Number 0.8,
-                "obligations"
-                  .= Aeson.Array
-                    ( V.singleton $
-                        obligationRow
-                          "agent"
-                          "must_not"
-                          "use"
-                          "lib/search"
-                          "The agent must not use lib/search under any circumstance."
-                    )
-              ]
+            pragmaticObject
+              "directive"
+              V.empty
+              V.empty
+              0.8
+              ( V.singleton $
+                  obligationRow
+                    "agent"
+                    "must_not"
+                    "use"
+                    "lib/search"
+                    "The agent must not use lib/search under any circumstance."
+              )
+              "Policy"
+              V.empty
         | T.isInfixOf "must load skills/does-not-exist before any edit" prompt =
-            object
-              [ "illocutionary_force" .= Aeson.String "directive",
-                "felicity_violations" .= Aeson.Array V.empty,
-                "contradictions" .= Aeson.Array V.empty,
-                "clarity_score" .= Aeson.Number 0.8,
-                "obligations"
-                  .= Aeson.Array
-                    ( V.singleton $
-                        obligationRow
-                          "agent"
-                          "must"
-                          "load"
-                          "skills/does-not-exist"
-                          "The agent must load skills/does-not-exist before any edit."
-                    )
-              ]
+            pragmaticObject
+              "directive"
+              V.empty
+              V.empty
+              0.8
+              ( V.singleton $
+                  obligationRow
+                    "agent"
+                    "must"
+                    "load"
+                    "skills/does-not-exist"
+                    "The agent must load skills/does-not-exist before any edit."
+              )
+              "Policy"
+              V.empty
         | otherwise = emptyPragmatic
    in Right
         ProviderResult
@@ -313,6 +352,27 @@ spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
           report `shouldSatisfy` (not . T.isInfixOf "pure crunch limit")
         other -> expectationFailure ("expected completed run, got: " <> show other)
 
+  it "pragmatic mode flags hard constraint inside Example role (S1)" $
+    withSystemTempDirectory "hwfl-semcheck-role" $ \tmp -> do
+      copyTree fixtureRoot tmp
+      let inputs =
+            [ (Ident "entry", VString "workflows/ok"),
+              (Ident "mode", VString "pragmatic"),
+              (Ident "model", VString "mock")
+            ]
+          provider = mockProviderWith conflictAwareReply
+      outcome <- runChecker tmp inputs "e20r" provider
+      case outcome of
+        OutcomeCompleted (VRecord fs) _store _n -> do
+          lookup (Ident "ok") fs `shouldBe` Just (VBool False)
+          report <- TIO.readFile (tmp </> ".hwfl/runs/e20r/semantic-report.json")
+          report `shouldSatisfy` T.isInfixOf "\"roles\""
+          report `shouldSatisfy` T.isInfixOf "\"role\":\"Example\""
+          report `shouldSatisfy` T.isInfixOf "\"category\":\"role\""
+          report `shouldSatisfy` T.isInfixOf "must never skip skill.load"
+          report `shouldSatisfy` T.isInfixOf "example-hard-rule"
+        other -> expectationFailure ("expected completed run, got: " <> show other)
+
 copyTree :: FilePath -> FilePath -> IO ()
 copyTree src dst = do
   createDirectoryIfMissing True (dst </> "workflows")
@@ -327,5 +387,6 @@ copyTree src dst = do
       "skills/conflict-lang.md",
       "skills/require-search.md",
       "skills/forbid-search.md",
-      "skills/ghost-tool.md"
+      "skills/ghost-tool.md",
+      "skills/example-hard-rule.md"
     ]
