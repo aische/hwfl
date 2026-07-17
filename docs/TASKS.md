@@ -10,10 +10,11 @@ Active work only. Archive completed sections to `log/archive/` weekly.
       snapshot); FS backend first
 - [x] `meta.invoke` — nested module/project run with inputs; return
       run_id + outcome (snapshot boundary)
+- [x] `meta.list_runs` / `meta.read_spans`
 
 ## Next (P1–P2)
 
-- [ ] `meta.list_runs` / `meta.read_spans` / careful `meta.read_snapshot`
+- [ ] Careful `meta.read_snapshot` (redact secrets)
 - [ ] Local genetic / compare prototype — materialize N temp **projects**
       + shared or per-trial **workspaces**, check/run, score from
       outcome + cost + spans (example or thin driver; not a host DSL)

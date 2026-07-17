@@ -4,8 +4,8 @@ Last updated: 2026-07-18
 
 ## Current focus
 
-`meta.list_runs` / `meta.read_spans` (careful snapshot) for lab scoring.
-`meta.invoke` shipped.
+Careful `meta.read_snapshot` (redact). Local genetic / compare prototype next.
+`meta.invoke` + `meta.list_runs` / `meta.read_spans` shipped.
 
 ## North star
 
@@ -16,6 +16,8 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **`meta.list_runs` / `meta.read_spans`** — workspace-relative run-store
+  reads; recoverable `{ ok, …, error }`; optional span filters
 - **`meta.invoke`** — nested `runTarget` / driverRun; workspace-relative
   `project` + `workspace` (+ optional `inputs`); returns
   `{ ok, run_id, status, outcome, error }`
@@ -31,7 +33,7 @@ None.
 
 ## Next up
 
-1. `meta.list_runs` / `meta.read_spans` (+ careful `meta.read_snapshot`)
+1. Careful `meta.read_snapshot` (redact secrets)
 2. Local genetic prototype — N temp projects × workspace fixture ×
    score (CLI or parent workflow)
 3. Observer hook for live span / pause events (CLI `--debug` today;

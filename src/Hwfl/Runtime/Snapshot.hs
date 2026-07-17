@@ -714,6 +714,8 @@ parseHostOp = \case
   "meta.check_module" -> pure HostMetaCheckModule
   "meta.check_project" -> pure HostMetaCheckProject
   "meta.invoke" -> pure HostMetaInvoke
+  "meta.list_runs" -> pure HostMetaListRuns
+  "meta.read_spans" -> pure HostMetaReadSpans
   "skill.discover" -> pure HostSkillDiscover
   "skill.load" -> pure HostSkillLoad
   other -> fail ("unknown host op: " <> T.unpack other)

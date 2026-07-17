@@ -34,11 +34,21 @@ import Hwfl.Llm.Types
     emptyChatRequest,
     renderProviderError,
   )
+import Hwfl.Obs.Span (SpanRecord (..), spanKindText, spanStatusText)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Project (ExecPolicy (..))
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Exec (ExecArgs (..), ExecOutcome (..), runExec)
 import Hwfl.Runtime.Skills (discoverSkillsResult, loadSkillScripted)
+import Hwfl.Runtime.Snapshot (RunMeta (..))
+import Hwfl.Runtime.Store
+  ( SpanFilter (..),
+    emptySpanFilter,
+    listRuns,
+    openRun,
+    readSpans,
+    runRef,
+  )
 import Hwfl.Runtime.Workspace
   ( Workspace,
     editFile,
@@ -49,6 +59,7 @@ import Hwfl.Runtime.Workspace
     readTextFile,
     readTextSlice,
     removePath,
+    resolvePath,
     workspaceRoot,
     writeTextFile,
   )
@@ -131,7 +142,9 @@ hostOpsEnv =
         VRecord
           [ (Ident "check_module", VHostOp HostMetaCheckModule),
             (Ident "check_project", VHostOp HostMetaCheckProject),
-            (Ident "invoke", VHostOp HostMetaInvoke)
+            (Ident "invoke", VHostOp HostMetaInvoke),
+            (Ident "list_runs", VHostOp HostMetaListRuns),
+            (Ident "read_spans", VHostOp HostMetaReadSpans)
           ]
       ),
       ( Ident "skill",
@@ -166,6 +179,8 @@ runHostOp env op args = case op of
   HostMetaCheckModule -> doMetaCheckModule env args
   HostMetaCheckProject -> doMetaCheckProject env args
   HostMetaInvoke -> env.heMetaInvoke args
+  HostMetaListRuns -> doMetaListRuns env args
+  HostMetaReadSpans -> doMetaReadSpans env args
   HostSkillDiscover -> doSkillDiscover env args
   HostSkillLoad -> doSkillLoad env args
   HostLlmAgent ->
@@ -460,6 +475,144 @@ doMetaCheckModule env args = case fileRefArg args of
       Left e -> Left e
       Right txt ->
         Right (HostResult (checkModuleValue path txt) (object ["path" .= path]))
+
+doMetaListRuns :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doMetaListRuns env args = case workspaceRelArg args of
+  Left e -> pure (Left e)
+  Right workspaceRel -> case resolvePath env.heWorkspace workspaceRel of
+    Left e -> pure (Left e)
+    Right workspaceAbs -> do
+      env.heLog ("meta.list_runs workspace=" <> workspaceRel)
+      metas <- listRuns workspaceAbs
+      pure $
+        Right
+          ( HostResult
+              ( VRecord
+                  [ (Ident "ok", VBool True),
+                    (Ident "runs", VList (map runMetaToValue metas)),
+                    (Ident "error", VString "")
+                  ]
+              )
+              ( object
+                  [ "workspace" .= workspaceRel,
+                    "count" .= length metas
+                  ]
+              )
+          )
+
+doMetaReadSpans :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doMetaReadSpans env args = case parseMetaReadSpansArgs args of
+  Left e -> pure (Left e)
+  Right (runId, workspaceRel, filt) -> case resolvePath env.heWorkspace workspaceRel of
+    Left e -> pure (Left e)
+    Right workspaceAbs -> do
+      env.heLog ("meta.read_spans run_id=" <> runId <> " workspace=" <> workspaceRel)
+      mStore <- openRun (runRef workspaceAbs runId)
+      case mStore of
+        Nothing ->
+          pure $
+            Right
+              ( HostResult
+                  ( VRecord
+                      [ (Ident "ok", VBool False),
+                        (Ident "spans", VList []),
+                        (Ident "error", VString ("run not found: " <> runId))
+                      ]
+                  )
+                  ( object
+                      [ "run_id" .= runId,
+                        "workspace" .= workspaceRel,
+                        "status" .= ("missing" :: Text)
+                      ]
+                  )
+              )
+        Just store -> do
+          records <- readSpans store filt
+          pure $
+            Right
+              ( HostResult
+                  ( VRecord
+                      [ (Ident "ok", VBool True),
+                        (Ident "spans", VList (map spanRecordToValue records)),
+                        (Ident "error", VString "")
+                      ]
+                  )
+                  ( object
+                      [ "run_id" .= runId,
+                        "workspace" .= workspaceRel,
+                        "count" .= length records
+                      ]
+                  )
+              )
+
+workspaceRelArg :: [(Maybe Ident, Value)] -> Either RuntimeError Text
+workspaceRelArg args = case lookupNamed (Ident "workspace") args of
+  Just v -> fileRefValue v
+  Nothing -> Left (HostErr "meta.list_runs / meta.read_spans expects workspace: FileRef")
+
+parseMetaReadSpansArgs ::
+  [(Maybe Ident, Value)] ->
+  Either RuntimeError (Text, Text, SpanFilter)
+parseMetaReadSpansArgs args = do
+  runId <- case lookupNamed (Ident "run_id") args of
+    Just (VString s) -> Right s
+    Just _ -> Left (HostErr "meta.read_spans.run_id must be a String")
+    Nothing -> Left (HostErr "meta.read_spans missing run_id")
+  workspaceRel <- workspaceRelArg args
+  namePrefix <- case lookupNamed (Ident "name_prefix") args of
+    Nothing -> Right Nothing
+    Just (VString s)
+      | T.null s -> Right Nothing
+      | otherwise -> Right (Just s)
+    Just _ -> Left (HostErr "meta.read_spans.name_prefix must be a String")
+  kind <- case lookupNamed (Ident "kind") args of
+    Nothing -> Right Nothing
+    Just (VString s)
+      | T.null s -> Right Nothing
+      | otherwise -> Right (Just s)
+    Just _ -> Left (HostErr "meta.read_spans.kind must be a String")
+  limit <- case lookupNamed (Ident "limit") args of
+    Nothing -> Right Nothing
+    Just (VInt n)
+      | n > 0 -> Right (Just (fromIntegral n))
+      | otherwise -> Right Nothing
+    Just _ -> Left (HostErr "meta.read_spans.limit must be an Int")
+  pure
+    ( runId,
+      workspaceRel,
+      emptySpanFilter
+        { sfNamePrefix = namePrefix,
+          sfKind = kind,
+          sfLimit = limit
+        }
+    )
+
+runMetaToValue :: RunMeta -> Value
+runMetaToValue meta =
+  VRecord
+    [ (Ident "run_id", VString meta.rmRunId),
+      (Ident "status", VString meta.rmStatus),
+      (Ident "entry", VString (T.pack meta.rmEntry)),
+      (Ident "started_at", VString meta.rmStartedAt),
+      (Ident "project_hash", VString meta.rmProjectHash)
+    ]
+
+spanRecordToValue :: SpanRecord -> Value
+spanRecordToValue r =
+  VRecord
+    [ (Ident "op", VString r.srOp),
+      (Ident "id", VString r.srId),
+      (Ident "parent_id", VString (fromMaybeText r.srParentId)),
+      (Ident "name", VString (fromMaybeText r.srName)),
+      (Ident "kind", VString (maybe "" spanKindText r.srKind)),
+      (Ident "t_start", VString (fromMaybeText r.srTStart)),
+      (Ident "t_end", VString (fromMaybeText r.srTEnd)),
+      (Ident "status", VString (maybe "" spanStatusText r.srStatus)),
+      (Ident "attrs", jsonToValue r.srAttrs),
+      (Ident "snapshot_seq", VInt (maybe 0 fromIntegral r.srSnapshotSeq))
+    ]
+  where
+    fromMaybeText = maybe "" id
 
 checkModuleValue :: Text -> Text -> Value
 checkModuleValue path txt = case loadModuleText (T.unpack path) txt of

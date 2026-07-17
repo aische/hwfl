@@ -118,12 +118,18 @@ basename on the allowlist. Child env = keys in `exec.env` only.
 | `meta.check_module` | Meta, Read | `(path: FileRef) -> { ok, error, name }` |
 | `meta.check_project` | Meta, Read | `(path: FileRef) -> { ok, error }` |
 | `meta.invoke` | Meta, Read | `{ project, workspace, inputs? } -> { ok, run_id, status, outcome, error }` |
+| `meta.list_runs` | Meta, Read | `{ workspace } -> { ok, runs, error }` |
+| `meta.read_spans` | Meta, Read | `{ run_id, workspace, name_prefix?, kind?, limit? } -> { ok, spans, error }` |
 
 `meta.invoke` runs a nested project directory or `.md` module via the same
 path as the library driver. `project` and `workspace` are workspace-relative
 `FileRef`s (caller materializes them). `inputs` is an optional record passed
 to child `main`. Returns a recoverable result (`ok` / `status`); child
 `run_id` lives under the child workspace’s `.hwfl/runs/`.
+
+`meta.list_runs` lists run metas under `.hwfl/runs` for a workspace-relative
+root. `meta.read_spans` returns span records for one run (optional name /
+kind prefix filters and limit). Missing run → `ok = false`.
 
 ### Skills
 

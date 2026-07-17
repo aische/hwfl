@@ -103,8 +103,8 @@ as long as host ops inside are correct.
 | `meta.invoke` | nested `driverRun`: `{ project, workspace, inputs? }` → `{ ok, run_id, status, outcome, error }` (workspace-relative paths; snapshot boundary) |
 | `meta.check_module` | check one markdown module; `{ ok, error, name }` (recoverable; M8) |
 | `meta.check_project` | whole-project graph check; `{ ok, error }` (workspace-relative project root; M9) |
-| `meta.list_runs` | **[defer]** |
-| `meta.read_spans` | query spans for a run **[defer]** |
+| `meta.list_runs` | list run metas under a workspace; `{ workspace }` → `{ ok, runs, error }` |
+| `meta.read_spans` | query spans for a run; `{ run_id, workspace, name_prefix?, kind?, limit? }` → `{ ok, spans, error }` |
 | `meta.read_snapshot` | **careful** — may expose secrets; redact **[defer]** |
 
 `meta.invoke` signature (sketch):
@@ -118,6 +118,22 @@ as long as host ops inside are correct.
 - `project` / `workspace` are resolved under the **parent** workspace sandbox.
 - Child run state is stored under the **child** workspace (`.hwfl/runs/<run_id>/`).
 - Same-project module call sugar (`FrInvoke`) is separate and not this op.
+
+`meta.list_runs` / `meta.read_spans` (sketch):
+
+```text
+{ workspace: FileRef }
+  -[Meta, Read]->
+  { ok: Bool, runs: List<{ run_id, status, entry, started_at, project_hash }>, error: String }
+
+{ run_id: String, workspace: FileRef, name_prefix?: String, kind?: String, limit?: Int }
+  -[Meta, Read]->
+  { ok: Bool, spans: List<{ op, id, parent_id, name, kind, t_start, t_end, status, attrs, snapshot_seq }>, error: String }
+```
+
+- `workspace` is parent-sandbox-relative (same containment as `meta.invoke`).
+- Missing run → `ok = false`, empty `spans`, non-empty `error`.
+- Empty / omitted filter fields mean no filter; `limit <= 0` means unlimited.
 
 ## 6.1 Skills (`Meta` / `Read`)
 

@@ -192,6 +192,19 @@ hostOpenAttrs op args = case op of
         "project" .= stringAttr (Ident "project") args,
         "workspace" .= stringAttr (Ident "workspace") args
       ]
+  HostMetaListRuns ->
+    object
+      [ "op" .= hostOpName op,
+        "workspace" .= stringAttr (Ident "workspace") args
+      ]
+  HostMetaReadSpans ->
+    object
+      [ "op" .= hostOpName op,
+        "run_id" .= stringAttr (Ident "run_id") args,
+        "workspace" .= stringAttr (Ident "workspace") args,
+        "name_prefix" .= stringAttr (Ident "name_prefix") args,
+        "kind" .= stringAttr (Ident "kind") args
+      ]
   HostSkillDiscover ->
     object
       [ "op" .= hostOpName op,

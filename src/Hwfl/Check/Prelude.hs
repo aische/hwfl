@@ -334,7 +334,62 @@ metaType =
                 (Ident "error", t "String")
               ]
           )
+      ),
+      ( Ident "list_runs",
+        TEffFun
+          (TRecord [(Ident "workspace", t "FileRef")])
+          [EffMeta, EffRead]
+          ( TRecord
+              [ (Ident "ok", t "Bool"),
+                (Ident "runs", TList runMetaEntryType),
+                (Ident "error", t "String")
+              ]
+          )
+      ),
+      ( Ident "read_spans",
+        -- Infer special-cases optional @name_prefix@ / @kind@ / @limit@.
+        TEffFun
+          ( TRecord
+              [ (Ident "run_id", t "String"),
+                (Ident "workspace", t "FileRef"),
+                (Ident "name_prefix", t "String"),
+                (Ident "kind", t "String"),
+                (Ident "limit", t "Int")
+              ]
+          )
+          [EffMeta, EffRead]
+          ( TRecord
+              [ (Ident "ok", t "Bool"),
+                (Ident "spans", TList spanEntryType),
+                (Ident "error", t "String")
+              ]
+          )
       )
+    ]
+
+runMetaEntryType :: TypeExpr
+runMetaEntryType =
+  TRecord
+    [ (Ident "run_id", t "String"),
+      (Ident "status", t "String"),
+      (Ident "entry", t "String"),
+      (Ident "started_at", t "String"),
+      (Ident "project_hash", t "String")
+    ]
+
+spanEntryType :: TypeExpr
+spanEntryType =
+  TRecord
+    [ (Ident "op", t "String"),
+      (Ident "id", t "String"),
+      (Ident "parent_id", t "String"),
+      (Ident "name", t "String"),
+      (Ident "kind", t "String"),
+      (Ident "t_start", t "String"),
+      (Ident "t_end", t "String"),
+      (Ident "status", t "String"),
+      (Ident "attrs", t "Json"),
+      (Ident "snapshot_seq", t "Int")
     ]
 
 skillEntryType :: TypeExpr

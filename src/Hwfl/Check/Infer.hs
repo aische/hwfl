@@ -121,6 +121,7 @@ infer env = \case
     | isObsSpan f -> inferObsSpanApp env args
     | isObsSpanPartial f -> inferObsSpanThunkApp env args
     | isMetaInvoke f -> inferMetaInvokeApp env args
+    | isMetaReadSpans f -> inferMetaReadSpansApp env args
     | EVar (Ident n) <- f,
       Just cls <- classifyOp n ->
         inferOverloadedApp env cls infer args
@@ -668,6 +669,71 @@ inferMetaInvokeApp env args = case classifyArgs args of
     pure metaInvokeResultType
   Right (Positional _) ->
     Left (TypeMismatchMsg "meta.invoke requires named arguments" (TRecord []) (TRecord []))
+
+-- | @meta.read_spans({ run_id, workspace, name_prefix?, kind?, limit? })@.
+isMetaReadSpans :: Expr -> Bool
+isMetaReadSpans = \case
+  EProj (EVar (Ident "meta")) (Ident "read_spans") -> True
+  _ -> False
+
+metaReadSpansResultType :: TypeExpr
+metaReadSpansResultType =
+  TRecord
+    [ (Ident "ok", tBool),
+      ( Ident "spans",
+        TList
+          ( TRecord
+              [ (Ident "op", tString),
+                (Ident "id", tString),
+                (Ident "parent_id", tString),
+                (Ident "name", tString),
+                (Ident "kind", tString),
+                (Ident "t_start", tString),
+                (Ident "t_end", tString),
+                (Ident "status", tString),
+                (Ident "attrs", tJson),
+                (Ident "snapshot_seq", tInt)
+              ]
+          )
+      ),
+      (Ident "error", tString)
+    ]
+
+inferMetaReadSpansApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferMetaReadSpansApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Named nes) -> do
+    runIdE <-
+      maybe (Left (MissingNamedArg (Ident "run_id"))) pure (lookup (Ident "run_id") nes)
+    workspaceE <-
+      maybe (Left (MissingNamedArg (Ident "workspace"))) pure (lookup (Ident "workspace") nes)
+    check env runIdE tString
+    check env workspaceE tFileRef
+    case lookup (Ident "name_prefix") nes of
+      Nothing -> pure ()
+      Just e -> check env e tString
+    case lookup (Ident "kind") nes of
+      Nothing -> pure ()
+      Just e -> check env e tString
+    case lookup (Ident "limit") nes of
+      Nothing -> pure ()
+      Just e -> check env e tInt
+    let known =
+          [ Ident "run_id",
+            Ident "workspace",
+            Ident "name_prefix",
+            Ident "kind",
+            Ident "limit"
+          ]
+    mapM_
+      ( \(n, _) ->
+          unless (n `elem` known) $
+            Left (UnknownField n (TRecord [(Ident "run_id", tString)]))
+      )
+      nes
+    pure metaReadSpansResultType
+  Right (Positional _) ->
+    Left (TypeMismatchMsg "meta.read_spans requires named arguments" (TRecord []) (TRecord []))
 
 tUnit, tBool, tInt, tFloat, tString, tToolSpec, tFileRef, tJson :: TypeExpr
 tUnit = TName (TypeName "Unit")
