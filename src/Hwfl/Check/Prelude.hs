@@ -132,6 +132,23 @@ fsType =
                   ]
               )
           )
+      ),
+      ( Ident "read_slice",
+        TEffFun
+          ( TRecord
+              [ (Ident "path", t "FileRef"),
+                (Ident "start_line", t "Int"),
+                (Ident "end_line", t "Int")
+              ]
+          )
+          [EffRead]
+          (TRecord [(Ident "text", t "String")])
+      ),
+      ( Ident "remove",
+        TEffFun
+          (t "FileRef")
+          [EffWrite]
+          (t "Unit")
       )
     ]
 

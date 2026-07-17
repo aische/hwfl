@@ -30,8 +30,8 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [ ] In-language `lib/` modules (`list` / `string` / …) per [stdlib.md](stdlib.md)
 - [ ] Deferred host/meta: `llm.chat_messages`, `meta.invoke`,
       `meta.list_runs`, `meta.read_spans`, `meta.read_snapshot`
-- [ ] `fs.read_slice` / move / copy / remove / mkdir (P0 shipped list/edit/grep;
-      `fs.write` already creates parent dirs)
+- [ ] `fs.move` / `copy` / `mkdir` (P0 shipped list/edit/grep;
+      `fs.write` creates parent dirs; `fs.read_slice` / `fs.remove` shipped)
 - [ ] `hwfl init` / shell completions
 
 ## Done

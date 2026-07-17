@@ -152,6 +152,18 @@ hostOpenAttrs op args = case op of
         "pattern" .= stringAttr (Ident "pattern") args,
         "glob" .= stringAttr (Ident "glob") args
       ]
+  HostFsReadSlice ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args,
+        "start_line" .= intAttr (Ident "start_line") 1 args,
+        "end_line" .= intAttr (Ident "end_line") 2 args
+      ]
+  HostFsRemove ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args
+      ]
   HostExecRun ->
     object
       [ "op" .= hostOpName op,
@@ -259,6 +271,11 @@ toolsLenAttr args = case lookupNamed (Ident "tools") args of
 listLenAttr :: Ident -> [(Maybe Ident, Value)] -> Aeson.Value
 listLenAttr n args = case lookupNamed n args of
   Just (VList xs) -> Aeson.Number (fromIntegral (length xs))
+  _ -> Aeson.Null
+
+intAttr :: Ident -> Int -> [(Maybe Ident, Value)] -> Aeson.Value
+intAttr n pos args = case lookupNamed n args `orElse` lookupPos pos args of
+  Just (VInt v) -> Aeson.Number (fromIntegral v)
   _ -> Aeson.Null
 
 lookupNamed :: Ident -> [(Maybe Ident, Value)] -> Maybe Value

@@ -26,6 +26,7 @@ import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Scientific (toBoundedInteger)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
@@ -136,6 +137,23 @@ hostToolMeta = \case
           [ ("pattern", t "String", "Regular expression to match against each line"),
             ("glob", t "String", "Optional file glob (**/*.ext or *.ext); empty = all files")
           ]
+      )
+  HostFsReadSlice ->
+    Right
+      ( "fs_read_slice",
+        "Read a 1-based inclusive line range from a UTF-8 workspace file",
+        describedObjectSchema
+          [ ("path", t "FileRef", "Workspace-relative file path to read"),
+            ("start_line", t "Int", "First line to include (1-based)"),
+            ("end_line", t "Int", "Last line to include (1-based)")
+          ]
+      )
+  HostFsRemove ->
+    Right
+      ( "fs_remove",
+        "Remove a workspace file or directory tree",
+        describedObjectSchema
+          [("path", t "FileRef", "Workspace-relative file or directory to remove")]
       )
   HostExecRun ->
     Right
@@ -415,6 +433,24 @@ coerceToolArgs ts json = case ts.tvsCallee of
           (Just (Ident "glob"), VString glob)
         ]
     _ -> Left "fs_grep arguments must be an object"
+  VHostOp HostFsReadSlice -> case json of
+    Aeson.Object o -> do
+      path <- stringField o "path"
+      startLine <- intField o "start_line"
+      endLine <- intField o "end_line"
+      Right
+        [ (Just (Ident "path"), VString path),
+          (Just (Ident "start_line"), VInt (fromIntegral startLine)),
+          (Just (Ident "end_line"), VInt (fromIntegral endLine))
+        ]
+    _ -> Left "fs_read_slice arguments must be an object"
+  VHostOp HostFsRemove -> case json of
+    Aeson.Object o -> case KM.lookup "path" o of
+      Just (Aeson.String p) -> Right [(Just (Ident "path"), VString p)]
+      Just _ -> Left "fs_remove.path must be a string"
+      Nothing -> Left "fs_remove missing path"
+    Aeson.String p -> Right [(Nothing, VString p)]
+    _ -> Left "fs_remove arguments must be an object or string path"
   VHostOp HostExecRun -> case json of
     Aeson.Object o -> do
       program <- stringField o "program"
@@ -460,6 +496,12 @@ coerceToolArgs ts json = case ts.tvsCallee of
     stringField o k = case KM.lookup (Key.fromText k) o of
       Just (Aeson.String s) -> Right s
       Just _ -> Left (k <> " must be a string")
+      Nothing -> Left ("missing " <> k)
+    intField o k = case KM.lookup (Key.fromText k) o of
+      Just (Aeson.Number n) -> case toBoundedInteger n :: Maybe Int of
+        Just i -> Right i
+        Nothing -> Left (k <> " must be an integer")
+      Just _ -> Left (k <> " must be an integer")
       Nothing -> Left ("missing " <> k)
     stringListField o k = case KM.lookup (Key.fromText k) o of
       Just (Aeson.Array arr) ->

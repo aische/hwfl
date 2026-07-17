@@ -7,11 +7,13 @@ module Hwfl.Runtime.Workspace
     resolvePath,
     resolveContainedPath,
     readTextFile,
+    readTextSlice,
     writeTextFile,
     findFiles,
     listDir,
     editFile,
     grepFiles,
+    removePath,
   )
 where
 
@@ -29,6 +31,8 @@ import System.Directory
     doesFileExist,
     getFileSize,
     listDirectory,
+    removeDirectoryRecursive,
+    removeFile,
   )
 import System.FilePath
   ( isAbsolute,
@@ -112,6 +116,22 @@ readTextFile ws rel = do
         Right bytes -> case decodeUtf8' bytes of
           Left _ -> Left (HostErr ("file '" <> rel <> "' is not valid UTF-8"))
           Right txt -> Right txt
+
+-- | Read a 1-based inclusive line range from a UTF-8 text file.
+readTextSlice :: Workspace -> Text -> Int -> Int -> IO (Either RuntimeError Text)
+readTextSlice ws rel startLine endLine
+  | startLine < 1 =
+      pure (Left (HostErr "fs.read_slice start_line must be >= 1"))
+  | endLine < startLine =
+      pure (Left (HostErr "fs.read_slice end_line must be >= start_line"))
+  | otherwise = do
+      r <- readTextFile ws rel
+      pure $ case r of
+        Left e -> Left e
+        Right txt ->
+          let fileLines = T.lines txt
+              slice = drop (startLine - 1) (take endLine fileLines)
+           in Right (T.unlines slice)
 
 -- | Write UTF-8 text, creating parent dirs inside the sandbox as needed.
 writeTextFile :: Workspace -> Text -> Text -> IO (Either RuntimeError ())
@@ -221,6 +241,33 @@ listDir ws rel = do
     classify parent name = do
       isDir <- doesDirectoryExist (parent </> name)
       pure (T.pack name, if isDir then "dir" else "file")
+
+-- | Remove a workspace file or directory tree. Cannot delete the workspace root.
+removePath :: Workspace -> Text -> IO (Either RuntimeError ())
+removePath ws rel = do
+  resolved <- resolveContainedPath ws rel
+  case resolved of
+    Left e -> pure (Left e)
+    Right path ->
+      if path == workspaceRoot ws
+        then pure (Left (SandboxErr ("cannot remove workspace root: " <> rel)))
+        else do
+          isFile <- doesFileExist path
+          isDir <- doesDirectoryExist path
+          if not isFile && not isDir
+            then pure (Left (HostErr ("path not found: '" <> rel <> "'")))
+            else do
+              result <-
+                try
+                  ( if isDir
+                      then removeDirectoryRecursive path
+                      else removeFile path
+                  ) ::
+                  IO (Either IOException ())
+              pure $ case result of
+                Left ex ->
+                  Left (HostErr ("remove failed for '" <> rel <> "': " <> T.pack (show ex)))
+                Right () -> Right ()
 
 -- | Literal whole-string replacement. Returns @(ok, replacements)@ where
 -- @ok@ is true iff at least one occurrence was replaced. Empty @old@ is an error.

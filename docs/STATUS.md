@@ -11,6 +11,8 @@ semantic-check deepen / skills phase D.
 
 - **`--json` CLI** — machine-readable error envelopes on `check` / `run`
   (`status`, `exit_code`, `category`, `kind`, `message`; parse diagnostics)
+- **`fs.read_slice` / `fs.remove`** — line-range read (1-based inclusive) and
+  sandboxed file/dir removal; agent-tool eligible
 - **`try` / `catch` runtime** — `FrTry` frame, catchable host/provider/sandbox
   errors, type checker, snapshot resume, E10 tests
 - LLM span cost: catalog pricing → `cost_usd` on spans; running `$` ledger

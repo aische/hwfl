@@ -17,7 +17,7 @@ import Hwfl.Runtime.Run
     runLoadedModule,
     emptySkillRuntime)
 import Hwfl.Runtime.Workspace
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -109,6 +109,28 @@ confirmEcho =
         execConfirm = True
       }
 
+fsSliceRemoveSrc :: Text
+fsSliceRemoveSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/fs-slice-remove",
+      "inputs: {}",
+      "outputs:",
+      "  slice: String",
+      "  removed: Bool",
+      "effects: [Read, Write]",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { slice: String, removed: Bool } =",
+      "  let part = fs.read_slice(path = \"src/a.txt\", start_line = 2, end_line = 3)",
+      "  let _ = fs.remove(\"src/tmp.txt\")",
+      "  { slice = part.text, removed = true }",
+      "```"
+    ]
+
 spec :: Spec
 spec = describe "host ops P0 (exec + fs)" $ do
   describe "workspace helpers" $ do
@@ -134,6 +156,35 @@ spec = describe "host ops P0 (exec + fs)" $ do
         case grep of
           Left e -> expectationFailure (show e)
           Right hits -> length hits `shouldBe` 2
+
+    it "reads an inclusive line slice" $
+      withSystemTempDirectory "hwfl-slice" $ \dir -> do
+        ws <- newWorkspace dir
+        _ <- writeTextFile ws "lines.txt" "one\ntwo\nthree\nfour\n"
+        slice <- readTextSlice ws "lines.txt" 2 3
+        slice `shouldBe` Right "two\nthree\n"
+
+    it "rejects invalid line ranges" $
+      withSystemTempDirectory "hwfl-slice-bad" $ \dir -> do
+        ws <- newWorkspace dir
+        _ <- writeTextFile ws "x.txt" "a\n"
+        r <- readTextSlice ws "x.txt" 2 1
+        r `shouldSatisfy` isLeft
+
+    it "removes files and directories" $
+      withSystemTempDirectory "hwfl-remove" $ \dir -> do
+        ws <- newWorkspace dir
+        _ <- writeTextFile ws "gone.txt" "bye"
+        createDirectoryIfMissing True (dir </> "sub")
+        writeFile (dir </> "sub" </> "inner.txt") "x"
+        rmFile <- removePath ws "gone.txt"
+        rmFile `shouldBe` Right ()
+        exists <- doesFileExist (dir </> "gone.txt")
+        exists `shouldBe` False
+        rmDir <- removePath ws "sub"
+        rmDir `shouldBe` Right ()
+        subExists <- doesDirectoryExist (dir </> "sub")
+        subExists `shouldBe` False
 
   describe "exec.run" $ do
     it "runs an allowlisted program and captures stdout" $
@@ -277,10 +328,54 @@ spec = describe "host ops P0 (exec + fs)" $ do
                   other -> expectationFailure (show other)
               other -> expectationFailure (show other)
 
+  describe "fs.read_slice / fs.remove" $ do
+    it "runs through the machine" $
+      withSystemTempDirectory "hwfl-slice-remove" $ \dir -> do
+        createDirectoryIfMissing True (dir </> "src")
+        writeFile (dir </> "src" </> "a.txt") "one\ntwo\nthree\n"
+        writeFile (dir </> "src" </> "tmp.txt") "delete me\n"
+        case loadModuleText "slice-remove.md" fsSliceRemoveSrc of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            let opts =
+                  RunOptions
+                    { roWorkspace = dir,
+                      roProvider = mockProvider,
+                      roInputs = [],
+                      roRunId = Just "slice-remove",
+                      roEntry = "slice-remove.md",
+                      roMode = StepRun,
+                      roProjectHash = Nothing,
+                      roExec = Nothing,
+                      roDebug = False,
+                      roModelCatalog = "model-catalog.json",
+                      roSkillCatalog = fst emptySkillRuntime,
+                      roSkillModules = snd emptySkillRuntime
+                    }
+            outcome <- runLoadedModule opts loaded
+            case outcome of
+              OutcomeCompleted val _ _ -> do
+                case val of
+                  VRecord fs -> do
+                    lookup (Ident "removed") fs `shouldBe` Just (VBool True)
+                    case lookup (Ident "slice") fs of
+                      Just (VString s) -> T.stripEnd s `shouldBe` "two\nthree"
+                      other -> expectationFailure (show other)
+                  other -> expectationFailure (show other)
+                tmpExists <- doesFileExist (dir </> "src" </> "tmp.txt")
+                tmpExists `shouldBe` False
+              other -> expectationFailure (show other)
+
 isRight :: Either a b -> Bool
 isRight = \case
   Right _ -> True
   Left _ -> False
+
+isLeft :: Either a b -> Bool
+isLeft = \case
+  Left _ -> True
+  Right _ -> False
 
 isFailed :: RunOutcome -> Bool
 isFailed = \case

@@ -45,6 +45,8 @@ import Hwfl.Runtime.Workspace
     grepFiles,
     listDir,
     readTextFile,
+    readTextSlice,
+    removePath,
     workspaceRoot,
     writeTextFile,
   )
@@ -86,7 +88,9 @@ hostOpsEnv =
             (Ident "find", VHostOp HostFsFind),
             (Ident "list", VHostOp HostFsList),
             (Ident "edit", VHostOp HostFsEdit),
-            (Ident "grep", VHostOp HostFsGrep)
+            (Ident "grep", VHostOp HostFsGrep),
+            (Ident "read_slice", VHostOp HostFsReadSlice),
+            (Ident "remove", VHostOp HostFsRemove)
           ]
       ),
       ( Ident "exec",
@@ -142,6 +146,8 @@ runHostOp env op args = case op of
   HostFsList -> doFsList env args
   HostFsEdit -> doFsEdit env args
   HostFsGrep -> doFsGrep env args
+  HostFsReadSlice -> doFsReadSlice env args
+  HostFsRemove -> doFsRemove env args
   HostExecRun -> doExecRun env args
   HostLlmChat -> doLlmChat env args
   HostLlmObject -> doLlmObject env args
@@ -314,6 +320,43 @@ doFsGrep env args = case parseGrepArgs args of
               (object ["count" .= length hits])
           )
 
+doFsReadSlice :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsReadSlice env args = case parseReadSliceArgs args of
+  Left e -> pure (Left e)
+  Right (path, startLine, endLine) -> do
+    env.heLog ("fs.read_slice " <> path)
+    result <- readTextSlice env.heWorkspace path startLine endLine
+    pure $ case result of
+      Left e -> Left e
+      Right txt ->
+        Right
+          ( HostResult
+              (VRecord [(Ident "text", VString txt)])
+              ( object
+                  [ "bytes" .= T.length txt,
+                    "start_line" .= startLine,
+                    "end_line" .= endLine
+                  ]
+              )
+          )
+
+doFsRemove :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsRemove env args =
+  case lookupNamed (Ident "path") args `orElsePos` lookupPositional 0 args of
+    Nothing -> pure (Left (HostErr "fs.remove expects a FileRef path"))
+    Just v ->
+      case fileRefValue v of
+        Left e -> pure (Left e)
+        Right path -> do
+          env.heLog ("fs.remove " <> path)
+          result <- removePath env.heWorkspace path
+          pure $ case result of
+            Left e -> Left e
+            Right () -> Right (HostResult VUnit (object ["path" .= path]))
+  where
+    orElsePos (Just x) _ = Just x
+    orElsePos Nothing y = y
+
 doExecRun :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doExecRun env args = case env.heExec of
   Nothing ->
@@ -436,6 +479,17 @@ parseGrepArgs args = do
           _ -> ""
   pure (pattern, glob)
 
+parseReadSliceArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Int, Int)
+parseReadSliceArgs args = do
+  path <- case lookupNamed (Ident "path") args of
+    Just v -> fileRefValue v
+    Nothing -> case lookupPositional 0 args of
+      Just v -> fileRefValue v
+      Nothing -> Left (HostErr "fs.read_slice expects path: FileRef")
+  startLine <- expectIntOrPos (Ident "start_line") 1 args
+  endLine <- expectIntOrPos (Ident "end_line") 2 args
+  pure (path, startLine, endLine)
+
 parseExecArgs :: [(Maybe Ident, Value)] -> Either RuntimeError ExecArgs
 parseExecArgs args = do
   program <- expectString (Ident "program") args
@@ -463,6 +517,14 @@ expectStringOrPos n i args = case lookupNamed n args of
   Just _ -> Left (HostErr ("expected String for " <> unIdent n))
   Nothing -> case lookupPositional i args of
     Just (VString t) -> Right t
+    _ -> Left (HostErr ("missing argument: " <> unIdent n))
+
+expectIntOrPos :: Ident -> Int -> [(Maybe Ident, Value)] -> Either RuntimeError Int
+expectIntOrPos n i args = case lookupNamed n args of
+  Just (VInt v) -> Right (fromIntegral v)
+  Just _ -> Left (HostErr ("expected Int for " <> unIdent n))
+  Nothing -> case lookupPositional i args of
+    Just (VInt v) -> Right (fromIntegral v)
     _ -> Left (HostErr ("missing argument: " <> unIdent n))
 
 doLlmChat :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
