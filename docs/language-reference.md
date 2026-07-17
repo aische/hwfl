@@ -117,6 +117,13 @@ basename on the allowlist. Child env = keys in `exec.env` only.
 | `obs.span` | — | `(name, fun () -> a) -> a` |
 | `meta.check_module` | Meta, Read | `(path: FileRef) -> { ok, error, name }` |
 | `meta.check_project` | Meta, Read | `(path: FileRef) -> { ok, error }` |
+| `meta.invoke` | Meta, Read | `{ project, workspace, inputs? } -> { ok, run_id, status, outcome, error }` |
+
+`meta.invoke` runs a nested project directory or `.md` module via the same
+path as the library driver. `project` and `workspace` are workspace-relative
+`FileRef`s (caller materializes them). `inputs` is an optional record passed
+to child `main`. Returns a recoverable result (`ok` / `status`); child
+`run_id` lives under the child workspace’s `.hwfl/runs/`.
 
 ### Skills
 

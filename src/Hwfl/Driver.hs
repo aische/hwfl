@@ -50,19 +50,14 @@ module Hwfl.Driver
   )
 where
 
-import Data.Map.Strict (Map)
-import Data.Map.Strict qualified as Map
 import Data.Text (Text)
-import Hwfl.Ast.Module (LoadedModule)
-import Hwfl.Ast.Name (Ident, QName, qnameToText)
-import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
+import Hwfl.Ast.Name (Ident)
 import Hwfl.Check.Error (CheckError, renderCheckError)
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Check.Project
   ( CheckProjectResult (..),
     ProjectCheckError (..),
     checkProject,
-    checkProjectLoaded,
     renderProjectCheckError,
   )
 import Hwfl.Eval.Value (Value)
@@ -70,23 +65,16 @@ import Hwfl.Llm.Provider (LlmProvider)
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Obs.Span (SpanRecord (..))
 import Hwfl.Parse.Load (loadModule)
-import Hwfl.Project
-  ( ExecPolicy,
-    LoadedProject (..),
-    ProjectConfig (..),
-    isProjectDir,
-    loadProject,
-    modulePathForQname,
-    projectHashForModules,
-  )
+import Hwfl.Project (isProjectDir)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
-  ( RunOptions (..),
-    RunOutcome (..),
+  ( RunOutcome (..),
+    RunTargetError (..),
+    RunTargetRequest (..),
     approveRun,
-    emptySkillRuntime,
+    defaultRunTargetRequest,
     resumeRun,
-    runLoadedModule,
+    runTarget,
     stepRun,
   )
 import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..))
@@ -106,7 +94,6 @@ import Hwfl.Runtime.Store
     runRef,
     storeRunId,
   )
-import Hwfl.SkillCatalog (SkillCatalog, isSkillQName, skillMetaForModule)
 import Hwfl.Source (Diagnostic, renderDiagnostics)
 
 -- | Failures that occur before a 'RunOutcome' exists (load / parse / check).
@@ -177,110 +164,31 @@ defaultDriverRunRequest target workspace provider =
       drrRunId = Nothing
     }
 
+toRunTargetRequest :: DriverRunRequest -> RunTargetRequest
+toRunTargetRequest req =
+  (defaultRunTargetRequest req.drrTarget req.drrWorkspace req.drrProvider)
+    { rtrInputs = req.drrInputs,
+      rtrSkipCheck = req.drrSkipCheck,
+      rtrModelCatalog = req.drrModelCatalog,
+      rtrMode = req.drrMode,
+      rtrDebug = req.drrDebug,
+      rtrCost = req.drrCost,
+      rtrRunId = req.drrRunId
+    }
+
+mapTargetError :: RunTargetError -> DriverError
+mapTargetError = \case
+  RtProject err -> DeProject err
+  RtParse path diags -> DeParse path diags
+  RtModule path err -> DeModule path err
+
 -- | Check (unless skipped) then execute @main@ for a project or module path.
 driverRun :: DriverRunRequest -> IO (Either DriverError RunOutcome)
 driverRun req = do
-  isProj <- isProjectDir req.drrTarget
-  if isProj
-    then driverRunProject req
-    else driverRunModule req
-
-driverRunProject :: DriverRunRequest -> IO (Either DriverError RunOutcome)
-driverRunProject req = do
-  lpE <- loadProject req.drrTarget
-  case lpE of
-    Left err -> pure (Left (DeProject (PceLoad err)))
-    Right lp -> do
-      catalogE <- resolveProjectCatalog req.drrSkipCheck lp
-      case catalogE of
-        Left e -> pure (Left e)
-        Right catalog -> do
-          let entry = lp.lpConfig.pcEntrypoint
-              entryPath = modulePathForQname req.drrTarget entry
-              skillMods = callableSkillModules lp.lpModules
-          case Map.lookup entry lp.lpModules of
-            Nothing ->
-              pure (Left (DeProject (PceEntryNotFound (qnameToText entry))))
-            Just loaded -> do
-              let opts =
-                    mkRunOptions
-                      req
-                      entryPath
-                      (Just (projectHashForModules lp.lpModules))
-                      lp.lpConfig.pcExec
-                      catalog
-                      skillMods
-              Right <$> runLoadedModule opts loaded
-
-resolveProjectCatalog ::
-  Bool ->
-  LoadedProject ->
-  IO (Either DriverError SkillCatalog)
-resolveProjectCatalog skipCheck lp =
-  if skipCheck
-    then
-      let (c, _) = emptySkillRuntime
-       in pure (Right c)
-    else pure $ case checkProjectLoaded lp of
-      Left err -> Left (DeProject err)
-      Right cpr -> Right cpr.cprSkillCatalog
-
-callableSkillModules :: Map QName LoadedModule -> Map QName LoadedModule
-callableSkillModules =
-  Map.filterWithKey
-    ( \q m ->
-        isSkillQName q
-          && smKind (skillMetaForModule m) == SkillCallable
-    )
-
-driverRunModule :: DriverRunRequest -> IO (Either DriverError RunOutcome)
-driverRunModule req = do
-  result <- loadModule req.drrTarget
-  case result of
-    Left diags -> pure (Left (DeParse req.drrTarget diags))
-    Right loaded ->
-      if not req.drrSkipCheck
-        then case checkLoadedModule loaded of
-          Left err -> pure (Left (DeModule req.drrTarget err))
-          Right _ -> runMod loaded
-        else runMod loaded
-  where
-    runMod loaded = do
-      let (catalog, skillMods) = emptySkillRuntime
-          opts =
-            mkRunOptions
-              req
-              req.drrTarget
-              Nothing
-              Nothing
-              catalog
-              skillMods
-      Right <$> runLoadedModule opts loaded
-
-mkRunOptions ::
-  DriverRunRequest ->
-  FilePath ->
-  Maybe Text ->
-  Maybe ExecPolicy ->
-  SkillCatalog ->
-  Map QName LoadedModule ->
-  RunOptions
-mkRunOptions req entry hash execPol catalog skillMods =
-  RunOptions
-    { roWorkspace = req.drrWorkspace,
-      roProvider = req.drrProvider,
-      roInputs = req.drrInputs,
-      roRunId = req.drrRunId,
-      roEntry = entry,
-      roMode = req.drrMode,
-      roProjectHash = hash,
-      roExec = execPol,
-      roDebug = req.drrDebug,
-      roCost = req.drrCost,
-      roModelCatalog = req.drrModelCatalog,
-      roSkillCatalog = catalog,
-      roSkillModules = skillMods
-    }
+  result <- runTarget (toRunTargetRequest req)
+  pure $ case result of
+    Left err -> Left (mapTargetError err)
+    Right outcome -> Right outcome
 
 driverStep :: FilePath -> Text -> LlmProvider -> FilePath -> IO RunOutcome
 driverStep = stepRun

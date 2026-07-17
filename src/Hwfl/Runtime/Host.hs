@@ -68,7 +68,10 @@ data HostEnv = HostEnv
     -- | Progressive LLM chunk hook for the in-flight @llm.chat@ / agent
     -- model call (set by Eval around the open span). Object mode leaves this
     -- unset.
-    heLlmOnChunk :: Maybe (StreamDelta -> IO ())
+    heLlmOnChunk :: Maybe (StreamDelta -> IO ()),
+    -- | Nested lab run (@meta.invoke@). Wired by 'Hwfl.Runtime.Run' so Host
+    -- need not import the driver (avoids Host↔Run cycles).
+    heMetaInvoke :: [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
   }
 
 -- | Host outcome with redacted close-attrs for the span.
@@ -127,7 +130,8 @@ hostOpsEnv =
       ( Ident "meta",
         VRecord
           [ (Ident "check_module", VHostOp HostMetaCheckModule),
-            (Ident "check_project", VHostOp HostMetaCheckProject)
+            (Ident "check_project", VHostOp HostMetaCheckProject),
+            (Ident "invoke", VHostOp HostMetaInvoke)
           ]
       ),
       ( Ident "skill",
@@ -161,6 +165,7 @@ runHostOp env op args = case op of
   HostLlmObject -> doLlmObject env args
   HostMetaCheckModule -> doMetaCheckModule env args
   HostMetaCheckProject -> doMetaCheckProject env args
+  HostMetaInvoke -> env.heMetaInvoke args
   HostSkillDiscover -> doSkillDiscover env args
   HostSkillLoad -> doSkillLoad env args
   HostLlmAgent ->

@@ -92,6 +92,7 @@ data HostOpId
   | HostObsSpan
   | HostMetaCheckModule
   | HostMetaCheckProject
+  | HostMetaInvoke
   | HostSkillDiscover
   | HostSkillLoad
   deriving stock (Eq, Ord, Show)
@@ -183,6 +184,7 @@ hostOpName = \case
   HostObsSpan -> "obs.span"
   HostMetaCheckModule -> "meta.check_module"
   HostMetaCheckProject -> "meta.check_project"
+  HostMetaInvoke -> "meta.invoke"
   HostSkillDiscover -> "skill.discover"
   HostSkillLoad -> "skill.load"
 

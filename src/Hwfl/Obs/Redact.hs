@@ -186,6 +186,12 @@ hostOpenAttrs op args = case op of
       [ "op" .= hostOpName op,
         "path" .= pathAttr args
       ]
+  HostMetaInvoke ->
+    object
+      [ "op" .= hostOpName op,
+        "project" .= stringAttr (Ident "project") args,
+        "workspace" .= stringAttr (Ident "workspace") args
+      ]
   HostSkillDiscover ->
     object
       [ "op" .= hostOpName op,

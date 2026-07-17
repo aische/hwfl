@@ -1,11 +1,11 @@
 # Status
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ## Current focus
 
-Meta host ops for nested lab runs (`meta.invoke`, list/read spans).
-Run-store interface + library driver are in place.
+`meta.list_runs` / `meta.read_spans` (careful snapshot) for lab scoring.
+`meta.invoke` shipped.
 
 ## North star
 
@@ -16,12 +16,11 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
-- **Run-store interface** (`Hwfl.Runtime.Store`: `RunStoreBackend` + FS
-  backend; list / read meta / spans / snapshot; opaque `RunStore`)
-- Driver queries: `driverListRuns` / `driverReadMeta` /
-  `driverReadSpans` / `driverReadSnapshot`
-- **Library driver façade** (`Hwfl.Driver`: check / run / step / resume /
-  approve / show); CLI thinned to flags + presentation
+- **`meta.invoke`** — nested `runTarget` / driverRun; workspace-relative
+  `project` + `workspace` (+ optional `inputs`); returns
+  `{ ok, run_id, status, outcome, error }`
+- Shared **`runTarget`** in `Hwfl.Runtime.Run` (Driver thinned to wrap it)
+- Run-store interface + library driver façade
 - North-star docs: lab + library façade; Servant out of this repo
 - **`--cost`**; semantic-check S1–S3 + S5; `fs.patch`; streaming spans;
   skills A–C; coding-agent; P0; M0–M9
@@ -32,8 +31,7 @@ None.
 
 ## Next up
 
-1. Meta for nested lab runs: `meta.invoke`, `meta.list_runs`,
-   `meta.read_spans` (+ careful snapshot)
+1. `meta.list_runs` / `meta.read_spans` (+ careful `meta.read_snapshot`)
 2. Local genetic prototype — N temp projects × workspace fixture ×
    score (CLI or parent workflow)
 3. Observer hook for live span / pause events (CLI `--debug` today;
@@ -49,6 +47,8 @@ None.
 - Control-plane repo (HTTP/WS, Postgres metadata, tenants) — **not** in
   hwfl; depends on the library driver above
 - Optional DB-backed run-store backend (same interface; not required yet)
+- Same-project module invoke sugar (`FrInvoke` / E11) — separate from
+  lab `meta.invoke`
 
 ## Open naming
 

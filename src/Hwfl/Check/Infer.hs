@@ -120,6 +120,7 @@ infer env = \case
     | isLlmAgentObject f -> inferLlmAgentObjectApp env args
     | isObsSpan f -> inferObsSpanApp env args
     | isObsSpanPartial f -> inferObsSpanThunkApp env args
+    | isMetaInvoke f -> inferMetaInvokeApp env args
     | EVar (Ident n) <- f,
       Just cls <- classifyOp n ->
         inferOverloadedApp env cls infer args
@@ -615,10 +616,65 @@ inferObsSpanThunk env bodyE = do
       pure ret
     Nothing -> Left (ExpectedFunction te')
 
-tUnit, tBool, tInt, tFloat, tString, tToolSpec :: TypeExpr
+-- | @meta.invoke({ project, workspace, inputs? })@ — @inputs@ may be any record
+-- (prelude stub uses Json which would reject concrete records).
+isMetaInvoke :: Expr -> Bool
+isMetaInvoke = \case
+  EProj (EVar (Ident "meta")) (Ident "invoke") -> True
+  _ -> False
+
+metaInvokeResultType :: TypeExpr
+metaInvokeResultType =
+  TRecord
+    [ (Ident "ok", tBool),
+      (Ident "run_id", tString),
+      (Ident "status", tString),
+      (Ident "outcome", tJson),
+      (Ident "error", tString)
+    ]
+
+inferMetaInvokeApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferMetaInvokeApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Named nes) -> do
+    projectE <-
+      maybe (Left (MissingNamedArg (Ident "project"))) pure (lookup (Ident "project") nes)
+    workspaceE <-
+      maybe (Left (MissingNamedArg (Ident "workspace"))) pure (lookup (Ident "workspace") nes)
+    check env projectE tFileRef
+    check env workspaceE tFileRef
+    case lookup (Ident "inputs") nes of
+      Nothing -> pure ()
+      Just inputsE -> do
+        te <- infer env inputsE
+        te' <- resolveType env te
+        case te' of
+          TRecord _ -> pure ()
+          TName (TypeName "Json") -> pure ()
+          _ ->
+            Left
+              ( TypeMismatchMsg
+                  "meta.invoke inputs must be a record or Json"
+                  (TRecord [])
+                  te'
+              )
+    let known = [Ident "project", Ident "workspace", Ident "inputs"]
+    mapM_
+      ( \(n, _) ->
+          unless (n `elem` known) $
+            Left (UnknownField n (TRecord [(Ident "project", tFileRef)]))
+      )
+      nes
+    pure metaInvokeResultType
+  Right (Positional _) ->
+    Left (TypeMismatchMsg "meta.invoke requires named arguments" (TRecord []) (TRecord []))
+
+tUnit, tBool, tInt, tFloat, tString, tToolSpec, tFileRef, tJson :: TypeExpr
 tUnit = TName (TypeName "Unit")
 tBool = TName (TypeName "Bool")
 tInt = TName (TypeName "Int")
 tFloat = TName (TypeName "Float")
 tString = TName (TypeName "String")
 tToolSpec = TName (TypeName "ToolSpec")
+tFileRef = TName (TypeName "FileRef")
+tJson = TName (TypeName "Json")

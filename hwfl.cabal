@@ -157,6 +157,7 @@ test-suite hwfl-test
         Hwfl.Runtime.CodingAgentSpec
         Hwfl.Runtime.ConcurrentSpec
         Hwfl.Runtime.HostOpsSpec
+        Hwfl.Runtime.MetaInvokeSpec
         Hwfl.Runtime.ObjectSpec
         Hwfl.Runtime.RunSpec
         Hwfl.Runtime.StoreSpec

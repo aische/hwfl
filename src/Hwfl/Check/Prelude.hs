@@ -315,6 +315,25 @@ metaType =
           (t "FileRef")
           [EffMeta, EffRead]
           (TRecord [(Ident "ok", t "Bool"), (Ident "error", t "String")])
+      ),
+      ( Ident "invoke",
+        -- Infer special-cases @inputs@ (any record). Stub documents the shape.
+        TEffFun
+          ( TRecord
+              [ (Ident "project", t "FileRef"),
+                (Ident "workspace", t "FileRef"),
+                (Ident "inputs", t "Json")
+              ]
+          )
+          [EffMeta, EffRead]
+          ( TRecord
+              [ (Ident "ok", t "Bool"),
+                (Ident "run_id", t "String"),
+                (Ident "status", t "String"),
+                (Ident "outcome", t "Json"),
+                (Ident "error", t "String")
+              ]
+          )
       )
     ]
 

@@ -2,6 +2,11 @@
 module Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
+    RunTargetRequest (..),
+    RunTargetError (..),
+    defaultRunTargetRequest,
+    runTarget,
+    renderRunTargetError,
     runLoadedModule,
     stepRun,
     resumeRun,
@@ -18,6 +23,8 @@ import Data.Aeson (object, (.=))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
@@ -26,13 +33,21 @@ import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), Section (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), Slug, qnameToText)
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Check.Env (TypeEnv)
+import Hwfl.Check.Error (CheckError, renderCheckError)
 import Hwfl.Check.Infer (inferModuleEnv)
-import Hwfl.Check.Module (elaborateMainIO)
+import Hwfl.Check.Module (checkLoadedModule, elaborateMainIO)
 import Hwfl.Check.Prelude (preludeTypeEnv)
+import Hwfl.Check.Project
+  ( CheckProjectResult (..),
+    ProjectCheckError (..),
+    checkProjectLoaded,
+    renderProjectCheckError,
+  )
 import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Prelude (preludeEnv)
 import Hwfl.Eval.Pure (bindParams)
 import Hwfl.Eval.Value
+import Hwfl.Json.Encode (jsonToValue, valueToAeson)
 import Hwfl.Llm.Pricing (ModelPricing, loadModelPricing)
 import Hwfl.Llm.Provider (LlmProvider)
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
@@ -46,16 +61,25 @@ import Hwfl.Obs.Trace
     runCostPrefix,
     setSpanStack,
   )
-import Hwfl.Project (ExecPolicy (..), LoadedProject (..), ProjectConfig (..), loadProject, loadProjectConfig)
 import Hwfl.Parse.Load (loadModule)
-import Hwfl.Runtime.Error (RuntimeError (..))
+import Hwfl.Project
+  ( ExecPolicy (..),
+    LoadedProject (..),
+    ProjectConfig (..),
+    isProjectDir,
+    loadProject,
+    loadProjectConfig,
+    modulePathForQname,
+    projectHashForModules,
+  )
+import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Hwfl.Runtime.Eval
   ( RunCtx (..),
     StepMode (..),
     approveMachine,
     runUntilPause,
   )
-import Hwfl.Runtime.Host (HostEnv (..), hostOpsEnv)
+import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), hostOpsEnv)
 import Hwfl.Runtime.Machine
 import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..))
 import Hwfl.Runtime.Store
@@ -65,10 +89,10 @@ import Hwfl.Runtime.Store
     persistTransition,
     readRunMeta,
     readRunSnapshot,
+    storeRunId,
     writeRunMeta,
   )
-import Hwfl.Runtime.Workspace (newWorkspace, workspaceRoot)
-import Data.Set qualified as Set
+import Hwfl.Runtime.Workspace (Workspace, newWorkspace, workspaceRoot)
 import Hwfl.SkillCatalog
   ( SkillCatalog,
     buildSkillCatalog,
@@ -77,9 +101,10 @@ import Hwfl.SkillCatalog
     isSkillQName,
     skillMetaForModule,
   )
+import Hwfl.Source (Diagnostic, Pos (..), mkDiagnostic, renderDiagnostics)
+import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
-import Data.Maybe (fromMaybe)
 
 data RunOptions = RunOptions
   { roWorkspace :: FilePath,
@@ -108,6 +133,167 @@ data RunOutcome
   | OutcomePaused MachineStatus Text RunStore Int
   | OutcomeFailed RuntimeError RunStore Int
   deriving stock (Show)
+
+-- | Check + run a project directory or single module (shared by driver + meta.invoke).
+data RunTargetRequest = RunTargetRequest
+  { rtrTarget :: FilePath,
+    rtrWorkspace :: FilePath,
+    rtrInputs :: [(Ident, Value)],
+    rtrProvider :: LlmProvider,
+    rtrSkipCheck :: Bool,
+    rtrModelCatalog :: FilePath,
+    rtrMode :: StepMode,
+    rtrDebug :: Bool,
+    rtrCost :: Bool,
+    rtrRunId :: Maybe Text
+  }
+
+defaultRunTargetRequest :: FilePath -> FilePath -> LlmProvider -> RunTargetRequest
+defaultRunTargetRequest target workspace provider =
+  RunTargetRequest
+    { rtrTarget = target,
+      rtrWorkspace = workspace,
+      rtrInputs = [],
+      rtrProvider = provider,
+      rtrSkipCheck = False,
+      rtrModelCatalog = "model-catalog.json",
+      rtrMode = StepRun,
+      rtrDebug = False,
+      rtrCost = False,
+      rtrRunId = Nothing
+    }
+
+-- | Pre-run failures for 'runTarget' (load / parse / check).
+data RunTargetError
+  = RtProject ProjectCheckError
+  | RtParse FilePath [Diagnostic]
+  | RtModule FilePath CheckError
+  deriving stock (Eq, Show)
+
+renderRunTargetError :: RunTargetError -> Text
+renderRunTargetError = \case
+  RtProject err -> renderProjectCheckError err
+  RtParse _ diags -> renderDiagnostics diags
+  RtModule _ err -> renderCheckError err
+
+-- | Check (unless skipped) then execute @main@ for a project or module path.
+runTarget :: RunTargetRequest -> IO (Either RunTargetError RunOutcome)
+runTarget req = do
+  isProj <- isProjectDir req.rtrTarget
+  if isProj
+    then runTargetProject req
+    else runTargetModule req
+
+runTargetProject :: RunTargetRequest -> IO (Either RunTargetError RunOutcome)
+runTargetProject req = do
+  lpE <- loadProject req.rtrTarget
+  case lpE of
+    Left err -> pure (Left (RtProject (PceLoad err)))
+    Right lp -> do
+      catalogE <- resolveTargetCatalog req.rtrSkipCheck lp
+      case catalogE of
+        Left e -> pure (Left e)
+        Right catalog -> do
+          let entry = lp.lpConfig.pcEntrypoint
+              entryPath = modulePathForQname req.rtrTarget entry
+              skillMods = callableSkillModules lp.lpModules
+          case Map.lookup entry lp.lpModules of
+            Nothing ->
+              pure (Left (RtProject (PceEntryNotFound (qnameToText entry))))
+            Just loaded -> do
+              let opts =
+                    mkTargetRunOptions
+                      req
+                      entryPath
+                      (Just (projectHashForModules lp.lpModules))
+                      lp.lpConfig.pcExec
+                      catalog
+                      skillMods
+              Right <$> runLoadedModule opts loaded
+
+resolveTargetCatalog ::
+  Bool ->
+  LoadedProject ->
+  IO (Either RunTargetError SkillCatalog)
+resolveTargetCatalog skipCheck lp =
+  if skipCheck
+    then
+      let (c, _) = emptySkillRuntime
+       in pure (Right c)
+    else pure $ case checkProjectLoaded lp of
+      Left err -> Left (RtProject err)
+      Right cpr -> Right cpr.cprSkillCatalog
+
+callableSkillModules :: Map QName LoadedModule -> Map QName LoadedModule
+callableSkillModules =
+  Map.filterWithKey
+    ( \q m ->
+        isSkillQName q
+          && smKind (skillMetaForModule m) == SkillCallable
+    )
+
+runTargetModule :: RunTargetRequest -> IO (Either RunTargetError RunOutcome)
+runTargetModule req = do
+  exists <- doesFileExist req.rtrTarget
+  if not exists
+    then
+      pure $
+        Left
+          ( RtParse
+              req.rtrTarget
+              [ mkDiagnostic
+                  req.rtrTarget
+                  (Pos 1 1)
+                  ("module file not found: " <> T.pack req.rtrTarget)
+              ]
+          )
+    else do
+      result <- loadModule req.rtrTarget
+      case result of
+        Left diags -> pure (Left (RtParse req.rtrTarget diags))
+        Right loaded ->
+          if not req.rtrSkipCheck
+            then case checkLoadedModule loaded of
+              Left err -> pure (Left (RtModule req.rtrTarget err))
+              Right _ -> runMod loaded
+            else runMod loaded
+  where
+    runMod loaded = do
+      let (catalog, skillMods) = emptySkillRuntime
+          opts =
+            mkTargetRunOptions
+              req
+              req.rtrTarget
+              Nothing
+              Nothing
+              catalog
+              skillMods
+      Right <$> runLoadedModule opts loaded
+
+mkTargetRunOptions ::
+  RunTargetRequest ->
+  FilePath ->
+  Maybe Text ->
+  Maybe ExecPolicy ->
+  SkillCatalog ->
+  Map QName LoadedModule ->
+  RunOptions
+mkTargetRunOptions req entry hash execPol catalog skillMods =
+  RunOptions
+    { roWorkspace = req.rtrWorkspace,
+      roProvider = req.rtrProvider,
+      roInputs = req.rtrInputs,
+      roRunId = req.rtrRunId,
+      roEntry = entry,
+      roMode = req.rtrMode,
+      roProjectHash = hash,
+      roExec = execPol,
+      roDebug = req.rtrDebug,
+      roCost = req.rtrCost,
+      roModelCatalog = req.rtrModelCatalog,
+      roSkillCatalog = catalog,
+      roSkillModules = skillMods
+    }
 
 loadRunEnv :: ModuleBody -> (Env, FunTable)
 loadRunEnv (ModuleBody decls _) =
@@ -179,15 +365,14 @@ runLoadedModule opts loaded = do
       baseEnv = withRunCtx runId started baseEnv0
       skillFuns = buildSkillFunTables opts.roSkillModules
       host =
-        HostEnv
-          { heWorkspace = ws,
-            heProvider = opts.roProvider,
-            heExec = opts.roExec,
-            heSkillCatalog = opts.roSkillCatalog,
-            hePricing = pricing,
-            heLog = mkHostLog opts.roCost spans,
-            heLlmOnChunk = Nothing
-          }
+        mkHostEnv
+          ws
+          opts.roProvider
+          opts.roExec
+          opts.roSkillCatalog
+          pricing
+          (mkHostLog opts.roCost spans)
+          (metaInvokeHandler ws opts)
       ctx =
         RunCtx
           { rcHost = host,
@@ -295,23 +480,39 @@ mkCtx ::
   SpanState ->
   SkillCatalog ->
   Map QName LoadedModule ->
+  FilePath ->
   IO RunCtx
-mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods = do
+mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods modelCatalog = do
   ws <- newWorkspace wsRoot
   execPol <- loadExecPolicy wsRoot
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
       typeEnv = loadTypeEnv loaded
       baseEnv = withRunCtx runId started baseEnv0
-      host =
-        HostEnv
-          { heWorkspace = ws,
-            heProvider = provider,
-            heExec = execPol,
-            heSkillCatalog = catalog,
-            hePricing = pricing,
-            heLog = hPutStrLn stderr . T.unpack,
-            heLlmOnChunk = Nothing
+      resumeOpts =
+        RunOptions
+          { roWorkspace = wsRoot,
+            roProvider = provider,
+            roInputs = [],
+            roRunId = Just runId,
+            roEntry = "",
+            roMode = StepRun,
+            roProjectHash = Just hash,
+            roExec = execPol,
+            roDebug = False,
+            roCost = False,
+            roModelCatalog = modelCatalog,
+            roSkillCatalog = catalog,
+            roSkillModules = skillMods
           }
+      host =
+        mkHostEnv
+          ws
+          provider
+          execPol
+          catalog
+          pricing
+          (hPutStrLn stderr . T.unpack)
+          (metaInvokeHandler ws resumeOpts)
   pure
     RunCtx
       { rcHost = host,
@@ -327,6 +528,136 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
         rcSkillFuns = buildSkillFunTables skillMods,
         rcSkillModules = skillMods
       }
+
+-- | Build 'HostEnv' with nested @meta.invoke@ wired.
+mkHostEnv ::
+  Workspace ->
+  LlmProvider ->
+  Maybe ExecPolicy ->
+  SkillCatalog ->
+  ModelPricing ->
+  (Text -> IO ()) ->
+  ([(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)) ->
+  HostEnv
+mkHostEnv ws provider execPol catalog pricing logFn invoke =
+  HostEnv
+    { heWorkspace = ws,
+      heProvider = provider,
+      heExec = execPol,
+      heSkillCatalog = catalog,
+      hePricing = pricing,
+      heLog = logFn,
+      heLlmOnChunk = Nothing,
+      heMetaInvoke = invoke
+    }
+
+metaInvokeHandler ::
+  Workspace ->
+  RunOptions ->
+  [(Maybe Ident, Value)] ->
+  IO (Either RuntimeError HostResult)
+metaInvokeHandler parentWs parentOpts args =
+  case parseMetaInvokeArgs args of
+    Left e -> pure (Left e)
+    Right (projectRel, workspaceRel, inputs) -> do
+      let parentRoot = workspaceRoot parentWs
+          projectAbs = parentRoot </> T.unpack projectRel
+          workspaceAbs = parentRoot </> T.unpack workspaceRel
+          req =
+            ( defaultRunTargetRequest projectAbs workspaceAbs parentOpts.roProvider
+            )
+              { rtrInputs = inputs,
+                rtrModelCatalog = parentOpts.roModelCatalog,
+                rtrDebug = parentOpts.roDebug,
+                rtrCost = parentOpts.roCost,
+                rtrMode = StepRun
+              }
+      hPutStrLn
+        stderr
+        ( T.unpack $
+            "meta.invoke project=" <> projectRel <> " workspace=" <> workspaceRel
+        )
+      result <- runTarget req
+      pure $ case result of
+        Left err ->
+          Right
+            ( HostResult
+                (invokeResult False "" "error" VUnit (renderRunTargetError err))
+                ( object
+                    [ "project" .= projectRel,
+                      "workspace" .= workspaceRel,
+                      "status" .= ("error" :: Text)
+                    ]
+                )
+            )
+        Right outcome ->
+          Right (outcomeToInvokeResult projectRel workspaceRel outcome)
+
+parseMetaInvokeArgs ::
+  [(Maybe Ident, Value)] ->
+  Either RuntimeError (Text, Text, [(Ident, Value)])
+parseMetaInvokeArgs args = do
+  project <- expectFileRefField (Ident "project") args
+  workspace <- expectFileRefField (Ident "workspace") args
+  inputs <- case lookupNamedArg (Ident "inputs") args of
+    Nothing -> Right []
+    Just (VRecord fs) -> Right fs
+    Just VUnit -> Right []
+    Just _ -> Left (HostErr "meta.invoke inputs must be a record")
+  pure (project, workspace, inputs)
+
+expectFileRefField :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError Text
+expectFileRefField n args = case lookupNamedArg n args of
+  Just (VString t) -> Right t
+  Just (VSecret _) -> Left (HostErr (unIdent n <> " must not be Secret"))
+  Just _ -> Left (HostErr ("expected FileRef string for " <> unIdent n))
+  Nothing -> Left (HostErr ("missing named argument: " <> unIdent n))
+
+lookupNamedArg :: Ident -> [(Maybe Ident, Value)] -> Maybe Value
+lookupNamedArg n = lookup (Just n)
+
+outcomeToInvokeResult :: Text -> Text -> RunOutcome -> HostResult
+outcomeToInvokeResult projectRel workspaceRel = \case
+  OutcomeCompleted v store _ ->
+    HostResult
+      (invokeResult True (storeRunId store) "completed" v "")
+      ( object
+          [ "project" .= projectRel,
+            "workspace" .= workspaceRel,
+            "run_id" .= storeRunId store,
+            "status" .= ("completed" :: Text)
+          ]
+      )
+  OutcomePaused _ msg store _ ->
+    HostResult
+      (invokeResult False (storeRunId store) "paused" VUnit msg)
+      ( object
+          [ "project" .= projectRel,
+            "workspace" .= workspaceRel,
+            "run_id" .= storeRunId store,
+            "status" .= ("paused" :: Text)
+          ]
+      )
+  OutcomeFailed err store _ ->
+    HostResult
+      (invokeResult False (storeRunId store) "failed" VUnit (renderRuntimeError err))
+      ( object
+          [ "project" .= projectRel,
+            "workspace" .= workspaceRel,
+            "run_id" .= storeRunId store,
+            "status" .= ("failed" :: Text)
+          ]
+      )
+
+invokeResult :: Bool -> Text -> Text -> Value -> Text -> Value
+invokeResult ok runId status outcome err =
+  VRecord
+    [ (Ident "ok", VBool ok),
+      (Ident "run_id", VString runId),
+      (Ident "status", VString status),
+      (Ident "outcome", jsonToValue (valueToAeson outcome)),
+      (Ident "error", VString err)
+    ]
 
 buildSkillFunTables :: Map QName LoadedModule -> Map QName (Env, FunTable)
 buildSkillFunTables =
@@ -407,6 +738,7 @@ loadExisting workspace runId provider catalogPath = do
                     spans
                     catalog
                     skillMods
+                    catalogPath
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 

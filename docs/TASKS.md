@@ -8,11 +8,11 @@ Active work only. Archive completed sections to `log/archive/` weekly.
       as one API the CLI wraps (control plane will call the same)
 - [x] Run-store interface over `.hwfl/runs` (list / read meta / spans /
       snapshot); FS backend first
+- [x] `meta.invoke` — nested module/project run with inputs; return
+      run_id + outcome (snapshot boundary)
 
 ## Next (P1–P2)
 
-- [ ] `meta.invoke` — nested module/project run with inputs; return
-      run_id + outcome (snapshot boundary)
 - [ ] `meta.list_runs` / `meta.read_spans` / careful `meta.read_snapshot`
 - [ ] Local genetic / compare prototype — materialize N temp **projects**
       + shared or per-trial **workspaces**, check/run, score from

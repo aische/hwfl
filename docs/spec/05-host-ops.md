@@ -100,12 +100,24 @@ as long as host ops inside are correct.
 
 | Op | Notes |
 |----|-------|
-| `meta.invoke` | run another module with inputs (nested frames) **[defer]** |
+| `meta.invoke` | nested `driverRun`: `{ project, workspace, inputs? }` → `{ ok, run_id, status, outcome, error }` (workspace-relative paths; snapshot boundary) |
 | `meta.check_module` | check one markdown module; `{ ok, error, name }` (recoverable; M8) |
 | `meta.check_project` | whole-project graph check; `{ ok, error }` (workspace-relative project root; M9) |
 | `meta.list_runs` | **[defer]** |
 | `meta.read_spans` | query spans for a run **[defer]** |
 | `meta.read_snapshot` | **careful** — may expose secrets; redact **[defer]** |
+
+`meta.invoke` signature (sketch):
+
+```text
+{ project: FileRef, workspace: FileRef, inputs?: Record }
+  -[Meta, Read]->
+  { ok: Bool, run_id: String, status: String, outcome: Json, error: String }
+```
+
+- `project` / `workspace` are resolved under the **parent** workspace sandbox.
+- Child run state is stored under the **child** workspace (`.hwfl/runs/<run_id>/`).
+- Same-project module call sugar (`FrInvoke`) is separate and not this op.
 
 ## 6.1 Skills (`Meta` / `Read`)
 
