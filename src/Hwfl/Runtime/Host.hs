@@ -13,6 +13,7 @@ where
 import Data.Aeson (object, (.=))
 import Data.Aeson qualified as Aeson
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -692,7 +693,7 @@ spanRecordToValue r =
       (Ident "snapshot_seq", VInt (maybe 0 fromIntegral r.srSnapshotSeq))
     ]
   where
-    fromMaybeText = maybe "" id
+    fromMaybeText = fromMaybe ""
 
 checkModuleValue :: Text -> Text -> Value
 checkModuleValue path txt = case loadModuleText (T.unpack path) txt of
