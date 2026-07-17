@@ -36,8 +36,12 @@ Rules:
 - `obs.span("name") { … }` ⇒ region span
 - Agent model rounds ⇒ `agent_round` spans; each tool call ⇒ `tool:<name>`
   child span (args summarized/redacted); nested host ops under the tool
-- CLI: `hwfl run --debug` streams span open/close; `hwfl run --cost`
+- CLI: `hwfl run --debug` installs `stderrDebugObserver` on the driver
+  `Observer` hook (live span open/close + pause/finish); `hwfl run --cost`
   prefixes host progress lines with running LLM spend; `hwfl show` prints attrs
+- Library: pass `drrObserver` / `roObserver` for structured live events
+  (`ObsSpanOpen` / `ObsSpanClose` / `ObsPaused` / `ObsFinished` /
+  `ObsProgress`). Control-plane WS/SSE maps onto the same callback.
 
 ## 4. Redaction
 

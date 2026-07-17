@@ -9,12 +9,17 @@ module Hwfl.Obs.Span
     parseSpanKind,
     parseSpanStatus,
     filterSpansByPrefix,
+    compactAttrs,
   )
 where
 
+import Data.Aeson (Value (..))
 import Data.Aeson qualified as Aeson
+import Data.Aeson.Key qualified as Key
+import Data.Aeson.KeyMap qualified as KM
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Vector qualified as V
 
 type SpanId = Text
 
@@ -86,3 +91,42 @@ parseSpanStatus = \case
   "error" -> Just SsError
   "cancelled" -> Just SsCancelled
   _ -> Nothing
+
+-- | Compact one-line attrs for debug / show (scalars only; omit empty).
+compactAttrs :: Aeson.Value -> Text
+compactAttrs = \case
+  Null -> ""
+  Object km
+    | KM.null km -> ""
+    | otherwise ->
+        T.intercalate
+          " "
+          [ Key.toText k <> "=" <> compactVal v
+            | (k, v) <- KM.toList km,
+              not (isEmptyAttr v)
+          ]
+  other -> compactVal other
+  where
+    isEmptyAttr = \case
+      Null -> True
+      Object km -> KM.null km
+      Array xs -> V.null xs
+      String "" -> True
+      _ -> False
+    compactVal = \case
+      String t -> t
+      Number n -> T.pack (show n)
+      Bool b -> if b then "true" else "false"
+      Null -> "null"
+      Object km ->
+        "{"
+          <> T.intercalate
+            ","
+            [ Key.toText k <> ":" <> compactVal v
+              | (k, v) <- take 8 (KM.toList km)
+            ]
+          <> "}"
+      Array xs ->
+        "["
+          <> T.pack (show (V.length xs))
+          <> "]"

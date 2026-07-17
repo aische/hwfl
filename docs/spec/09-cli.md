@@ -19,11 +19,12 @@ Executable name provisional: **`hwfl`**.
 - `--llm-provider <name>`
 - `--json` machine-readable diagnostics on check/run errors
 - `-v` / `--verbose` (on `run`): print span tree to stderr after the run
-- `--debug` (on `run`): stream span open/close to stderr; implies `--verbose`.
-  When LLM streaming spans ship: also show **coalesced** progressive
-  deltas (or compact progress) for in-flight `llm.chat` / `agent_round`
-  spans — not one line per provider token. See
-  [07-observability.md](07-observability.md) §9.
+- `--debug` (on `run`): install the stderr live observer (span open/close,
+  pause, finish on stderr); implies `--verbose`. Same driver `Observer`
+  hook a control plane would use for WS/SSE. When LLM streaming spans
+  ship: also show **coalesced** progressive deltas (or compact progress)
+  for in-flight `llm.chat` / `agent_round` spans — not one line per
+  provider token. See [07-observability.md](07-observability.md) §9.
 - `--cost` (on `run`): prefix host progress lines (`fs.read …`,
   `llm.object …`, …) with running LLM spend, e.g. `$0.12 │ fs.read …`.
   Uses the same counter as `--debug` span lines; bumps on priced LLM

@@ -10,6 +10,7 @@ import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Check.Project (checkProject)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Project (LoadedProject (..), loadProject)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
@@ -61,7 +62,7 @@ spec = describe "compare lab (local genetic prototype)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                   roExec = Nothing,
-                  roDebug = False,
+                  roObserver = noopObserver,
                   roCost = False,
                   roModelCatalog = "model-catalog.json",
                   roSkillCatalog = catalog,

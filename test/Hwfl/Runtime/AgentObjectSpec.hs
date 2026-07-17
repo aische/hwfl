@@ -8,6 +8,7 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
   ( ChatRequest (..),
@@ -146,7 +147,7 @@ spec = describe "runtime llm.agent_object" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -179,7 +180,7 @@ spec = describe "runtime llm.agent_object" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,

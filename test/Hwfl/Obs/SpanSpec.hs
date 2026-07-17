@@ -14,6 +14,7 @@ import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Eval.Value (HostOpId (..), Value (..))
 import Hwfl.Llm.Mock (mockProvider)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Obs.Redact (hostOpenAttrs, redactJson, redactMarker, redactValue)
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Obs.Trace (SpanNode (..), buildSpanForest, newSpanState, readSpanRecords, runCostPrefix)
@@ -152,7 +153,7 @@ spec = describe "observability (M6)" $ do
                     roMode = StepRun,
                     roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -188,7 +189,7 @@ spec = describe "observability (M6)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,

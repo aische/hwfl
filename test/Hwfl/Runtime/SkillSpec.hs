@@ -10,6 +10,7 @@ import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Check.Project (CheckProjectResult (..), checkProject)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
   ( ChatRequest (..),
@@ -67,7 +68,7 @@ spec = describe "skills runtime (phases B–C)" $ do
                         roMode = StepRun,
                         roProjectHash = Nothing,
                         roExec = Nothing,
-                        roDebug = False,
+                        roObserver = noopObserver,
                         roCost = False,
                     roModelCatalog = "model-catalog.json",
                         roSkillCatalog = cpr.cprSkillCatalog,
@@ -103,7 +104,7 @@ spec = describe "skills runtime (phases B–C)" $ do
                         roMode = StepRun,
                         roProjectHash = Nothing,
                         roExec = Nothing,
-                        roDebug = False,
+                        roObserver = noopObserver,
                         roCost = False,
                     roModelCatalog = "model-catalog.json",
                         roSkillCatalog = cpr.cprSkillCatalog,

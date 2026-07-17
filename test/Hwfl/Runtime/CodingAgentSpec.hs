@@ -13,6 +13,7 @@ import Hwfl.Check.Project (CheckProjectResult (..), checkProject)
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
   ( ChatRequest (..),
@@ -184,7 +185,7 @@ spec = describe "coding-agent example" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = lp.lpConfig.pcExec,
-                      roDebug = False,
+                      roObserver = noopObserver,
                       roCost = False,
                     roModelCatalog = "model-catalog.json",
                       roSkillCatalog = cpr.cprSkillCatalog,

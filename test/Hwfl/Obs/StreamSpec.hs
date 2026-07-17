@@ -11,6 +11,7 @@ import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Types (StreamDelta (..), ToolCall (..))
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
 import Hwfl.Obs.Stream (StreamSink (..), newStreamSink)
@@ -115,7 +116,7 @@ spec = describe "streaming LLM spans" $ do
                     roMode = StepRun,
                     roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,

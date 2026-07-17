@@ -62,6 +62,7 @@ library
         Hwfl.Obs.Span
         Hwfl.Obs.Stream
         Hwfl.Obs.Trace
+        Hwfl.Obs.Observer
         Hwfl.Json.Encode
         Hwfl.Project
         Hwfl.Text.Corpus
@@ -147,6 +148,7 @@ test-suite hwfl-test
         Hwfl.Llm.ProviderSpec
         Hwfl.Obs.SpanSpec
         Hwfl.Obs.StreamSpec
+        Hwfl.Obs.ObserverSpec
         Hwfl.Parse.ExprSpec
         Hwfl.Parse.LoadSpec
         Hwfl.Parse.ModuleSpec

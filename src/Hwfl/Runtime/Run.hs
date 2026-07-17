@@ -50,13 +50,20 @@ import Hwfl.Eval.Value
 import Hwfl.Json.Encode (jsonToValue, valueToAeson)
 import Hwfl.Llm.Pricing (ModelPricing, loadModelPricing)
 import Hwfl.Llm.Provider (LlmProvider)
+import Hwfl.Obs.Observer
+  ( FinishedInfo (..),
+    ObsEvent (..),
+    Observer,
+    PauseInfo (..),
+    noopObserver,
+  )
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
 import Hwfl.Obs.Trace
   ( SpanState (..),
     closeSpan,
     currentSpanId,
     getSpanStack,
-    newSpanStateDebug,
+    newSpanStateWith,
     openSpan,
     runCostPrefix,
     setSpanStack,
@@ -116,8 +123,8 @@ data RunOptions = RunOptions
     roProjectHash :: Maybe Text,
     -- | Exec policy from @project.json@; 'Nothing' disables @exec.run@.
     roExec :: Maybe ExecPolicy,
-    -- | Live span open/close lines on stderr (CLI @--debug@).
-    roDebug :: Bool,
+    -- | Live span / pause observer (CLI @--debug@ installs stderr adapter).
+    roObserver :: Observer,
     -- | Prefix host progress lines with running LLM cost (CLI @--cost@).
     roCost :: Bool,
     -- | Model catalog for LLM cost attribution.
@@ -143,7 +150,7 @@ data RunTargetRequest = RunTargetRequest
     rtrSkipCheck :: Bool,
     rtrModelCatalog :: FilePath,
     rtrMode :: StepMode,
-    rtrDebug :: Bool,
+    rtrObserver :: Observer,
     rtrCost :: Bool,
     rtrRunId :: Maybe Text
   }
@@ -158,7 +165,7 @@ defaultRunTargetRequest target workspace provider =
       rtrSkipCheck = False,
       rtrModelCatalog = "model-catalog.json",
       rtrMode = StepRun,
-      rtrDebug = False,
+      rtrObserver = noopObserver,
       rtrCost = False,
       rtrRunId = Nothing
     }
@@ -288,7 +295,7 @@ mkTargetRunOptions req entry hash execPol catalog skillMods =
       roMode = req.rtrMode,
       roProjectHash = hash,
       roExec = execPol,
-      roDebug = req.rtrDebug,
+      roObserver = req.rtrObserver,
       roCost = req.rtrCost,
       roModelCatalog = req.rtrModelCatalog,
       roSkillCatalog = catalog,
@@ -354,11 +361,7 @@ runLoadedModule opts loaded = do
         rmStatus = "running"
       }
   seqRef <- newIORef (0 :: Int)
-  let debugLog =
-        if opts.roDebug
-          then Just (hPutStrLn stderr . T.unpack)
-          else Nothing
-  spans <- newSpanStateDebug debugLog
+  spans <- newSpanStateWith opts.roObserver
   pricing <- loadModelPricing opts.roModelCatalog
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
       typeEnv = loadTypeEnv loaded
@@ -403,13 +406,14 @@ runLoadedModule opts loaded = do
       counter <- readIORef spans.ssCounter
       persistTransition store seqRef hash Nothing Nothing MsFailed (Just m) stack counter
       closeSpan store spans moduleSid SsError (object []) Nothing
+      notifyFinished store opts.roObserver "failed" (Just (renderRuntimeError err))
       pure (OutcomeFailed err store 0)
     Right current -> do
       let m0 = initialMachine hash current
       m1 <- runUntilPause ctx opts.roMode m0
       seqNo <- readIORef seqRef
       closeModuleSpan store spans moduleSid m1.mStatus
-      finalizeOutcome store seqNo m1
+      finalizeOutcome store seqNo m1 opts.roObserver
 
 startMain :: FunTable -> Env -> [(Ident, Value)] -> Either RuntimeError Current
 startMain funs env inputs = case Map.lookup (Ident "main") funs of
@@ -422,26 +426,71 @@ startMain funs env inputs = case Map.lookup (Ident "main") funs of
           Left e -> Left (EvalErr e)
           Right binds -> Right (CurEval body (extendEnvMany binds env))
 
-finalizeOutcome :: RunStore -> Int -> Machine -> IO RunOutcome
-finalizeOutcome store seqNo m = case m.mStatus of
-  MsCompleted ->
+finalizeOutcome :: RunStore -> Int -> Machine -> Observer -> IO RunOutcome
+finalizeOutcome store seqNo m obs = case m.mStatus of
+  MsCompleted -> do
+    notifyFinished store obs "completed" Nothing
     pure (OutcomeCompleted (fromMaybe VUnit m.mLastResult) store seqNo)
-  MsFailed ->
-    pure
-      ( OutcomeFailed
-          (fromMaybe (EvalErr (Trap "failed")) m.mError)
-          store
-          seqNo
-      )
-  MsPaused reason ->
-    pure (OutcomePaused m.mStatus (pauseMessage reason) store seqNo)
-  other ->
-    pure
-      ( OutcomeFailed
-          (EvalErr (Trap ("unexpected status: " <> T.pack (show other))))
-          store
-          seqNo
-      )
+  MsFailed -> do
+    let err = fromMaybe (EvalErr (Trap "failed")) m.mError
+    notifyFinished store obs "failed" (Just (renderRuntimeError err))
+    pure (OutcomeFailed err store seqNo)
+  MsPaused reason -> do
+    let msg = pauseMessage reason
+        (st, title, detail) = pauseFields reason
+    notifyPaused store obs st msg title detail
+    pure (OutcomePaused m.mStatus msg store seqNo)
+  other -> do
+    let err = EvalErr (Trap ("unexpected status: " <> T.pack (show other)))
+    notifyFinished store obs "failed" (Just (renderRuntimeError err))
+    pure (OutcomeFailed err store seqNo)
+
+pauseFields :: PauseReason -> (Text, Maybe Text, Maybe Text)
+pauseFields = \case
+  PauseExplicit -> ("paused", Nothing, Nothing)
+  PauseAwaitingConfirm c ->
+    ("awaiting_confirm", Just c.crTitle, Just c.crDetail)
+  PauseCrashRecovery -> ("paused", Nothing, Nothing)
+
+notifyPaused ::
+  RunStore ->
+  Observer ->
+  Text ->
+  Text ->
+  Maybe Text ->
+  Maybe Text ->
+  IO ()
+notifyPaused store obs status msg title detail = do
+  updateMetaStatus store status
+  obs
+    ( ObsPaused
+        PauseInfo
+          { piRunId = storeRunId store,
+            piStatus = status,
+            piMessage = msg,
+            piConfirmTitle = title,
+            piConfirmDetail = detail
+          }
+    )
+
+notifyFinished :: RunStore -> Observer -> Text -> Maybe Text -> IO ()
+notifyFinished store obs status mMsg = do
+  updateMetaStatus store status
+  obs
+    ( ObsFinished
+        FinishedInfo
+          { fiRunId = storeRunId store,
+            fiStatus = status,
+            fiMessage = mMsg
+          }
+    )
+
+updateMetaStatus :: RunStore -> Text -> IO ()
+updateMetaStatus store status = do
+  mMeta <- readRunMeta store
+  case mMeta of
+    Nothing -> pure ()
+    Just meta -> writeRunMeta store meta {rmStatus = status}
 
 pauseMessage :: PauseReason -> Text
 pauseMessage = \case
@@ -498,7 +547,7 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
             roMode = StepRun,
             roProjectHash = Just hash,
             roExec = execPol,
-            roDebug = False,
+            roObserver = spans.ssObserver,
             roCost = False,
             roModelCatalog = modelCatalog,
             roSkillCatalog = catalog,
@@ -568,7 +617,7 @@ metaInvokeHandler parentWs parentOpts args =
             )
               { rtrInputs = inputs,
                 rtrModelCatalog = parentOpts.roModelCatalog,
-                rtrDebug = parentOpts.roDebug,
+                rtrObserver = parentOpts.roObserver,
                 rtrCost = parentOpts.roCost,
                 rtrMode = StepRun
               }
@@ -698,8 +747,9 @@ loadExisting ::
   Text ->
   LlmProvider ->
   FilePath ->
+  Observer ->
   IO (Either RuntimeError (RunCtx, Machine, RunStore, IORef Int))
-loadExisting workspace runId provider catalogPath = do
+loadExisting workspace runId provider catalogPath observer = do
   ws <- newWorkspace workspace
   let root = workspaceRoot ws
   store <- openRunStore root runId
@@ -719,7 +769,7 @@ loadExisting workspace runId provider catalogPath = do
               then pure (Left (ConfigErr "stale project: hash mismatch"))
               else do
                 seqRef <- newIORef snap.rsSeq
-                spans <- newSpanStateDebug Nothing
+                spans <- newSpanStateWith observer
                 writeIORef spans.ssCounter snap.rsSpanCounter
                 setSpanStack spans snap.rsSpanStack
                 (catalog, skillMods) <- loadSkillRuntime root
@@ -742,30 +792,30 @@ loadExisting workspace runId provider catalogPath = do
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 
-stepRun :: FilePath -> Text -> LlmProvider -> FilePath -> IO RunOutcome
-stepRun workspace runId provider catalogPath = do
-  loaded <- loadExisting workspace runId provider catalogPath
+stepRun :: FilePath -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
+stepRun workspace runId provider catalogPath observer = do
+  loaded <- loadExisting workspace runId provider catalogPath observer
   case loaded of
     Left e -> failed e
     Right (ctx, machine0, store, seqRef) ->
       case machine0.mStatus of
         MsPaused (PauseAwaitingConfirm _) -> do
           seqNo <- readIORef seqRef
-          finalizeOutcome store seqNo machine0
+          finalizeOutcome store seqNo machine0 observer
         _ -> do
           let machine = unpauseExplicit machine0
           m1 <- runUntilPause ctx StepOnce machine
           seqNo <- readIORef seqRef
           closeModuleIfTerminal ctx store m1.mStatus
-          finalizeOutcome store seqNo m1
+          finalizeOutcome store seqNo m1 observer
   where
     failed e = do
       store <- openRunDir (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
       pure (OutcomeFailed e store 0)
 
-resumeRun :: FilePath -> Text -> LlmProvider -> FilePath -> IO RunOutcome
-resumeRun workspace runId provider catalogPath = do
-  loaded <- loadExisting workspace runId provider catalogPath
+resumeRun :: FilePath -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
+resumeRun workspace runId provider catalogPath observer = do
+  loaded <- loadExisting workspace runId provider catalogPath observer
   case loaded of
     Left e -> do
       store0 <- openRunDir (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
@@ -774,25 +824,25 @@ resumeRun workspace runId provider catalogPath = do
       case machine0.mStatus of
         MsPaused (PauseAwaitingConfirm _) -> do
           seqNo <- readIORef seqRef
-          finalizeOutcome store seqNo machine0
+          finalizeOutcome store seqNo machine0 observer
         MsCompleted -> do
           seqNo <- readIORef seqRef
-          finalizeOutcome store seqNo machine0
+          finalizeOutcome store seqNo machine0 observer
         MsFailed -> do
           seqNo <- readIORef seqRef
-          finalizeOutcome store seqNo machine0
+          finalizeOutcome store seqNo machine0 observer
         _ -> do
           let machine = unpauseExplicit machine0
           m1 <- runUntilPause ctx StepRun machine
           seqNo <- readIORef seqRef
           closeModuleIfTerminal ctx store m1.mStatus
-          finalizeOutcome store seqNo m1
+          finalizeOutcome store seqNo m1 observer
 
-approveRun :: FilePath -> Text -> Bool -> LlmProvider -> FilePath -> IO RunOutcome
-approveRun workspace runId yes provider catalogPath = do
+approveRun :: FilePath -> Text -> Bool -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
+approveRun workspace runId yes provider catalogPath observer = do
   ws <- newWorkspace workspace
   let root = workspaceRoot ws
-  loaded <- loadExisting root runId provider catalogPath
+  loaded <- loadExisting root runId provider catalogPath observer
   case loaded of
     Left e -> do
       store <- openRunDir (root </> ".hwfl" </> "runs" </> T.unpack runId) runId
@@ -827,7 +877,7 @@ approveRun workspace runId yes provider catalogPath = do
           m2 <- runUntilPause ctx StepRun machine1
           seqNo <- readIORef seqRef
           closeModuleIfTerminal ctx store m2.mStatus
-          finalizeOutcome store seqNo m2
+          finalizeOutcome store seqNo m2 observer
 
 -- | Close the outermost open span (module) on terminal status. Stack is
 -- innermost-first, so the module id is last.

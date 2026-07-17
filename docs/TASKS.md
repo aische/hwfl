@@ -14,11 +14,12 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] Careful `meta.read_snapshot` (redact secrets)
 - [x] Local compare / genetic prototype — `examples/compare` (materialize
       N projects + per-trial workspaces; score outcome + llm span count)
+- [x] Observer hook for live span / pause events (CLI `--debug` =
+      `stderrDebugObserver`; WS/SSE maps onto the same)
 
 ## Next (P1–P2)
 
-- [ ] Observer hook for live span / pause events (CLI `--debug` today;
-      WS/SSE maps onto this in the control-plane repo)
+- [ ] Optional: mutate / next-generation loop on the compare spine
 
 ## Later (P2–P3)
 

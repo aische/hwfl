@@ -27,7 +27,9 @@ import Hwfl.Driver
     driverRun,
     driverShow,
     driverStep,
+    noopObserver,
     renderDriverError,
+    stderrDebugObserver,
   )
 import Hwfl.Env (loadDotenv)
 import Hwfl.Eval.Value (renderValue)
@@ -188,7 +190,8 @@ cmdRun rest = case parseRunFlags rest of
               drrSkipCheck = flags.rfNoCheck,
               drrModelCatalog = flags.rfCatalog,
               drrMode = if flags.rfStep then StepOnce else StepRun,
-              drrDebug = flags.rfDebug,
+              drrObserver =
+                if flags.rfDebug then stderrDebugObserver else noopObserver,
               drrCost = flags.rfCost
             }
     result <- driverRun req
@@ -204,21 +207,21 @@ cmdStep args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
     provider <- resolveProvider False provName catalog
-    handleOutcome False False =<< driverStep ws runId provider catalog
+    handleOutcome False False =<< driverStep ws runId provider catalog noopObserver
 
 cmdResume :: [String] -> IO ()
 cmdResume args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
     provider <- resolveProvider False provName catalog
-    handleOutcome False False =<< driverResume ws runId provider catalog
+    handleOutcome False False =<< driverResume ws runId provider catalog noopObserver
 
 cmdApprove :: [String] -> IO ()
 cmdApprove args = case parseApprove args of
   Left msg -> dieUsage msg
   Right (ws, runId, yes, provName, catalog) -> do
     provider <- resolveProvider False provName catalog
-    handleOutcome False False =<< driverApprove ws runId yes provider catalog
+    handleOutcome False False =<< driverApprove ws runId yes provider catalog noopObserver
 
 cmdShow :: [String] -> IO ()
 cmdShow args = case parseShow args of

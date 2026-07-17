@@ -8,6 +8,7 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (HostOpId (..), ToolSpecValue (..), Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
   ( ChatRequest (..),
@@ -176,7 +177,7 @@ spec = describe "runtime agent (M7)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -226,7 +227,7 @@ spec = describe "runtime agent (M7)" $ do
                   roMode = StepOnce,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -239,7 +240,7 @@ spec = describe "runtime agent (M7)" $ do
           let go n
                 | n > 40 = expectationFailure "too many steps"
                 | otherwise = do
-                    out <- resumeRun dir "e15-step" agentMock "model-catalog.json"
+                    out <- resumeRun dir "e15-step" agentMock "model-catalog.json" noopObserver
                     case out of
                       OutcomeCompleted (VRecord fs) _ _ ->
                         lookup (Ident "text") fs `shouldBe` Just (VString "done with tools")

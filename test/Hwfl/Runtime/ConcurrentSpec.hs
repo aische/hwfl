@@ -6,6 +6,7 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Eval (StepMode (..))
@@ -116,7 +117,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -150,7 +151,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -160,7 +161,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
           case outcome of
             OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _ -> pure ()
             other -> expectationFailure ("expected awaiting confirm, got " <> show other)
-          approved <- approveRun dir "c1" True mockProvider "model-catalog.json"
+          approved <- approveRun dir "c1" True mockProvider "model-catalog.json" noopObserver
           case approved of
             OutcomeCompleted (VRecord [(Ident "ok", VBool True)]) _ _ -> pure ()
             other -> expectationFailure (show other)
@@ -182,7 +183,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -192,11 +193,11 @@ spec = describe "runtime par/confirm/step (M5)" $ do
           case outcome of
             OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _ -> pure ()
             other -> expectationFailure ("expected pause, got " <> show other)
-          o1 <- approveRun dir "pc1" True mockProvider "model-catalog.json"
+          o1 <- approveRun dir "pc1" True mockProvider "model-catalog.json" noopObserver
           -- Second confirm may pause again.
           case o1 of
             OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _ -> do
-              o2 <- approveRun dir "pc1" False mockProvider "model-catalog.json"
+              o2 <- approveRun dir "pc1" False mockProvider "model-catalog.json" noopObserver
               case o2 of
                 OutcomeCompleted (VRecord [(Ident "results", VList rs)]) _ _ ->
                   rs `shouldBe` [VBool True, VBool False]
@@ -226,7 +227,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepOnce,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -237,13 +238,13 @@ spec = describe "runtime par/confirm/step (M5)" $ do
             OutcomePaused {} -> pure ()
             OutcomeCompleted {} -> pure () -- tiny programs may finish in one transition
             other -> expectationFailure (show other)
-          final <- resumeRun dir "s1" mockProvider "model-catalog.json"
+          final <- resumeRun dir "s1" mockProvider "model-catalog.json" noopObserver
           case final of
             OutcomeCompleted (VRecord [(Ident "texts", VList xs)]) _ _ ->
               length xs `shouldBe` 3
             OutcomePaused {} -> do
               -- still paused on explicit? continue stepping
-              final2 <- resumeRun dir "s1" mockProvider "model-catalog.json"
+              final2 <- resumeRun dir "s1" mockProvider "model-catalog.json" noopObserver
               case final2 of
                 OutcomeCompleted (VRecord [(Ident "texts", VList xs)]) _ _ ->
                   length xs `shouldBe` 3
@@ -267,7 +268,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -276,7 +277,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
               loaded
           -- Mutate kernel body so project_hash changes.
           writeFile path (T.unpack (T.replace "Proceed?" "Changed?" confirmSrc))
-          resumed <- resumeRun dir "stale1" mockProvider "model-catalog.json"
+          resumed <- resumeRun dir "stale1" mockProvider "model-catalog.json" noopObserver
           case resumed of
             OutcomeFailed (ConfigErr msg) _ _ ->
               T.isInfixOf "stale project" msg `shouldBe` True

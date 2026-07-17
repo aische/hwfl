@@ -1,9 +1,10 @@
 -- | Library driver façade: check / run / step / resume / approve / show /
--- run-store queries.
+-- run-store queries / live observer.
 --
 -- The CLI is one frontend over this API. A future control-plane app should
 -- call the same operations rather than reimplementing project load + check +
--- execute orchestration.
+-- execute orchestration. Live span / pause events go through 'Observer'
+-- (CLI @--debug@ installs 'stderrDebugObserver'; WS/SSE maps onto the same).
 module Hwfl.Driver
   ( -- * Check
     DriverError (..),
@@ -30,6 +31,17 @@ module Hwfl.Driver
     driverReadSpans,
     driverReadSnapshot,
     driverOpenRun,
+
+    -- * Live observer
+    Observer,
+    ObsEvent (..),
+    SpanOpenInfo (..),
+    SpanCloseInfo (..),
+    PauseInfo (..),
+    FinishedInfo (..),
+    noopObserver,
+    stderrDebugObserver,
+    mappendObserver,
 
     -- * Re-exports for frontends
     RunOutcome (..),
@@ -62,6 +74,17 @@ import Hwfl.Check.Project
   )
 import Hwfl.Eval.Value (Value)
 import Hwfl.Llm.Provider (LlmProvider)
+import Hwfl.Obs.Observer
+  ( FinishedInfo (..),
+    ObsEvent (..),
+    Observer,
+    PauseInfo (..),
+    SpanCloseInfo (..),
+    SpanOpenInfo (..),
+    mappendObserver,
+    noopObserver,
+    stderrDebugObserver,
+  )
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Obs.Span (SpanRecord (..))
 import Hwfl.Parse.Load (loadModule)
@@ -144,7 +167,8 @@ data DriverRunRequest = DriverRunRequest
     drrSkipCheck :: Bool,
     drrModelCatalog :: FilePath,
     drrMode :: StepMode,
-    drrDebug :: Bool,
+    -- | Live span / pause observer (default: noop).
+    drrObserver :: Observer,
     drrCost :: Bool,
     drrRunId :: Maybe Text
   }
@@ -159,7 +183,7 @@ defaultDriverRunRequest target workspace provider =
       drrSkipCheck = False,
       drrModelCatalog = "model-catalog.json",
       drrMode = StepRun,
-      drrDebug = False,
+      drrObserver = noopObserver,
       drrCost = False,
       drrRunId = Nothing
     }
@@ -171,7 +195,7 @@ toRunTargetRequest req =
       rtrSkipCheck = req.drrSkipCheck,
       rtrModelCatalog = req.drrModelCatalog,
       rtrMode = req.drrMode,
-      rtrDebug = req.drrDebug,
+      rtrObserver = req.drrObserver,
       rtrCost = req.drrCost,
       rtrRunId = req.drrRunId
     }
@@ -190,13 +214,13 @@ driverRun req = do
     Left err -> Left (mapTargetError err)
     Right outcome -> Right outcome
 
-driverStep :: FilePath -> Text -> LlmProvider -> FilePath -> IO RunOutcome
+driverStep :: FilePath -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
 driverStep = stepRun
 
-driverResume :: FilePath -> Text -> LlmProvider -> FilePath -> IO RunOutcome
+driverResume :: FilePath -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
 driverResume = resumeRun
 
-driverApprove :: FilePath -> Text -> Bool -> LlmProvider -> FilePath -> IO RunOutcome
+driverApprove :: FilePath -> Text -> Bool -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
 driverApprove = approveRun
 
 driverShow :: ShowOptions -> IO (Either Text Text)

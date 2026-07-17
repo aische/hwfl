@@ -124,9 +124,9 @@ hwfl step / resume / show / approve
 ```
 
 These commands are **one frontend** over a library driver. The same
-operations (plus run-store queries and an observer hook for live spans /
-pause) are what a future control-plane HTTP/WS app should call — without
-Servant living in this repo. See [idea.md](idea.md) north star.
+operations (plus run-store queries and an `Observer` hook for live spans /
+pause / finish) are what a future control-plane HTTP/WS app should call —
+without Servant living in this repo. See [idea.md](idea.md) north star.
 
 ## Library vs control plane
 

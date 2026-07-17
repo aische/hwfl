@@ -3,7 +3,7 @@
 module Hwfl.Obs.Trace
   ( SpanState (..),
     newSpanState,
-    newSpanStateDebug,
+    newSpanStateWith,
     openSpan,
     closeSpan,
     currentSpanId,
@@ -17,13 +17,11 @@ module Hwfl.Obs.Trace
     SpanNode (..),
     buildSpanForest,
     filterSpans,
-    compactAttrs,
   )
 where
 
 import Data.Aeson (Value (..), object, (.=))
 import Data.Aeson qualified as Aeson
-import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict qualified as Map
@@ -31,8 +29,14 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
-import Data.Vector qualified as V
 import Hwfl.Llm.Pricing (attrsCostMicros, formatCostUsd)
+import Hwfl.Obs.Observer
+  ( ObsEvent (..),
+    Observer,
+    SpanCloseInfo (..),
+    SpanOpenInfo (..),
+    noopObserver,
+  )
 import Hwfl.Obs.Redact (redactJson)
 import Hwfl.Obs.Span
   ( SpanId,
@@ -56,16 +60,16 @@ data SpanState = SpanState
     ssStack :: IORef [SpanId],
     -- | Running LLM cost (microdollars) for @--debug@ / @--cost@ ledger prefix.
     ssRunCostMicros :: IORef Int,
-    -- | Optional live debug logger (e.g. stderr under @--debug@).
-    ssDebug :: Maybe (Text -> IO ())
+    -- | Live observer (span open/close, progress). Default: noop.
+    ssObserver :: Observer
   }
 
 newSpanState :: IO SpanState
-newSpanState = newSpanStateDebug Nothing
+newSpanState = newSpanStateWith noopObserver
 
-newSpanStateDebug :: Maybe (Text -> IO ()) -> IO SpanState
-newSpanStateDebug dbg =
-  SpanState <$> newIORef 0 <*> newIORef [] <*> newIORef 0 <*> pure dbg
+newSpanStateWith :: Observer -> IO SpanState
+newSpanStateWith obs =
+  SpanState <$> newIORef 0 <*> newIORef [] <*> newIORef 0 <*> pure obs
 
 getSpanStack :: SpanState -> IO [SpanId]
 getSpanStack st = readIORef st.ssStack
@@ -80,12 +84,11 @@ currentSpanId st = do
     (x : _) -> Just x
     [] -> Nothing
 
+-- | Progressive / free-form debug line (LLM deltas). Includes cost prefix.
 debugLog :: SpanState -> Text -> IO ()
-debugLog st msg = case st.ssDebug of
-  Nothing -> pure ()
-  Just log_ -> do
-    prefix <- runCostPrefix st
-    log_ (prefix <> msg)
+debugLog st msg = do
+  prefix <- runCostPrefix st
+  st.ssObserver (ObsProgress (prefix <> msg))
 
 runCostPrefix :: SpanState -> IO Text
 runCostPrefix st = do
@@ -99,7 +102,7 @@ chargeCostFromAttrs st attrs =
     Just micros ->
       modifyIORef' st.ssRunCostMicros (+ micros)
 
--- | Open a span: append one jsonl line, push stack. O(1).
+-- | Open a span: append one jsonl line, push stack, notify observer. O(1).
 openSpan ::
   RunStore ->
   SpanState ->
@@ -114,6 +117,7 @@ openSpan store st name kind attrs = do
   parent <- currentSpanId st
   modifyIORef' st.ssStack (sid :)
   now <- isoNow
+  let redacted = redactJson attrs
   appendSpanLine
     store
     ( object
@@ -123,23 +127,24 @@ openSpan store st name kind attrs = do
           "name" .= name,
           "kind" .= spanKindText kind,
           "t_start" .= now,
-          "attrs" .= redactJson attrs
+          "attrs" .= redacted
         ]
     )
-  debugLog
-    st
-    ( "span open  "
-        <> sid
-        <> "  "
-        <> name
-        <> " ["
-        <> spanKindText kind
-        <> "] "
-        <> compactAttrs attrs
+  prefix <- runCostPrefix st
+  st.ssObserver
+    ( ObsSpanOpen
+        SpanOpenInfo
+          { soId = sid,
+            soParentId = parent,
+            soName = name,
+            soKind = kind,
+            soAttrs = redacted,
+            soCostPrefix = prefix
+          }
     )
   pure sid
 
--- | Close a span: append one jsonl line, pop stack. O(1).
+-- | Close a span: append one jsonl line, pop stack, notify observer. O(1).
 closeSpan ::
   RunStore ->
   SpanState ->
@@ -152,6 +157,7 @@ closeSpan store st sid status attrs mSeq = do
   chargeCostFromAttrs st attrs
   now <- isoNow
   modifyIORef' st.ssStack (pop sid)
+  let redacted = redactJson attrs
   appendSpanLine
     store
     ( object
@@ -159,62 +165,25 @@ closeSpan store st sid status attrs mSeq = do
           "id" .= sid,
           "t_end" .= now,
           "status" .= spanStatusText status,
-          "attrs" .= redactJson attrs,
+          "attrs" .= redacted,
           "snapshot_seq" .= mSeq
         ]
     )
-  debugLog
-    st
-    ( "span close "
-        <> sid
-        <> "  "
-        <> spanStatusText status
-        <> " "
-        <> compactAttrs attrs
+  prefix <- runCostPrefix st
+  st.ssObserver
+    ( ObsSpanClose
+        SpanCloseInfo
+          { scId = sid,
+            scStatus = status,
+            scAttrs = redacted,
+            scSnapshotSeq = mSeq,
+            scCostPrefix = prefix
+          }
     )
   where
     pop target = \case
       (x : xs) | x == target -> xs
       xs -> xs
-
--- | Compact one-line attrs for debug / show (scalars only; omit empty).
-compactAttrs :: Aeson.Value -> Text
-compactAttrs = \case
-  Null -> ""
-  Object km
-    | KM.null km -> ""
-    | otherwise ->
-        T.intercalate
-          " "
-          [ Key.toText k <> "=" <> compactVal v
-            | (k, v) <- KM.toList km,
-              not (isEmptyAttr v)
-          ]
-  other -> compactVal other
-  where
-    isEmptyAttr = \case
-      Null -> True
-      Object km -> KM.null km
-      Array xs -> V.null xs
-      String "" -> True
-      _ -> False
-    compactVal = \case
-      String t -> t
-      Number n -> T.pack (show n)
-      Bool b -> if b then "true" else "false"
-      Null -> "null"
-      Object km ->
-        "{"
-          <> T.intercalate
-            ","
-            [ Key.toText k <> ":" <> compactVal v
-              | (k, v) <- take 8 (KM.toList km)
-            ]
-          <> "}"
-      Array xs ->
-        "["
-          <> T.pack (show (V.length xs))
-          <> "]"
 
 appendEvent :: RunStore -> SpanState -> Text -> Text -> Aeson.Value -> IO ()
 appendEvent store st level message fields = do

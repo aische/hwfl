@@ -11,6 +11,7 @@ import Hwfl.Llm.PricingSpec
 import Hwfl.Llm.ProviderSpec
 import Hwfl.Obs.SpanSpec
 import Hwfl.Obs.StreamSpec
+import Hwfl.Obs.ObserverSpec
 import Hwfl.Parse.ExprSpec
 import Hwfl.Parse.LoadSpec
 import Hwfl.Parse.ModuleSpec
@@ -65,6 +66,7 @@ main = hspec $ do
   Hwfl.Runtime.ObjectSpec.spec
   Hwfl.Obs.SpanSpec.spec
   Hwfl.Obs.StreamSpec.spec
+  Hwfl.Obs.ObserverSpec.spec
   Hwfl.Runtime.SkillSpec.spec
   Hwfl.Runtime.SemanticCheckSpec.spec
   Hwfl.Text.CorpusSpec.spec

@@ -17,7 +17,7 @@ import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Encoding qualified as TLE
 import Hwfl.Llm.Pricing (attrsCostUsd, formatCostDollars)
 import Hwfl.Obs.Redact (redactJson)
-import Hwfl.Obs.Span (spanKindText, spanStatusText)
+import Hwfl.Obs.Span (compactAttrs, spanKindText, spanStatusText)
 import Hwfl.Obs.Trace
 import Hwfl.Runtime.Machine (MachineStatus (..))
 import Hwfl.Runtime.Snapshot

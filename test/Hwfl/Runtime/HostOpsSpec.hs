@@ -6,6 +6,7 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Project (ExecPolicy (..))
 import Hwfl.Runtime.Eval (StepMode (..))
@@ -275,7 +276,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = allowEcho,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -308,7 +309,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = allowEcho,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -350,7 +351,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = confirmEcho,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -359,7 +360,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
             outcome <- runLoadedModule opts loaded
             case outcome of
               OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _ -> do
-                approved <- approveRun dir "exec-confirm" True mockProvider "model-catalog.json"
+                approved <- approveRun dir "exec-confirm" True mockProvider "model-catalog.json" noopObserver
                 case approved of
                   OutcomeCompleted val _ _ ->
                     case val of
@@ -387,7 +388,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = Nothing,
-                    roDebug = False,
+                    roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
@@ -424,7 +425,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = Nothing,
-                      roDebug = False,
+                      roObserver = noopObserver,
                       roCost = False,
                       roModelCatalog = "model-catalog.json",
                       roSkillCatalog = fst emptySkillRuntime,
@@ -463,7 +464,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = Nothing,
-                      roDebug = False,
+                      roObserver = noopObserver,
                       roCost = False,
                       roModelCatalog = "model-catalog.json",
                       roSkillCatalog = fst emptySkillRuntime,

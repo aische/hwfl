@@ -6,6 +6,7 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
@@ -189,7 +190,7 @@ runOpts dir runId entry =
           roMode = StepRun,
           roProjectHash = Nothing,
           roExec = Nothing,
-          roDebug = False,
+          roObserver = noopObserver,
           roCost = False,
           roModelCatalog = "model-catalog.json",
           roSkillCatalog = catalog,

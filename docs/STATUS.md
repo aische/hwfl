@@ -4,8 +4,8 @@ Last updated: 2026-07-18
 
 ## Current focus
 
-Observer hook for live span / pause events next.
-Local compare / genetic prototype shipped (`examples/compare`).
+Optional mutate / next-generation loop on the compare spine.
+Observer hook shipped.
 
 ## North star
 
@@ -16,17 +16,19 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **Observer hook** — `Hwfl.Obs.Observer`: live `ObsSpanOpen` /
+  `ObsSpanClose` / `ObsPaused` / `ObsFinished` / `ObsProgress`; driver
+  `drrObserver`; CLI `--debug` = `stderrDebugObserver`; meta status
+  updated on pause/finish; `ObserverSpec`
 - **Local compare lab** — `examples/compare`: materialize lean/rich genomes
-  + per-trial workspaces, `meta.check_project` / `meta.invoke` /
-  `meta.read_spans`, rank by feasibility then fewer `llm.*` spans;
+  + per-trial workspaces, rank by feasibility then fewer `llm.*` spans;
   `CompareSpec` (mock; winner = lean)
 - **`meta.read_snapshot`** — redacted run snapshot Json via Store +
   `redactJson` (never raw cleartext `snapshot.json`)
 - **`meta.list_runs` / `meta.read_spans`** — workspace-relative run-store
   reads; recoverable `{ ok, …, error }`; optional span filters
 - **`meta.invoke`** — nested `runTarget` / driverRun; workspace-relative
-  `project` + `workspace` (+ optional `inputs`); returns
-  `{ ok, run_id, status, outcome, error }`
+  `project` + `workspace` (+ optional `inputs`)
 - Shared **`runTarget`** in `Hwfl.Runtime.Run` (Driver thinned to wrap it)
 - Run-store interface + library driver façade
 - North-star docs: lab + library façade; Servant out of this repo
@@ -39,9 +41,8 @@ None.
 
 ## Next up
 
-1. Observer hook for live span / pause events (CLI `--debug` today;
-   WS/SSE maps onto this in the control-plane repo)
-2. Optional: mutate / next-generation loop on the compare spine
+1. Optional: mutate / next-generation loop on the compare spine
+2. Optional DB-backed run-store backend (same interface)
 
 ## Deferred
 
@@ -51,7 +52,7 @@ None.
   MCP / LSP) — when needed as a lab benchmark
 - Concurrent `par` host IO; MCP client host
 - Control-plane repo (HTTP/WS, Postgres metadata, tenants) — **not** in
-  hwfl; depends on the library driver above
+  hwfl; depends on the library driver + Observer above
 - Optional DB-backed run-store backend (same interface; not required yet)
 - Same-project module invoke sugar (`FrInvoke` / E11) — separate from
   lab `meta.invoke`
