@@ -19,6 +19,7 @@ import Hwfl.Parse.TypeSpec
 import Hwfl.Runtime.AgentObjectSpec
 import Hwfl.Runtime.AgentSpec
 import Hwfl.Runtime.CodingAgentSpec
+import Hwfl.Runtime.CompareSpec
 import Hwfl.Runtime.ConcurrentSpec
 import Hwfl.Runtime.HostOpsSpec
 import Hwfl.Runtime.MetaInvokeSpec
@@ -68,3 +69,4 @@ main = hspec $ do
   Hwfl.Runtime.SemanticCheckSpec.spec
   Hwfl.Text.CorpusSpec.spec
   Hwfl.Runtime.CodingAgentSpec.spec
+  Hwfl.Runtime.CompareSpec.spec

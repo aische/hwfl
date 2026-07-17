@@ -12,17 +12,16 @@ Active work only. Archive completed sections to `log/archive/` weekly.
       run_id + outcome (snapshot boundary)
 - [x] `meta.list_runs` / `meta.read_spans`
 - [x] Careful `meta.read_snapshot` (redact secrets)
+- [x] Local compare / genetic prototype — `examples/compare` (materialize
+      N projects + per-trial workspaces; score outcome + llm span count)
 
 ## Next (P1–P2)
 
-- [ ] Local genetic / compare prototype — materialize N temp **projects**
-      + shared or per-trial **workspaces**, check/run, score from
-      outcome + cost + spans (example or thin driver; not a host DSL)
+- [ ] Observer hook for live span / pause events (CLI `--debug` today;
+      WS/SSE maps onto this in the control-plane repo)
 
 ## Later (P2–P3)
 
-- [ ] Observer hook for live span / pause events (CLI `--debug` today;
-      WS/SSE maps onto this in the control-plane repo)
 - [ ] Optional DB-backed run-store backend (same interface; not required
       for local lab)
 - [ ] MCP client (tool provider behind `tool(f)` / host-op story)

@@ -1,0 +1,3 @@
+HWFL is a durable workflow runtime. The lab compares candidate projects by
+outcome, span depth, and LLM cost. Prefer fewer priced model calls when quality
+is equal. Fixture fact: compare-v0 uses two genomes named lean and rich.

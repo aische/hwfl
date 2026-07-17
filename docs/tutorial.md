@@ -232,6 +232,7 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | [language-reference.md](language-reference.md) | Keywords, types, prelude, host ops |
 | `examples/coding-agent` | Full agent loop + stack skills over a workspace |
 | `examples/skills` | Minimal `skill.discover` / `skill.load` demo |
+| `examples/compare` | Lab: materialize candidates, invoke, rank by spans |
 | `examples/semantic-check` | Multi-layer review workflow |
 | [skills-plan.md](skills-plan.md) | Skills design, acceptance, phase D |
 | `docs/spec/09-cli.md` | Normative CLI surface |

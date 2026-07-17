@@ -4,9 +4,8 @@ Last updated: 2026-07-18
 
 ## Current focus
 
-Local genetic / compare prototype next.
-`meta.invoke` + `meta.list_runs` / `meta.read_spans` / `meta.read_snapshot`
-shipped.
+Observer hook for live span / pause events next.
+Local compare / genetic prototype shipped (`examples/compare`).
 
 ## North star
 
@@ -17,6 +16,10 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **Local compare lab** — `examples/compare`: materialize lean/rich genomes
+  + per-trial workspaces, `meta.check_project` / `meta.invoke` /
+  `meta.read_spans`, rank by feasibility then fewer `llm.*` spans;
+  `CompareSpec` (mock; winner = lean)
 - **`meta.read_snapshot`** — redacted run snapshot Json via Store +
   `redactJson` (never raw cleartext `snapshot.json`)
 - **`meta.list_runs` / `meta.read_spans`** — workspace-relative run-store
@@ -36,10 +39,9 @@ None.
 
 ## Next up
 
-1. Local genetic prototype — N temp projects × workspace fixture ×
-   score (CLI or parent workflow)
-2. Observer hook for live span / pause events (CLI `--debug` today;
+1. Observer hook for live span / pause events (CLI `--debug` today;
    WS/SSE maps onto this in the control-plane repo)
+2. Optional: mutate / next-generation loop on the compare spine
 
 ## Deferred
 

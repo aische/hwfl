@@ -159,6 +159,14 @@ Fixture: `test/fixtures/semantic-target`.
 existing tree. Creates/edits files and runs allowlisted toolchain commands
 (python/npm/cabal/…). Fixture: `test/Hwfl/Runtime/CodingAgentSpec.hs`.
 
+## E22 — Local compare / genetic lab **H**
+
+**Shipped:** `examples/compare` — parent materializes N candidate projects
++ per-trial workspaces from seeded `genomes/` + `fixture/`, then
+`meta.check_project` / `meta.invoke` / `meta.read_spans`, ranks by
+feasibility then fewer `llm.*` spans. Fixture: `CompareSpec` (mock;
+winner = lean).
+
 ---
 
 ## Contracts table (summary)
@@ -175,6 +183,7 @@ existing tree. Creates/edits files and runs allowlisted toolchain commands
 | E16     | ✓           | ✓   | —        | region `obs.span`     |
 | E20     | ✓           | ✓   | optional | library spans         |
 | E21     | ✓           | ✓   | mid-tool | agent_object + exec   |
+| E22     | ✓           | ✓   | —        | nested invoke + spans |
 
 ## Using the suite
 
