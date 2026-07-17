@@ -23,12 +23,18 @@ import Hwfl.Runtime.Machine (MachineStatus (..))
 import Hwfl.Runtime.Snapshot
   ( RunMeta (..),
     RunSnapshot (..),
-    RunStore (..),
     machineToJson,
-    openRunStore,
-    readRunMeta,
-    readRunSnapshot,
     statusText,
+  )
+import Hwfl.Runtime.Store
+  ( RunStore,
+    emptySpanFilter,
+    openRun,
+    readMeta,
+    readSnapshot,
+    readSpans,
+    runRef,
+    storeRunId,
   )
 
 data ShowMode
@@ -47,18 +53,21 @@ data ShowOptions = ShowOptions
 
 showRun :: ShowOptions -> IO (Either Text Text)
 showRun opts = do
-  store <- openRunStore opts.soWorkspace opts.soRunId
-  showStore store opts.soMode opts.soFilter
+  mStore <- openRun (runRef opts.soWorkspace opts.soRunId)
+  case mStore of
+    Nothing ->
+      pure (Left ("no run found: " <> opts.soRunId))
+    Just store -> showStore store opts.soMode opts.soFilter
 
 -- | Format an already-open run store (used by CLI @--debug@ after run).
 showStore :: RunStore -> ShowMode -> Maybe Text -> IO (Either Text Text)
 showStore store mode filt = do
-  mMeta <- readRunMeta store
-  mSnap <- readRunSnapshot store
-  records <- readSpanRecords store
+  mMeta <- readMeta store
+  mSnap <- readSnapshot store
+  records <- readSpans store emptySpanFilter
   case (mMeta, mSnap) of
     (Nothing, Nothing) ->
-      pure (Left ("no run found at " <> T.pack store.storeRoot))
+      pure (Left ("no run found: " <> storeRunId store))
     _ ->
       pure . Right $ case mode of
         ShowSummary ->

@@ -25,7 +25,8 @@ import Hwfl.Runtime.Run
     RunOutcome (..),
     runLoadedModule,
     emptySkillRuntime)
-import Hwfl.Runtime.Snapshot (RunStore (..), valueToJson)
+import Hwfl.Runtime.Snapshot (valueToJson)
+import Hwfl.Runtime.Store (storeRunId)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -196,7 +197,8 @@ spec = describe "observability (M6)" $ do
             outcome <- runLoadedModule opts loaded
             case outcome of
               OutcomeCompleted _ store _ -> do
-                let spansPath = store.storeRoot </> "spans.jsonl"
+                let spansPath =
+                      dir </> ".hwfl" </> "runs" </> T.unpack (storeRunId store) </> "spans.jsonl"
                 exists <- doesFileExist spansPath
                 exists `shouldBe` True
                 records <- readSpanRecords store

@@ -14,7 +14,7 @@ import Hwfl.Driver
 import Hwfl.Check.Project (ProjectCheckError (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..))
-import Hwfl.Runtime.Snapshot (RunStore (..))
+import Hwfl.Runtime.Store (storeRunId)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -88,7 +88,7 @@ spec = describe "library driver façade" $ do
         result <- driverRun req
         case result of
           Right (OutcomeCompleted _ store _) ->
-            store.storeRunId `shouldBe` "driver-pure"
+            storeRunId store `shouldBe` "driver-pure"
           other -> expectationFailure ("expected completed, got: " <> show other)
 
     it "surfaces check failure without starting a run" $

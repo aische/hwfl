@@ -79,7 +79,7 @@ import Hwfl.Runtime.Skills
     agentLoadSkill,
     instructionInjectionText,
   )
-import Hwfl.Runtime.Snapshot (RunStore (..), persistTransition)
+import Hwfl.Runtime.Store (RunStore, persistTransition)
 import Hwfl.SkillCatalog (SkillEntry (..), lookupSkillEntry)
 
 data RunCtx = RunCtx

@@ -14,7 +14,8 @@ import Hwfl.Runtime.Run
     RunOutcome (..),
     runLoadedModule,
     emptySkillRuntime)
-import Hwfl.Runtime.Snapshot (RunSnapshot (..), readRunSnapshot)
+import Hwfl.Runtime.Snapshot (RunSnapshot (..))
+import Hwfl.Runtime.Store (readRunSnapshot)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec

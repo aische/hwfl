@@ -1,8 +1,9 @@
--- | Library driver façade: check / run / step / resume / approve / show.
+-- | Library driver façade: check / run / step / resume / approve / show /
+-- run-store queries.
 --
 -- The CLI is one frontend over this API. A future control-plane app should
 -- call the same operations rather than reimplementing project load + check +
--- execute orchestration. Run-store backend abstraction is a separate P1.
+-- execute orchestration.
 module Hwfl.Driver
   ( -- * Check
     DriverError (..),
@@ -23,10 +24,29 @@ module Hwfl.Driver
     -- * Inspect
     driverShow,
 
+    -- * Run store (lab / control-plane queries)
+    driverListRuns,
+    driverReadMeta,
+    driverReadSpans,
+    driverReadSnapshot,
+    driverOpenRun,
+
     -- * Re-exports for frontends
     RunOutcome (..),
     ShowMode (..),
     ShowOptions (..),
+    RunMeta (..),
+    RunSnapshot (..),
+    SpanFilter (..),
+    emptySpanFilter,
+    RunRef (..),
+    runRef,
+    RunStore,
+    storeRunId,
+    SpanRecord (..),
+    RunStoreBackend (..),
+    fsRunStoreBackend,
+    defaultRunStoreBackend,
   )
 where
 
@@ -48,6 +68,7 @@ import Hwfl.Check.Project
 import Hwfl.Eval.Value (Value)
 import Hwfl.Llm.Provider (LlmProvider)
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
+import Hwfl.Obs.Span (SpanRecord (..))
 import Hwfl.Parse.Load (loadModule)
 import Hwfl.Project
   ( ExecPolicy,
@@ -67,6 +88,23 @@ import Hwfl.Runtime.Run
     resumeRun,
     runLoadedModule,
     stepRun,
+  )
+import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..))
+import Hwfl.Runtime.Store
+  ( RunRef (..),
+    RunStore,
+    RunStoreBackend (..),
+    SpanFilter (..),
+    defaultRunStoreBackend,
+    emptySpanFilter,
+    fsRunStoreBackend,
+    listRuns,
+    openRun,
+    readMeta,
+    readSnapshot,
+    readSpans,
+    runRef,
+    storeRunId,
   )
 import Hwfl.SkillCatalog (SkillCatalog, isSkillQName, skillMetaForModule)
 import Hwfl.Source (Diagnostic, renderDiagnostics)
@@ -255,3 +293,31 @@ driverApprove = approveRun
 
 driverShow :: ShowOptions -> IO (Either Text Text)
 driverShow = showRun
+
+-- | List runs under a workspace (@.hwfl/runs@ for the FS backend).
+driverListRuns :: FilePath -> IO [RunMeta]
+driverListRuns = listRuns
+
+driverOpenRun :: RunRef -> IO (Maybe RunStore)
+driverOpenRun = openRun
+
+driverReadMeta :: RunRef -> IO (Maybe RunMeta)
+driverReadMeta ref = do
+  mStore <- openRun ref
+  case mStore of
+    Nothing -> pure Nothing
+    Just store -> readMeta store
+
+driverReadSpans :: RunRef -> SpanFilter -> IO [SpanRecord]
+driverReadSpans ref filt = do
+  mStore <- openRun ref
+  case mStore of
+    Nothing -> pure []
+    Just store -> readSpans store filt
+
+driverReadSnapshot :: RunRef -> IO (Maybe RunSnapshot)
+driverReadSnapshot ref = do
+  mStore <- openRun ref
+  case mStore of
+    Nothing -> pure Nothing
+    Just store -> readSnapshot store

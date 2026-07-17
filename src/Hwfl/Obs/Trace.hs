@@ -21,15 +21,13 @@ module Hwfl.Obs.Trace
   )
 where
 
-import Data.Aeson (Value (..), object, withObject, (.:), (.:?), (.=))
+import Data.Aeson (Value (..), object, (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
-import Data.Aeson.Types (Parser, parseEither)
-import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (mapMaybe, fromMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
@@ -37,9 +35,20 @@ import Data.Vector qualified as V
 import Hwfl.Llm.Pricing (attrsCostMicros, formatCostUsd)
 import Hwfl.Obs.Redact (redactJson)
 import Hwfl.Obs.Span
-import Hwfl.Runtime.Snapshot (RunStore (..))
-import System.Directory (doesFileExist)
-import System.FilePath ((</>))
+  ( SpanId,
+    SpanKind (..),
+    SpanRecord (..),
+    SpanStatus (..),
+    filterSpansByPrefix,
+    spanKindText,
+    spanStatusText,
+  )
+import Hwfl.Runtime.Store
+  ( RunStore,
+    appendEventLine,
+    appendSpanLine,
+    readSpanRecords,
+  )
 
 data SpanState = SpanState
   { ssCounter :: IORef Int,
@@ -212,19 +221,14 @@ appendEvent store st level message fields = do
   sid <- currentSpanId st
   now <- isoNow
   let line =
-        Aeson.encode $
-          object
-            [ "at" .= now,
-              "span_id" .= sid,
-              "level" .= level,
-              "message" .= message,
-              "fields" .= redactJson fields
-            ]
-  LBS.appendFile (store.storeRoot </> "events.jsonl") (line <> "\n")
-
-appendSpanLine :: RunStore -> Aeson.Value -> IO ()
-appendSpanLine store v =
-  LBS.appendFile (store.storeRoot </> "spans.jsonl") (Aeson.encode v <> "\n")
+        object
+          [ "at" .= now,
+            "span_id" .= sid,
+            "level" .= level,
+            "message" .= message,
+            "fields" .= redactJson fields
+          ]
+  appendEventLine store line
 
 isoNow :: IO Text
 isoNow = do
@@ -232,20 +236,6 @@ isoNow = do
 
 -------------------------------------------------------------------------------
 -- Read / tree (for show — not used on the hot step path)
-
-data SpanRecord = SpanRecord
-  { srOp :: Text,
-    srId :: SpanId,
-    srParentId :: Maybe SpanId,
-    srName :: Maybe Text,
-    srKind :: Maybe SpanKind,
-    srTStart :: Maybe Text,
-    srTEnd :: Maybe Text,
-    srStatus :: Maybe SpanStatus,
-    srAttrs :: Aeson.Value,
-    srSnapshotSeq :: Maybe Int
-  }
-  deriving stock (Eq, Show)
 
 data SpanNode = SpanNode
   { snId :: SpanId,
@@ -258,49 +248,6 @@ data SpanNode = SpanNode
     snChildren :: [SpanNode]
   }
   deriving stock (Eq, Show)
-
-readSpanRecords :: RunStore -> IO [SpanRecord]
-readSpanRecords store = do
-  let path = store.storeRoot </> "spans.jsonl"
-  exists <- doesFileExist path
-  if not exists
-    then pure []
-    else do
-      bs <- LBS.readFile path
-      let lines_ = filter (not . LBS.null) (LBS.split 10 bs)
-      pure (mapMaybe decodeLine lines_)
-  where
-    decodeLine bs = case Aeson.eitherDecode bs of
-      Left _ -> Nothing
-      Right v -> case parseEither parseRecord v of
-        Left _ -> Nothing
-        Right r -> Just r
-
-parseRecord :: Aeson.Value -> Parser SpanRecord
-parseRecord = withObject "span" $ \o -> do
-  op <- o .: "op"
-  sid <- o .: "id"
-  parent <- o .:? "parent_id"
-  name <- o .:? "name"
-  kindTxt <- o .:? "kind"
-  tStart <- o .:? "t_start"
-  tEnd <- o .:? "t_end"
-  statusTxt <- o .:? "status"
-  attrs <- o .:? "attrs"
-  seqNo <- o .:? "snapshot_seq"
-  pure
-    SpanRecord
-      { srOp = op,
-        srId = sid,
-        srParentId = parent,
-        srName = name,
-        srKind = kindTxt >>= parseSpanKind,
-        srTStart = tStart,
-        srTEnd = tEnd,
-        srStatus = statusTxt >>= parseSpanStatus,
-        srAttrs = fromMaybe Null attrs,
-        srSnapshotSeq = seqNo
-      }
 
 -- | Merge open/close lines into a forest by parent_id. Used only by show.
 buildSpanForest :: [SpanRecord] -> [SpanNode]
@@ -352,10 +299,4 @@ buildSpanForest records =
     mergeAttrs _ b = b
 
 filterSpans :: Maybe Text -> [SpanRecord] -> [SpanRecord]
-filterSpans Nothing = id
-filterSpans (Just pref) =
-  filter
-    ( \r ->
-        maybe False (pref `T.isPrefixOf`) r.srName
-          || pref `T.isPrefixOf` r.srId
-    )
+filterSpans = filterSpansByPrefix

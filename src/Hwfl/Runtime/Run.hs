@@ -57,7 +57,16 @@ import Hwfl.Runtime.Eval
   )
 import Hwfl.Runtime.Host (HostEnv (..), hostOpsEnv)
 import Hwfl.Runtime.Machine
-import Hwfl.Runtime.Snapshot
+import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..))
+import Hwfl.Runtime.Store
+  ( RunStore,
+    openRunDir,
+    openRunStore,
+    persistTransition,
+    readRunMeta,
+    readRunSnapshot,
+    writeRunMeta,
+  )
 import Hwfl.Runtime.Workspace (newWorkspace, workspaceRoot)
 import Data.Set qualified as Set
 import Hwfl.SkillCatalog
@@ -405,7 +414,7 @@ stepRun :: FilePath -> Text -> LlmProvider -> FilePath -> IO RunOutcome
 stepRun workspace runId provider catalogPath = do
   loaded <- loadExisting workspace runId provider catalogPath
   case loaded of
-    Left e -> failed store0 e
+    Left e -> failed e
     Right (ctx, machine0, store, seqRef) ->
       case machine0.mStatus of
         MsPaused (PauseAwaitingConfirm _) -> do
@@ -418,14 +427,17 @@ stepRun workspace runId provider catalogPath = do
           closeModuleIfTerminal ctx store m1.mStatus
           finalizeOutcome store seqNo m1
   where
-    store0 = RunStore (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
-    failed store e = pure (OutcomeFailed e store 0)
+    failed e = do
+      store <- openRunDir (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
+      pure (OutcomeFailed e store 0)
 
 resumeRun :: FilePath -> Text -> LlmProvider -> FilePath -> IO RunOutcome
 resumeRun workspace runId provider catalogPath = do
   loaded <- loadExisting workspace runId provider catalogPath
   case loaded of
-    Left e -> pure (OutcomeFailed e store0 0)
+    Left e -> do
+      store0 <- openRunDir (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
+      pure (OutcomeFailed e store0 0)
     Right (ctx, machine0, store, seqRef) ->
       case machine0.mStatus of
         MsPaused (PauseAwaitingConfirm _) -> do
@@ -443,8 +455,6 @@ resumeRun workspace runId provider catalogPath = do
           seqNo <- readIORef seqRef
           closeModuleIfTerminal ctx store m1.mStatus
           finalizeOutcome store seqNo m1
-  where
-    store0 = RunStore (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
 
 approveRun :: FilePath -> Text -> Bool -> LlmProvider -> FilePath -> IO RunOutcome
 approveRun workspace runId yes provider catalogPath = do
@@ -452,7 +462,9 @@ approveRun workspace runId yes provider catalogPath = do
   let root = workspaceRoot ws
   loaded <- loadExisting root runId provider catalogPath
   case loaded of
-    Left e -> pure (OutcomeFailed e (RunStore (root </> ".hwfl" </> "runs" </> T.unpack runId) runId) 0)
+    Left e -> do
+      store <- openRunDir (root </> ".hwfl" </> "runs" </> T.unpack runId) runId
+      pure (OutcomeFailed e store 0)
     Right (ctx, machine0, store, seqRef) ->
       case approveMachine yes machine0 of
         Left e -> pure (OutcomeFailed e store 0)

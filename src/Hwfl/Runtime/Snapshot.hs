@@ -1,19 +1,15 @@
--- | Run store: meta.json + snapshot.json with full @machine_json@ (M5).
+-- | Run meta / snapshot codecs (M5). File layout lives in 'Hwfl.Runtime.Store'.
 module Hwfl.Runtime.Snapshot
   ( RunMeta (..),
     RunSnapshot (..),
-    RunStore (..),
-    openRunStore,
-    writeRunMeta,
-    readRunMeta,
-    writeRunSnapshot,
-    readRunSnapshot,
-    persistTransition,
     valueToJson,
     valueFromJson,
     machineToJson,
     machineFromJson,
     statusText,
+    snapshotToJson,
+    parseMetaValue,
+    parseSnapshotValue,
   )
 where
 
@@ -23,21 +19,16 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.Aeson.Types (Parser, parseEither, (.!=))
-import Data.ByteString.Lazy qualified as LBS
-import Data.IORef (IORef, modifyIORef', readIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Hwfl.Ast.Name (Ident (..), QName (..), TypeName (..), qnameFromParts, qnameToText)
 import Hwfl.Eval.Value (Env, HostOpId (..), ToolSpecValue (..), hostOpName)
 import Hwfl.Eval.Value qualified as V
 import Hwfl.Llm.Types (ToolCall (..), ToolResult (..), Turn (..))
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Machine
-import System.Directory (createDirectoryIfMissing, doesFileExist)
-import System.FilePath ((</>))
 import Text.Read (readMaybe)
 
 data RunMeta = RunMeta
@@ -65,80 +56,14 @@ data RunSnapshot = RunSnapshot
   }
   deriving stock (Eq, Show)
 
-data RunStore = RunStore
-  { storeRoot :: FilePath,
-    storeRunId :: Text
-  }
-  deriving stock (Eq, Show)
-
-openRunStore :: FilePath -> Text -> IO RunStore
-openRunStore workspaceRoot runId = do
-  let root = workspaceRoot </> ".hwfl" </> "runs" </> T.unpack runId
-  createDirectoryIfMissing True root
-  pure (RunStore root runId)
-
-writeRunMeta :: RunStore -> RunMeta -> IO ()
-writeRunMeta store meta =
-  Aeson.encodeFile
-    (store.storeRoot </> "meta.json")
-    ( object
-        [ "run_id" .= meta.rmRunId,
-          "project_hash" .= meta.rmProjectHash,
-          "entry" .= meta.rmEntry,
-          "started_at" .= meta.rmStartedAt,
-          "status" .= meta.rmStatus
-        ]
-    )
-
-readRunMeta :: RunStore -> IO (Maybe RunMeta)
-readRunMeta store = do
-  let path = store.storeRoot </> "meta.json"
-  exists <- doesFileExist path
-  if not exists
-    then pure Nothing
-    else do
-      eresult <- Aeson.eitherDecodeFileStrict path
-      pure $ case eresult of
-        Left _ -> Nothing
-        Right v -> case parseEither parseMeta v of
-          Left _ -> Nothing
-          Right m -> Just m
-
-parseMeta :: Aeson.Value -> Parser RunMeta
-parseMeta = withObject "RunMeta" $ \o ->
+parseMetaValue :: Aeson.Value -> Parser RunMeta
+parseMetaValue = withObject "RunMeta" $ \o ->
   RunMeta
     <$> o .: "run_id"
     <*> o .: "project_hash"
     <*> o .: "entry"
     <*> o .: "started_at"
     <*> o .: "status"
-
-writeRunSnapshot :: RunStore -> RunSnapshot -> IO ()
-writeRunSnapshot store snap = do
-  Aeson.encodeFile (store.storeRoot </> "snapshot.json") (snapshotToJson snap)
-  let line =
-        Aeson.encode $
-          object
-            [ "seq" .= snap.rsSeq,
-              "host" .= snap.rsLastHost,
-              "status" .= statusText snap.rsStatus,
-              "at" .= snap.rsAt
-            ]
-  LBS.appendFile (store.storeRoot </> "transitions.jsonl") (line <> "\n")
-
-readRunSnapshot :: RunStore -> IO (Maybe RunSnapshot)
-readRunSnapshot store = do
-  let path = store.storeRoot </> "snapshot.json"
-  exists <- doesFileExist path
-  if not exists
-    then pure Nothing
-    else do
-      eresult <- Aeson.eitherDecodeFileStrict path
-      pure $ case eresult of
-        Left _ -> Nothing
-        Right v -> case parseEither parseSnapshot v of
-          Left _ -> Nothing
-          Right s -> Just s
 
 snapshotToJson :: RunSnapshot -> Aeson.Value
 snapshotToJson s =
@@ -156,8 +81,8 @@ snapshotToJson s =
       "span_counter" .= s.rsSpanCounter
     ]
 
-parseSnapshot :: Aeson.Value -> Parser RunSnapshot
-parseSnapshot = withObject "RunSnapshot" $ \o -> do
+parseSnapshotValue :: Aeson.Value -> Parser RunSnapshot
+parseSnapshotValue = withObject "RunSnapshot" $ \o -> do
   fmt <- o .: "snapshot_format"
   runId <- o .: "run_id"
   seqNo <- o .: "seq"
@@ -180,38 +105,6 @@ parseSnapshot = withObject "RunSnapshot" $ \o -> do
   spanStack <- o .:? "span_stack" .!= []
   spanCounter <- o .:? "span_counter" .!= 0
   pure (RunSnapshot fmt runId seqNo status hash lastHost lastRes at machine spanStack spanCounter)
-
-persistTransition ::
-  RunStore ->
-  IORef Int ->
-  Text ->
-  Maybe HostOpId ->
-  Maybe V.Value ->
-  MachineStatus ->
-  Maybe Machine ->
-  [Text] ->
-  Int ->
-  IO ()
-persistTransition store seqRef projectHash mHost mVal status mMachine spanStack spanCounter = do
-  modifyIORef' seqRef (+ 1)
-  seqNo <- readIORef seqRef
-  now <- getCurrentTime
-  let at = T.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now)
-      snap =
-        RunSnapshot
-          { rsFormat = 1,
-            rsRunId = store.storeRunId,
-            rsSeq = seqNo,
-            rsStatus = status,
-            rsProjectHash = projectHash,
-            rsLastHost = fmap hostOpName mHost,
-            rsLastResult = fmap valueToJson mVal,
-            rsAt = at,
-            rsMachine = mMachine,
-            rsSpanStack = spanStack,
-            rsSpanCounter = spanCounter
-          }
-  writeRunSnapshot store snap
 
 -------------------------------------------------------------------------------
 -- Status

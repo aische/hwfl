@@ -16,7 +16,7 @@ import Data.Text qualified as T
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Hwfl.Llm.Types (StreamDelta (..), ToolCall (..))
 import Hwfl.Obs.Trace (SpanState, appendEvent, debugLog)
-import Hwfl.Runtime.Snapshot (RunStore)
+import Hwfl.Runtime.Store (RunStore)
 
 -- | Character budget before a forced text flush (avoids flooding events.jsonl).
 charBudget :: Int

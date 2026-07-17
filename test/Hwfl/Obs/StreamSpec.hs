@@ -1,11 +1,10 @@
 module Hwfl.Obs.StreamSpec (spec) where
 
-import Data.Aeson (eitherDecode, object, withObject, (.:), (.:?))
+import Data.Aeson (object, withObject, (.:), (.:?))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.Aeson.Types (parseMaybe)
-import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -28,8 +27,7 @@ import Hwfl.Runtime.Run
     emptySkillRuntime,
     runLoadedModule,
   )
-import Hwfl.Runtime.Snapshot (RunStore (..))
-import System.Directory (doesFileExist)
+import Hwfl.Runtime.Store (openRunDir, readEventValues)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -66,7 +64,7 @@ spec :: Spec
 spec = describe "streaming LLM spans" $ do
   it "coalesces text deltas into fewer events" $
     withSystemTempDirectory "hwfl-stream" $ \dir -> do
-      let store = RunStore {storeRoot = dir, storeRunId = "s1"}
+      store <- openRunDir dir "s1"
       st <- newSpanState
       sid <- openSpan store st "llm.chat" SkHost (object [])
       sink <- newStreamSink store st
@@ -74,7 +72,7 @@ spec = describe "streaming LLM spans" $ do
       mapM_ sink.ssOnChunk [DeltaText (T.replicate 8 "a") | _ <- [1 .. 12 :: Int]]
       sink.ssFlush
       closeSpan store st sid SsOk (object []) Nothing
-      events <- readEvents dir
+      events <- decodeEvents <$> readEventValues store
       let deltas = [e | e <- events, eMessage e == "llm.delta"]
       length deltas `shouldSatisfy` (>= 1)
       length deltas `shouldSatisfy` (<= 3)
@@ -84,7 +82,7 @@ spec = describe "streaming LLM spans" $ do
 
   it "flushes text before a tool_call delta" $
     withSystemTempDirectory "hwfl-stream-tc" $ \dir -> do
-      let store = RunStore {storeRoot = dir, storeRunId = "s2"}
+      store <- openRunDir dir "s2"
       st <- newSpanState
       _ <- openSpan store st "agent_round:0" SkAgentRound (object [])
       sink <- newStreamSink store st
@@ -98,7 +96,7 @@ spec = describe "streaming LLM spans" $ do
               }
         )
       sink.ssFlush
-      events <- readEvents dir
+      events <- decodeEvents <$> readEventValues store
       let deltas = [e | e <- events, eMessage e == "llm.delta"]
       map (`fieldTextStr` "kind") deltas `shouldBe` ["text", "tool_call"]
 
@@ -128,7 +126,7 @@ spec = describe "streaming LLM spans" $ do
             OutcomeCompleted (VRecord fs) store _ -> do
               lookup (Ident "reply") fs
                 `shouldBe` Just (VString "SUMMARY: Say hello world from stream test")
-              events <- readEvents store.storeRoot
+              events <- decodeEvents <$> readEventValues store
               let deltas = [e | e <- events, eMessage e == "llm.delta"]
               null deltas `shouldBe` False
               all (\e -> fieldText e "kind" == Just "text") deltas `shouldBe` True
@@ -143,20 +141,9 @@ data EventLine = EventLine
   }
   deriving stock (Show)
 
-readEvents :: FilePath -> IO [EventLine]
-readEvents root = do
-  let path = root </> "events.jsonl"
-  exists <- doesFileExist path
-  if not exists
-    then pure []
-    else do
-      bs <- LBS8.readFile path
-      let lines_ = filter (not . LBS8.null) (LBS8.lines bs)
-      pure (mapMaybe decodeEvent lines_)
+decodeEvents :: [Aeson.Value] -> [EventLine]
+decodeEvents = mapMaybe (parseMaybe parseEvent)
   where
-    decodeEvent bs = case eitherDecode bs of
-      Left _ -> Nothing
-      Right v -> parseMaybe parseEvent v
     parseEvent = withObject "event" $ \o -> do
       msg <- o .: "message"
       sid <- o .:? "span_id"

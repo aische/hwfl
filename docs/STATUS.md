@@ -4,8 +4,8 @@ Last updated: 2026-07-17
 
 ## Current focus
 
-Run-store interface over `.hwfl/runs` (lab spine). Library driver exists;
-CLI wraps it.
+Meta host ops for nested lab runs (`meta.invoke`, list/read spans).
+Run-store interface + library driver are in place.
 
 ## North star
 
@@ -16,6 +16,10 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **Run-store interface** (`Hwfl.Runtime.Store`: `RunStoreBackend` + FS
+  backend; list / read meta / spans / snapshot; opaque `RunStore`)
+- Driver queries: `driverListRuns` / `driverReadMeta` /
+  `driverReadSpans` / `driverReadSnapshot`
 - **Library driver façade** (`Hwfl.Driver`: check / run / step / resume /
   approve / show); CLI thinned to flags + presentation
 - North-star docs: lab + library façade; Servant out of this repo
@@ -28,12 +32,12 @@ None.
 
 ## Next up
 
-1. Run-store **interface** over `.hwfl/runs` (list / read meta / spans /
-   snapshot); FS backend first; no Postgres required yet
-2. Meta for nested lab runs: `meta.invoke`, `meta.list_runs`,
+1. Meta for nested lab runs: `meta.invoke`, `meta.list_runs`,
    `meta.read_spans` (+ careful snapshot)
-3. Local genetic prototype — N temp projects × workspace fixture ×
+2. Local genetic prototype — N temp projects × workspace fixture ×
    score (CLI or parent workflow)
+3. Observer hook for live span / pause events (CLI `--debug` today;
+   WS/SSE maps onto this in the control-plane repo)
 
 ## Deferred
 
@@ -44,7 +48,7 @@ None.
 - Concurrent `par` host IO; MCP client host
 - Control-plane repo (HTTP/WS, Postgres metadata, tenants) — **not** in
   hwfl; depends on the library driver above
-- Optional DB-backed run-store backend (only after the interface exists)
+- Optional DB-backed run-store backend (same interface; not required yet)
 
 ## Open naming
 
