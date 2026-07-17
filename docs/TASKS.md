@@ -4,11 +4,10 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now (P1)
 
-- [ ] Tutorial: module → `check` → `run` → `resume` → `show`
+- [ ] Streaming LLM spans (progressive span / token events)
 
 ## Next (P1–P2)
 
-- [ ] Streaming LLM spans (progressive span / token events)
 - [ ] Semantic-check deepen (layer 3 / self-check polish; optional CLI sugar)
 
 ## Later (P2–P3)
@@ -36,4 +35,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07-15/16/17 completions (including P0 host gaps, coding-agent,
-tool-call spans + `--debug`).
+tool-call spans + `--debug`, lifecycle tutorial).
