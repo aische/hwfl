@@ -153,6 +153,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roProjectHash = Nothing,
                       roExec = allowEcho,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                     }
@@ -184,6 +185,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roProjectHash = Nothing,
                       roExec = allowEcho,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                     }
@@ -224,13 +226,14 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roProjectHash = Nothing,
                       roExec = confirmEcho,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of
               OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _ -> do
-                approved <- approveRun dir "exec-confirm" True mockProvider
+                approved <- approveRun dir "exec-confirm" True mockProvider "model-catalog.json"
                 case approved of
                   OutcomeCompleted val _ _ ->
                     case val of
@@ -259,6 +262,7 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roProjectHash = Nothing,
                       roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                     }

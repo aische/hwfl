@@ -185,6 +185,7 @@ spec = describe "coding-agent example" $ do
                       roProjectHash = Nothing,
                       roExec = lp.lpConfig.pcExec,
                       roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                       roSkillCatalog = cpr.cprSkillCatalog,
                       roSkillModules = callableSkills lp
                     }

@@ -330,7 +330,8 @@ initAgentState system prompt tools model maxRounds spanId submitSchema =
           agBaselineTools = tools',
           agActiveToolIds = [],
           agLoadedInstructionIds = [],
-          agInstructionChars = 0
+          agInstructionChars = 0,
+          agRoundCloseAttrs = Nothing
         }
 
 expectTools :: [(Maybe Ident, Value)] -> Either RuntimeError [ToolSpecValue]

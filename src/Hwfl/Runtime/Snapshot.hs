@@ -352,7 +352,8 @@ agentToJson ag =
       "baseline_tools" .= map toolSpecToJson ag.agBaselineTools,
       "active_tool_ids" .= ag.agActiveToolIds,
       "loaded_instruction_ids" .= ag.agLoadedInstructionIds,
-      "instruction_chars" .= ag.agInstructionChars
+      "instruction_chars" .= ag.agInstructionChars,
+      "round_close_attrs" .= ag.agRoundCloseAttrs
     ]
       ++ case ag.agSubmitSchema of
         Nothing -> []
@@ -376,6 +377,7 @@ parseAgent = withObject "AgentState" $ \o ->
     <*> o .:? "active_tool_ids" .!= []
     <*> o .:? "loaded_instruction_ids" .!= []
     <*> o .:? "instruction_chars" .!= 0
+    <*> o .:? "round_close_attrs"
 
 toolRoundToJson :: ToolRound -> Aeson.Value
 toolRoundToJson tr =

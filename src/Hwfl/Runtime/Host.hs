@@ -23,13 +23,13 @@ import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Check.Project (checkProject, renderProjectCheckError)
 import Hwfl.Eval.Value
 import Hwfl.Json.Encode (jsonToValue)
+import Hwfl.Llm.Pricing (ModelPricing, providerCloseAttrs)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
   ( ChatRequest (..),
     Message (..),
     ProviderResult (..),
     Role (..),
-    TokenUsage (..),
     emptyChatRequest,
     renderProviderError,
   )
@@ -59,6 +59,7 @@ data HostEnv = HostEnv
     -- | 'Nothing' when no project @exec@ policy is configured.
     heExec :: Maybe ExecPolicy,
     heSkillCatalog :: SkillCatalog,
+    hePricing :: ModelPricing,
     heLog :: Text -> IO ()
   }
 
@@ -484,7 +485,7 @@ doLlmChat env args = case parseChatArgs args of
         Right
           ( HostResult
               (VString pr.prContent)
-              (llmCloseAttrs pr)
+              (providerCloseAttrs env.hePricing model pr)
           )
 
 doLlmObject :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
@@ -506,7 +507,7 @@ doLlmObject env args = case parseObjectArgs args of
           Right
             ( HostResult
                 val
-                (llmCloseAttrs pr)
+                (providerCloseAttrs env.hePricing model pr)
             )
 
 decodeJsonObject :: Text -> Either Text Value
@@ -514,17 +515,6 @@ decodeJsonObject txt =
   case Aeson.eitherDecodeStrict' (TE.encodeUtf8 txt) of
     Left err -> Left ("llm.object: invalid JSON response: " <> T.pack err)
     Right (v :: Aeson.Value) -> Right (jsonToValue v)
-
-llmCloseAttrs :: ProviderResult -> Aeson.Value
-llmCloseAttrs pr =
-  object $
-    ["reply_len" .= T.length pr.prContent]
-      ++ case pr.prUsage of
-        Nothing -> []
-        Just u ->
-          [ "token_in" .= u.usageInputTokens,
-            "token_out" .= u.usageOutputTokens
-          ]
 
 parseChatArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text, Text)
 parseChatArgs args = do

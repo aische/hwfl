@@ -146,6 +146,7 @@ spec = describe "observability (M6)" $ do
                     roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                   }
@@ -180,6 +181,7 @@ spec = describe "observability (M6)" $ do
                       roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                     }

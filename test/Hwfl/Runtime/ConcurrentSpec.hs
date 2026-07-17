@@ -117,6 +117,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }
@@ -149,6 +150,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }
@@ -156,7 +158,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
           case outcome of
             OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _ -> pure ()
             other -> expectationFailure ("expected awaiting confirm, got " <> show other)
-          approved <- approveRun dir "c1" True mockProvider
+          approved <- approveRun dir "c1" True mockProvider "model-catalog.json"
           case approved of
             OutcomeCompleted (VRecord [(Ident "ok", VBool True)]) _ _ -> pure ()
             other -> expectationFailure (show other)
@@ -179,6 +181,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }
@@ -186,11 +189,11 @@ spec = describe "runtime par/confirm/step (M5)" $ do
           case outcome of
             OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _ -> pure ()
             other -> expectationFailure ("expected pause, got " <> show other)
-          o1 <- approveRun dir "pc1" True mockProvider
+          o1 <- approveRun dir "pc1" True mockProvider "model-catalog.json"
           -- Second confirm may pause again.
           case o1 of
             OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _ -> do
-              o2 <- approveRun dir "pc1" False mockProvider
+              o2 <- approveRun dir "pc1" False mockProvider "model-catalog.json"
               case o2 of
                 OutcomeCompleted (VRecord [(Ident "results", VList rs)]) _ _ ->
                   rs `shouldBe` [VBool True, VBool False]
@@ -221,6 +224,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }
@@ -229,13 +233,13 @@ spec = describe "runtime par/confirm/step (M5)" $ do
             OutcomePaused {} -> pure ()
             OutcomeCompleted {} -> pure () -- tiny programs may finish in one transition
             other -> expectationFailure (show other)
-          final <- resumeRun dir "s1" mockProvider
+          final <- resumeRun dir "s1" mockProvider "model-catalog.json"
           case final of
             OutcomeCompleted (VRecord [(Ident "texts", VList xs)]) _ _ ->
               length xs `shouldBe` 3
             OutcomePaused {} -> do
               -- still paused on explicit? continue stepping
-              final2 <- resumeRun dir "s1" mockProvider
+              final2 <- resumeRun dir "s1" mockProvider "model-catalog.json"
               case final2 of
                 OutcomeCompleted (VRecord [(Ident "texts", VList xs)]) _ _ ->
                   length xs `shouldBe` 3
@@ -260,13 +264,14 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }
               loaded
           -- Mutate kernel body so project_hash changes.
           writeFile path (T.unpack (T.replace "Proceed?" "Changed?" confirmSrc))
-          resumed <- resumeRun dir "stale1" mockProvider
+          resumed <- resumeRun dir "stale1" mockProvider "model-catalog.json"
           case resumed of
             OutcomeFailed (ConfigErr msg) _ _ ->
               T.isInfixOf "stale project" msg `shouldBe` True

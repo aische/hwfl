@@ -32,6 +32,7 @@ import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Prelude (preludeEnv)
 import Hwfl.Eval.Pure (bindParams)
 import Hwfl.Eval.Value
+import Hwfl.Llm.Pricing (ModelPricing, loadModelPricing)
 import Hwfl.Llm.Provider (LlmProvider)
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
 import Hwfl.Obs.Trace
@@ -81,6 +82,8 @@ data RunOptions = RunOptions
     roExec :: Maybe ExecPolicy,
     -- | Live span open/close lines on stderr (CLI @--debug@).
     roDebug :: Bool,
+    -- | Model catalog for LLM cost attribution.
+    roModelCatalog :: FilePath,
     -- | Skill catalog from @hwfl check@ (empty when running a lone module).
     roSkillCatalog :: SkillCatalog,
     -- | Callable skill modules for mid-loop tool advertising.
@@ -152,6 +155,7 @@ runLoadedModule opts loaded = do
           then Just (hPutStrLn stderr . T.unpack)
           else Nothing
   spans <- newSpanStateDebug debugLog
+  pricing <- loadModelPricing opts.roModelCatalog
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
       typeEnv = loadTypeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
@@ -162,6 +166,7 @@ runLoadedModule opts loaded = do
             heProvider = opts.roProvider,
             heExec = opts.roExec,
             heSkillCatalog = opts.roSkillCatalog,
+            hePricing = pricing,
             heLog = hPutStrLn stderr . T.unpack
           }
       ctx =
@@ -249,6 +254,7 @@ closeModuleSpan store spans sid status = case status of
 
 mkCtx ::
   LlmProvider ->
+  ModelPricing ->
   FilePath ->
   LoadedModule ->
   RunStore ->
@@ -260,7 +266,7 @@ mkCtx ::
   SkillCatalog ->
   Map QName LoadedModule ->
   IO RunCtx
-mkCtx provider wsRoot loaded store hash runId started seqRef spans catalog skillMods = do
+mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods = do
   ws <- newWorkspace wsRoot
   execPol <- loadExecPolicy wsRoot
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
@@ -272,6 +278,7 @@ mkCtx provider wsRoot loaded store hash runId started seqRef spans catalog skill
             heProvider = provider,
             heExec = execPol,
             heSkillCatalog = catalog,
+            hePricing = pricing,
             heLog = hPutStrLn stderr . T.unpack
           }
   pure
@@ -328,8 +335,9 @@ loadExisting ::
   FilePath ->
   Text ->
   LlmProvider ->
+  FilePath ->
   IO (Either RuntimeError (RunCtx, Machine, RunStore, IORef Int))
-loadExisting workspace runId provider = do
+loadExisting workspace runId provider catalogPath = do
   ws <- newWorkspace workspace
   let root = workspaceRoot ws
   store <- openRunStore root runId
@@ -353,9 +361,11 @@ loadExisting workspace runId provider = do
                 writeIORef spans.ssCounter snap.rsSpanCounter
                 setSpanStack spans snap.rsSpanStack
                 (catalog, skillMods) <- loadSkillRuntime root
+                pricing <- loadModelPricing catalogPath
                 ctx <-
                   mkCtx
                     provider
+                    pricing
                     root
                     loaded
                     store
@@ -369,9 +379,9 @@ loadExisting workspace runId provider = do
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 
-stepRun :: FilePath -> Text -> LlmProvider -> IO RunOutcome
-stepRun workspace runId provider = do
-  loaded <- loadExisting workspace runId provider
+stepRun :: FilePath -> Text -> LlmProvider -> FilePath -> IO RunOutcome
+stepRun workspace runId provider catalogPath = do
+  loaded <- loadExisting workspace runId provider catalogPath
   case loaded of
     Left e -> failed store0 e
     Right (ctx, machine0, store, seqRef) ->
@@ -389,9 +399,9 @@ stepRun workspace runId provider = do
     store0 = RunStore (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
     failed store e = pure (OutcomeFailed e store 0)
 
-resumeRun :: FilePath -> Text -> LlmProvider -> IO RunOutcome
-resumeRun workspace runId provider = do
-  loaded <- loadExisting workspace runId provider
+resumeRun :: FilePath -> Text -> LlmProvider -> FilePath -> IO RunOutcome
+resumeRun workspace runId provider catalogPath = do
+  loaded <- loadExisting workspace runId provider catalogPath
   case loaded of
     Left e -> pure (OutcomeFailed e store0 0)
     Right (ctx, machine0, store, seqRef) ->
@@ -414,11 +424,11 @@ resumeRun workspace runId provider = do
   where
     store0 = RunStore (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
 
-approveRun :: FilePath -> Text -> Bool -> LlmProvider -> IO RunOutcome
-approveRun workspace runId yes provider = do
+approveRun :: FilePath -> Text -> Bool -> LlmProvider -> FilePath -> IO RunOutcome
+approveRun workspace runId yes provider catalogPath = do
   ws <- newWorkspace workspace
   let root = workspaceRoot ws
-  loaded <- loadExisting root runId provider
+  loaded <- loadExisting root runId provider catalogPath
   case loaded of
     Left e -> pure (OutcomeFailed e (RunStore (root </> ".hwfl" </> "runs" </> T.unpack runId) runId) 0)
     Right (ctx, machine0, store, seqRef) ->

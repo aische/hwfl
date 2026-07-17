@@ -32,6 +32,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Vector qualified as V
+import Hwfl.Llm.Pricing (attrsCostMicros, formatCostUsd)
 import Hwfl.Obs.Redact (redactJson)
 import Hwfl.Obs.Span
 import Hwfl.Runtime.Snapshot (RunStore (..))
@@ -42,6 +43,8 @@ data SpanState = SpanState
   { ssCounter :: IORef Int,
     -- | Innermost span id at the head.
     ssStack :: IORef [SpanId],
+    -- | Running LLM cost (microdollars) for @--debug@ ledger prefix.
+    ssRunCostMicros :: IORef Int,
     -- | Optional live debug logger (e.g. stderr under @--debug@).
     ssDebug :: Maybe (Text -> IO ())
   }
@@ -50,7 +53,8 @@ newSpanState :: IO SpanState
 newSpanState = newSpanStateDebug Nothing
 
 newSpanStateDebug :: Maybe (Text -> IO ()) -> IO SpanState
-newSpanStateDebug dbg = SpanState <$> newIORef 0 <*> newIORef [] <*> pure dbg
+newSpanStateDebug dbg =
+  SpanState <$> newIORef 0 <*> newIORef [] <*> newIORef 0 <*> pure dbg
 
 getSpanStack :: SpanState -> IO [SpanId]
 getSpanStack st = readIORef st.ssStack
@@ -68,7 +72,21 @@ currentSpanId st = do
 debugLog :: SpanState -> Text -> IO ()
 debugLog st msg = case st.ssDebug of
   Nothing -> pure ()
-  Just log_ -> log_ msg
+  Just log_ -> do
+    prefix <- runCostPrefix st
+    log_ (prefix <> msg)
+
+runCostPrefix :: SpanState -> IO Text
+runCostPrefix st = do
+  micros <- readIORef st.ssRunCostMicros
+  pure (formatCostUsd micros <> " │ ")
+
+chargeCostFromAttrs :: SpanState -> Aeson.Value -> IO ()
+chargeCostFromAttrs st attrs =
+  case attrsCostMicros attrs of
+    Nothing -> pure ()
+    Just micros ->
+      modifyIORef' st.ssRunCostMicros (+ micros)
 
 -- | Open a span: append one jsonl line, push stack. O(1).
 openSpan ::
@@ -120,6 +138,7 @@ closeSpan ::
   Maybe Int ->
   IO ()
 closeSpan store st sid status attrs mSeq = do
+  chargeCostFromAttrs st attrs
   now <- isoNow
   modifyIORef' st.ssStack (pop sid)
   appendSpanLine

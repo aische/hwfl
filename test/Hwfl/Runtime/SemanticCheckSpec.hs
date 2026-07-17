@@ -52,6 +52,7 @@ spec = describe "semantic-check dogfood (M8 / E20)" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }

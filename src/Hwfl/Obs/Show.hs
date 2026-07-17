@@ -9,10 +9,13 @@ module Hwfl.Obs.Show
 where
 
 import Data.Aeson qualified as Aeson
+import Data.Aeson.KeyMap qualified as KM
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Encoding qualified as TLE
+import Hwfl.Llm.Pricing (attrsCostUsd, formatCostDollars)
 import Hwfl.Obs.Redact (redactJson)
 import Hwfl.Obs.Span (spanKindText, spanStatusText)
 import Hwfl.Obs.Trace
@@ -75,10 +78,22 @@ formatSummary mMeta mSnap forest =
       "entry: " <> maybe "?" (T.pack . (.rmEntry)) mMeta,
       "seq: " <> maybe "?" (T.pack . show . (.rsSeq)) mSnap,
       "cursor: " <> cursorSummary mSnap,
+      "cost: " <> formatForestCost forest,
       "",
       "spans:"
     ]
       ++ formatSpanTree forest
+
+formatForestCost :: [SpanNode] -> Text
+formatForestCost forest =
+  let total = sum (map nodeCostUsd forest)
+   in if total <= 0
+        then "$0.00"
+        else formatCostDollars total
+
+nodeCostUsd :: SpanNode -> Double
+nodeCostUsd n =
+  fromMaybe 0 (attrsCostUsd n.snAttrs) + sum (map nodeCostUsd n.snChildren)
 
 cursorSummary :: Maybe RunSnapshot -> Text
 cursorSummary = \case
@@ -96,8 +111,14 @@ formatSpanTree = concatMap (go 0)
     go depth n =
       let pad = T.replicate depth "  "
           st = maybe "open" spanStatusText n.snStatus
-          attrs = compactAttrs n.snAttrs
-          attrSuffix = if T.null attrs then "" else "  " <> attrs
+          attrs = compactAttrs (omitCostUsd n.snAttrs)
+          cost = spanCostText n.snAttrs
+          attrSuffix =
+            T.unwords
+              ( [cost | not (T.null cost)]
+                  ++ [attrs | not (T.null attrs)]
+              )
+          attrPart = if T.null attrSuffix then "" else "  " <> attrSuffix
           line =
             pad
               <> "└─ "
@@ -106,8 +127,19 @@ formatSpanTree = concatMap (go 0)
               <> spanKindText n.snKind
               <> "] "
               <> st
-              <> attrSuffix
+              <> attrPart
        in line : concatMap (go (depth + 1)) n.snChildren
+
+spanCostText :: Aeson.Value -> Text
+spanCostText attrs =
+  case attrsCostUsd attrs of
+    Just c | c > 0 -> formatCostDollars c
+    _ -> ""
+
+omitCostUsd :: Aeson.Value -> Aeson.Value
+omitCostUsd = \case
+  Aeson.Object km -> Aeson.Object (KM.delete "cost_usd" km)
+  v -> v
 
 formatSpanLines :: [SpanRecord] -> Text
 formatSpanLines =

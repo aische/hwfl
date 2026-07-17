@@ -34,11 +34,12 @@ import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Prelude (applyBuiltin)
 import Hwfl.Eval.Pure (bindParams, matchPat)
 import Hwfl.Eval.Value
+import Data.Aeson.KeyMap qualified as KM
+import Hwfl.Llm.Pricing (providerRoundCloseAttrs)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
   ( ChatRequest (..),
     ProviderResult (..),
-    TokenUsage (..),
     ToolCall (..),
     ToolResult (..),
     Turn (..),
@@ -497,13 +498,15 @@ stepAgentModel ctx mode m ag
         Right pr
           | null pr.prToolCalls -> finishAgentText ctx mode m ag' pr
           | otherwise -> do
+              let roundAttrs =
+                    providerRoundCloseAttrs ctx.rcHost.hePricing ag.agModel pr
               -- Keep agent_round open so tool spans nest under it.
               appendEvent
                 ctx.rcStore
                 ctx.rcSpans
                 "debug"
                 "agent_round_model"
-                (llmRoundCloseAttrs pr)
+                roundAttrs
               let tr =
                     ToolRound
                       { trPending = pr.prToolCalls,
@@ -517,7 +520,8 @@ stepAgentModel ctx mode m ag
                       { agHistory =
                           ag.agHistory
                             <> [TurnAssistant pr.prContent pr.prToolCalls],
-                        agToolRound = Just tr
+                        agToolRound = Just tr,
+                        agRoundCloseAttrs = Just roundAttrs
                       }
                   m' = pauseIfStep mode (m {mCurrent = CurAgent ag''})
               _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
@@ -558,7 +562,7 @@ finishAgentText ctx mode m ag pr = case ag.agSubmitSchema of
             ctx.rcSpans
             sid
             SsOk
-            (llmRoundCloseAttrs pr)
+            (providerRoundCloseAttrs ctx.rcHost.hePricing ag.agModel pr)
             Nothing
       )
       ag.agRoundSpanId
@@ -966,6 +970,11 @@ finishToolRound ::
   ToolRound ->
   IO (Either RuntimeError StepResult)
 finishToolRound ctx mode m ag tr = do
+  let roundAttrs = fromMaybe (object []) ag.agRoundCloseAttrs
+      closeAttrs =
+        mergeObjects
+          roundAttrs
+          (object ["tool_results" .= length tr.trCompleted])
   mapM_
     ( \sid ->
         closeSpan
@@ -973,7 +982,7 @@ finishToolRound ctx mode m ag tr = do
           ctx.rcSpans
           sid
           SsOk
-          (object ["tool_results" .= length tr.trCompleted])
+          closeAttrs
           Nothing
     )
     ag.agRoundSpanId
@@ -982,7 +991,8 @@ finishToolRound ctx mode m ag tr = do
           { agHistory = ag.agHistory <> [TurnTool tr.trCompleted],
             agRound = ag.agRound + 1,
             agToolRound = Nothing,
-            agRoundSpanId = Nothing
+            agRoundSpanId = Nothing,
+            agRoundCloseAttrs = Nothing
           }
       m' = pauseIfStep mode (m {mCurrent = CurAgent ag'})
   _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
@@ -1030,18 +1040,10 @@ failAgent ctx m ag err = do
   _ <- persist ctx (Just (agentHostOp ag)) Nothing MsFailed (Just m')
   pure (Left err)
 
-llmRoundCloseAttrs :: ProviderResult -> Aeson.Value
-llmRoundCloseAttrs pr =
-  object $
-    [ "reply_len" .= T.length pr.prContent,
-      "tool_calls" .= length pr.prToolCalls
-    ]
-      ++ case pr.prUsage of
-        Nothing -> []
-        Just u ->
-          [ "token_in" .= u.usageInputTokens,
-            "token_out" .= u.usageOutputTokens
-          ]
+mergeObjects :: Aeson.Value -> Aeson.Value -> Aeson.Value
+mergeObjects a b = case (a, b) of
+  (Aeson.Object ka, Aeson.Object kb) -> Aeson.Object (KM.union kb ka)
+  _ -> b
 
 doObsLog ::
   RunCtx -> StepMode -> Machine -> [(Maybe Ident, Value)] -> IO (Either RuntimeError StepResult)

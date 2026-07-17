@@ -96,7 +96,9 @@ data AgentState = AgentState
     -- | Instruction skill ids already merged (@loaded_instruction_ids@).
     agLoadedInstructionIds :: [Text],
     -- | Accumulated instruction body chars against @max_instruction_chars@.
-    agInstructionChars :: Int
+    agInstructionChars :: Int,
+    -- | Close attrs for the current model round (tokens/cost), if any.
+    agRoundCloseAttrs :: Maybe Aeson.Value
   }
   deriving stock (Eq, Show)
 

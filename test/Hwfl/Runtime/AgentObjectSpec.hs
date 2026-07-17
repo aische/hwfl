@@ -147,6 +147,7 @@ spec = describe "runtime llm.agent_object" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }
@@ -178,6 +179,7 @@ spec = describe "runtime llm.agent_object" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }

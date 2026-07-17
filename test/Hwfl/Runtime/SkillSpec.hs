@@ -68,6 +68,7 @@ spec = describe "skills runtime (phases B–C)" $ do
                         roProjectHash = Nothing,
                         roExec = Nothing,
                         roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                         roSkillCatalog = cpr.cprSkillCatalog,
                         roSkillModules = skillMods
                       }
@@ -102,6 +103,7 @@ spec = describe "skills runtime (phases B–C)" $ do
                         roProjectHash = Nothing,
                         roExec = Nothing,
                         roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                         roSkillCatalog = cpr.cprSkillCatalog,
                         roSkillModules = callableSkills lp
                       }

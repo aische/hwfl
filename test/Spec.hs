@@ -5,6 +5,7 @@ import Hwfl.Check.ModuleSpec
 import Hwfl.Check.ProjectSpec
 import Hwfl.Check.SchemaSpec
 import Hwfl.Eval.PureSpec
+import Hwfl.Llm.PricingSpec
 import Hwfl.Llm.ProviderSpec
 import Hwfl.Obs.SpanSpec
 import Hwfl.Parse.ExprSpec
@@ -38,6 +39,7 @@ main = hspec $ do
   Hwfl.Check.ProjectSpec.spec
   Hwfl.Check.SchemaSpec.spec
   Hwfl.SkillCatalogSpec.spec
+  Hwfl.Llm.PricingSpec.spec
   Hwfl.Llm.ProviderSpec.spec
   Hwfl.Runtime.WorkspaceSpec.spec
   Hwfl.Runtime.RunSpec.spec

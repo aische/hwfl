@@ -177,6 +177,7 @@ spec = describe "runtime agent (M7)" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }
@@ -225,6 +226,7 @@ spec = describe "runtime agent (M7)" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
                 }
@@ -235,7 +237,7 @@ spec = describe "runtime agent (M7)" $ do
           let go n
                 | n > 40 = expectationFailure "too many steps"
                 | otherwise = do
-                    out <- resumeRun dir "e15-step" agentMock
+                    out <- resumeRun dir "e15-step" agentMock "model-catalog.json"
                     case out of
                       OutcomeCompleted (VRecord fs) _ _ ->
                         lookup (Ident "text") fs `shouldBe` Just (VString "done with tools")

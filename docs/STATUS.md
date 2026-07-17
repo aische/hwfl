@@ -9,6 +9,8 @@ semantic-check deepen / skills phase D.
 
 ## Done recently
 
+- LLM span cost: catalog pricing → `cost_usd` on spans; running `$` ledger
+  on `--debug`; per-span + run total on `hwfl show` tree
 - Coding-agent + skills: stack instruction playbooks (python / react /
   haskell / rust); discover/load in the agent toolbox
 - Skills A–C: catalog, `skill.*` host ops, mid-loop load + budgets

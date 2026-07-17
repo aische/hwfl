@@ -198,6 +198,7 @@ runProject flags ws inputs provider = do
                     roProjectHash = hash,
                     roExec = lp.lpConfig.pcExec,
                     roDebug = flags.rfDebug,
+                    roModelCatalog = flags.rfCatalog,
                     roSkillCatalog = catalog,
                     roSkillModules = skillMods
                   }
@@ -230,6 +231,7 @@ runSingleModule flags ws inputs provider = do
                 roProjectHash = Nothing,
                 roExec = Nothing,
                 roDebug = flags.rfDebug,
+                roModelCatalog = flags.rfCatalog,
                 roSkillCatalog = catalog,
                 roSkillModules = skillMods
               }
@@ -240,21 +242,21 @@ cmdStep args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
     provider <- resolveProvider provName catalog
-    handleOutcome False =<< stepRun ws runId provider
+    handleOutcome False =<< stepRun ws runId provider catalog
 
 cmdResume :: [String] -> IO ()
 cmdResume args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
     provider <- resolveProvider provName catalog
-    handleOutcome False =<< resumeRun ws runId provider
+    handleOutcome False =<< resumeRun ws runId provider catalog
 
 cmdApprove :: [String] -> IO ()
 cmdApprove args = case parseApprove args of
   Left msg -> dieUsage msg
   Right (ws, runId, yes, provName, catalog) -> do
     provider <- resolveProvider provName catalog
-    handleOutcome False =<< approveRun ws runId yes provider
+    handleOutcome False =<< approveRun ws runId yes provider catalog
 
 cmdShow :: [String] -> IO ()
 cmdShow args = case parseShow args of

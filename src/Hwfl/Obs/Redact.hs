@@ -59,7 +59,7 @@ sensitiveKey k =
   let n = T.toLower k
    in -- Allow observability counters (token_in / token_out) while scrubbing
       -- credential-shaped keys.
-      n `notElem` ["token_in", "token_out", "tokens"]
+      n `notElem` ["token_in", "token_out", "tokens", "cost_usd"]
         && ( n
                `elem` [ "secret",
                         "password",
