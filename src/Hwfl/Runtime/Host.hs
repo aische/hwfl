@@ -34,18 +34,20 @@ import Hwfl.Llm.Types
     emptyChatRequest,
     renderProviderError,
   )
+import Hwfl.Obs.Redact (redactJson)
 import Hwfl.Obs.Span (SpanRecord (..), spanKindText, spanStatusText)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Project (ExecPolicy (..))
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Exec (ExecArgs (..), ExecOutcome (..), runExec)
 import Hwfl.Runtime.Skills (discoverSkillsResult, loadSkillScripted)
-import Hwfl.Runtime.Snapshot (RunMeta (..))
+import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..), snapshotToJson, statusText)
 import Hwfl.Runtime.Store
   ( SpanFilter (..),
     emptySpanFilter,
     listRuns,
     openRun,
+    readSnapshot,
     readSpans,
     runRef,
   )
@@ -144,7 +146,8 @@ hostOpsEnv =
             (Ident "check_project", VHostOp HostMetaCheckProject),
             (Ident "invoke", VHostOp HostMetaInvoke),
             (Ident "list_runs", VHostOp HostMetaListRuns),
-            (Ident "read_spans", VHostOp HostMetaReadSpans)
+            (Ident "read_spans", VHostOp HostMetaReadSpans),
+            (Ident "read_snapshot", VHostOp HostMetaReadSnapshot)
           ]
       ),
       ( Ident "skill",
@@ -181,6 +184,7 @@ runHostOp env op args = case op of
   HostMetaInvoke -> env.heMetaInvoke args
   HostMetaListRuns -> doMetaListRuns env args
   HostMetaReadSpans -> doMetaReadSpans env args
+  HostMetaReadSnapshot -> doMetaReadSnapshot env args
   HostSkillDiscover -> doSkillDiscover env args
   HostSkillLoad -> doSkillLoad env args
   HostLlmAgent ->
@@ -545,10 +549,86 @@ doMetaReadSpans env args = case parseMetaReadSpansArgs args of
                   )
               )
 
+doMetaReadSnapshot :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doMetaReadSnapshot env args = case parseMetaReadSnapshotArgs args of
+  Left e -> pure (Left e)
+  Right (runId, workspaceRel) -> case resolvePath env.heWorkspace workspaceRel of
+    Left e -> pure (Left e)
+    Right workspaceAbs -> do
+      env.heLog ("meta.read_snapshot run_id=" <> runId <> " workspace=" <> workspaceRel)
+      mStore <- openRun (runRef workspaceAbs runId)
+      case mStore of
+        Nothing ->
+          pure $
+            Right
+              ( HostResult
+                  (metaReadSnapshotFail ("run not found: " <> runId))
+                  ( object
+                      [ "run_id" .= runId,
+                        "workspace" .= workspaceRel,
+                        "status" .= ("missing" :: Text)
+                      ]
+                  )
+              )
+        Just store -> do
+          mSnap <- readSnapshot store
+          case mSnap of
+            Nothing ->
+              pure $
+                Right
+                  ( HostResult
+                      (metaReadSnapshotFail ("snapshot not found: " <> runId))
+                      ( object
+                          [ "run_id" .= runId,
+                            "workspace" .= workspaceRel,
+                            "status" .= ("no_snapshot" :: Text)
+                          ]
+                      )
+                  )
+            Just snap ->
+              let redacted = redactJson (snapshotToJson snap)
+               in pure $
+                    Right
+                      ( HostResult
+                          ( VRecord
+                              [ (Ident "ok", VBool True),
+                                (Ident "snapshot", jsonToValue redacted),
+                                (Ident "error", VString "")
+                              ]
+                          )
+                          ( object
+                              [ "run_id" .= runId,
+                                "workspace" .= workspaceRel,
+                                "seq" .= snap.rsSeq,
+                                "status" .= statusText snap.rsStatus
+                              ]
+                          )
+                      )
+
+metaReadSnapshotFail :: Text -> Value
+metaReadSnapshotFail err =
+  VRecord
+    [ (Ident "ok", VBool False),
+      (Ident "snapshot", VUnit),
+      (Ident "error", VString err)
+    ]
+
 workspaceRelArg :: [(Maybe Ident, Value)] -> Either RuntimeError Text
 workspaceRelArg args = case lookupNamed (Ident "workspace") args of
   Just v -> fileRefValue v
-  Nothing -> Left (HostErr "meta.list_runs / meta.read_spans expects workspace: FileRef")
+  Nothing ->
+    Left (HostErr "meta.list_runs / meta.read_spans / meta.read_snapshot expects workspace: FileRef")
+
+parseMetaReadSnapshotArgs ::
+  [(Maybe Ident, Value)] ->
+  Either RuntimeError (Text, Text)
+parseMetaReadSnapshotArgs args = do
+  runId <- case lookupNamed (Ident "run_id") args of
+    Just (VString s) -> Right s
+    Just _ -> Left (HostErr "meta.read_snapshot.run_id must be a String")
+    Nothing -> Left (HostErr "meta.read_snapshot missing run_id")
+  workspaceRel <- workspaceRelArg args
+  pure (runId, workspaceRel)
 
 parseMetaReadSpansArgs ::
   [(Maybe Ident, Value)] ->

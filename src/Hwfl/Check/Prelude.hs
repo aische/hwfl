@@ -364,6 +364,21 @@ metaType =
                 (Ident "error", t "String")
               ]
           )
+      ),
+      ( Ident "read_snapshot",
+        TEffFun
+          ( TRecord
+              [ (Ident "run_id", t "String"),
+                (Ident "workspace", t "FileRef")
+              ]
+          )
+          [EffMeta, EffRead]
+          ( TRecord
+              [ (Ident "ok", t "Bool"),
+                (Ident "snapshot", t "Json"),
+                (Ident "error", t "String")
+              ]
+          )
       )
     ]
 

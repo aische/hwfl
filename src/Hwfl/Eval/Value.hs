@@ -95,6 +95,7 @@ data HostOpId
   | HostMetaInvoke
   | HostMetaListRuns
   | HostMetaReadSpans
+  | HostMetaReadSnapshot
   | HostSkillDiscover
   | HostSkillLoad
   deriving stock (Eq, Ord, Show)
@@ -189,6 +190,7 @@ hostOpName = \case
   HostMetaInvoke -> "meta.invoke"
   HostMetaListRuns -> "meta.list_runs"
   HostMetaReadSpans -> "meta.read_spans"
+  HostMetaReadSnapshot -> "meta.read_snapshot"
   HostSkillDiscover -> "skill.discover"
   HostSkillLoad -> "skill.load"
 

@@ -205,6 +205,12 @@ hostOpenAttrs op args = case op of
         "name_prefix" .= stringAttr (Ident "name_prefix") args,
         "kind" .= stringAttr (Ident "kind") args
       ]
+  HostMetaReadSnapshot ->
+    object
+      [ "op" .= hostOpName op,
+        "run_id" .= stringAttr (Ident "run_id") args,
+        "workspace" .= stringAttr (Ident "workspace") args
+      ]
   HostSkillDiscover ->
     object
       [ "op" .= hostOpName op,

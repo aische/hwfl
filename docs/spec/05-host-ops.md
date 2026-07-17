@@ -105,7 +105,7 @@ as long as host ops inside are correct.
 | `meta.check_project` | whole-project graph check; `{ ok, error }` (workspace-relative project root; M9) |
 | `meta.list_runs` | list run metas under a workspace; `{ workspace }` → `{ ok, runs, error }` |
 | `meta.read_spans` | query spans for a run; `{ run_id, workspace, name_prefix?, kind?, limit? }` → `{ ok, spans, error }` |
-| `meta.read_snapshot` | **careful** — may expose secrets; redact **[defer]** |
+| `meta.read_snapshot` | redacted run snapshot Json; `{ run_id, workspace }` → `{ ok, snapshot, error }` |
 
 `meta.invoke` signature (sketch):
 
@@ -119,7 +119,7 @@ as long as host ops inside are correct.
 - Child run state is stored under the **child** workspace (`.hwfl/runs/<run_id>/`).
 - Same-project module call sugar (`FrInvoke`) is separate and not this op.
 
-`meta.list_runs` / `meta.read_spans` (sketch):
+`meta.list_runs` / `meta.read_spans` / `meta.read_snapshot` (sketch):
 
 ```text
 { workspace: FileRef }
@@ -129,11 +129,19 @@ as long as host ops inside are correct.
 { run_id: String, workspace: FileRef, name_prefix?: String, kind?: String, limit?: Int }
   -[Meta, Read]->
   { ok: Bool, spans: List<{ op, id, parent_id, name, kind, t_start, t_end, status, attrs, snapshot_seq }>, error: String }
+
+{ run_id: String, workspace: FileRef }
+  -[Meta, Read]->
+  { ok: Bool, snapshot: Json, error: String }
 ```
 
 - `workspace` is parent-sandbox-relative (same containment as `meta.invoke`).
-- Missing run → `ok = false`, empty `spans`, non-empty `error`.
+- Missing run → `ok = false`, empty `spans` / null `snapshot`, non-empty `error`.
 - Empty / omitted filter fields mean no filter; `limit <= 0` means unlimited.
+- `meta.read_snapshot` returns a **redacted** encoding of `snapshot.json`
+  (`snapshotToJson` + `redactJson`): format, run_id, seq, status,
+  project_hash, last_host, last_result, at, machine, span_stack,
+  span_counter. Never a raw FS read of cleartext secrets (spec §07).
 
 ## 6.1 Skills (`Meta` / `Read`)
 

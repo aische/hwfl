@@ -716,6 +716,7 @@ parseHostOp = \case
   "meta.invoke" -> pure HostMetaInvoke
   "meta.list_runs" -> pure HostMetaListRuns
   "meta.read_spans" -> pure HostMetaReadSpans
+  "meta.read_snapshot" -> pure HostMetaReadSnapshot
   "skill.discover" -> pure HostSkillDiscover
   "skill.load" -> pure HostSkillLoad
   other -> fail ("unknown host op: " <> T.unpack other)

@@ -4,8 +4,9 @@ Last updated: 2026-07-18
 
 ## Current focus
 
-Careful `meta.read_snapshot` (redact). Local genetic / compare prototype next.
-`meta.invoke` + `meta.list_runs` / `meta.read_spans` shipped.
+Local genetic / compare prototype next.
+`meta.invoke` + `meta.list_runs` / `meta.read_spans` / `meta.read_snapshot`
+shipped.
 
 ## North star
 
@@ -16,6 +17,8 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **`meta.read_snapshot`** — redacted run snapshot Json via Store +
+  `redactJson` (never raw cleartext `snapshot.json`)
 - **`meta.list_runs` / `meta.read_spans`** — workspace-relative run-store
   reads; recoverable `{ ok, …, error }`; optional span filters
 - **`meta.invoke`** — nested `runTarget` / driverRun; workspace-relative
@@ -33,10 +36,9 @@ None.
 
 ## Next up
 
-1. Careful `meta.read_snapshot` (redact secrets)
-2. Local genetic prototype — N temp projects × workspace fixture ×
+1. Local genetic prototype — N temp projects × workspace fixture ×
    score (CLI or parent workflow)
-3. Observer hook for live span / pause events (CLI `--debug` today;
+2. Observer hook for live span / pause events (CLI `--debug` today;
    WS/SSE maps onto this in the control-plane repo)
 
 ## Deferred
