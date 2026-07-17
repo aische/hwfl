@@ -244,6 +244,13 @@ spec = describe "type checker" $ do
         Left diags -> expectationFailure (show diags)
         Right loaded -> checkLoadedModule loaded `shouldSatisfy` isRight
 
+  describe "try/catch" $ do
+    it "accepts matching try and catch types" $
+      checkBody
+        "fun main(_): String =\n\
+        \  try fs.read(\"x\").text catch (err) => err"
+        `shouldSatisfy` isRight
+
 isRight :: Either a b -> Bool
 isRight = \case
   Right _ -> True

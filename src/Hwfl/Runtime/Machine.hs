@@ -126,6 +126,8 @@ data Frame
   | FrIf Env Expr Expr
   | FrMatch Env [MatchArm]
   | FrPar ParJoinState
+  | -- | @try@ body finished — pop on success; nearest handler on catchable error.
+    FrTry Ident Env Expr
   | -- | After approve, continue with Bool into prior kont.
     FrConfirm ConfirmRequest
   | -- | After approve of @exec.run@ confirm gate: resume the stored 'Current'

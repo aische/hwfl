@@ -20,6 +20,7 @@ import Hwfl.Runtime.ConcurrentSpec
 import Hwfl.Runtime.HostOpsSpec
 import Hwfl.Runtime.ObjectSpec
 import Hwfl.Runtime.RunSpec
+import Hwfl.Runtime.TrySpec
 import Hwfl.Runtime.SkillSpec
 import Hwfl.Runtime.SemanticCheckSpec
 import Hwfl.Runtime.WorkspaceSpec
@@ -43,6 +44,7 @@ main = hspec $ do
   Hwfl.Llm.ProviderSpec.spec
   Hwfl.Runtime.WorkspaceSpec.spec
   Hwfl.Runtime.RunSpec.spec
+  Hwfl.Runtime.TrySpec.spec
   Hwfl.Runtime.ConcurrentSpec.spec
   Hwfl.Runtime.HostOpsSpec.spec
   Hwfl.Runtime.AgentSpec.spec

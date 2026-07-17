@@ -2,6 +2,7 @@
 module Hwfl.Runtime.Error
   ( RuntimeError (..),
     renderRuntimeError,
+    isCatchable,
   )
 where
 
@@ -29,3 +30,11 @@ renderRuntimeError = \case
   HostErr t -> "host: " <> t
   ProviderErr t -> "provider: " <> t
   ConfigErr t -> "config: " <> t
+
+-- | Host / provider / sandbox failures recoverable with @try@/@catch@ (spec §02 §8).
+isCatchable :: RuntimeError -> Bool
+isCatchable = \case
+  HostErr _ -> True
+  ProviderErr _ -> True
+  SandboxErr _ -> True
+  _ -> False

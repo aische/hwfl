@@ -9,6 +9,8 @@ semantic-check deepen / skills phase D.
 
 ## Done recently
 
+- **`try` / `catch` runtime** — `FrTry` frame, catchable host/provider/sandbox
+  errors, type checker, snapshot resume, E10 tests
 - LLM span cost: catalog pricing → `cost_usd` on spans; running `$` ledger
   on `--debug`; per-span + run total on `hwfl show` tree
 - Coding-agent + skills: stack instruction playbooks (python / react /

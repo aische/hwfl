@@ -515,6 +515,13 @@ frameToJson = \case
   FrMatch env arms ->
     object ["tag" .= String "match", "env" .= envToJson env, "arms" .= showText arms]
   FrPar pjs -> object ["tag" .= String "par", "par" .= parToJson pjs]
+  FrTry var handlerEnv handler ->
+    object
+      [ "tag" .= String "try",
+        "var" .= unIdent var,
+        "env" .= envToJson handlerEnv,
+        "handler" .= showText handler
+      ]
   FrConfirm c -> object ["tag" .= String "confirm", "confirm" .= confirmToJson c]
   FrAfterConfirm cur ->
     object ["tag" .= String "after_confirm", "current" .= currentToJson cur]
@@ -571,6 +578,11 @@ parseFrame = withObject "Frame" $ \o -> do
     "match" ->
       FrMatch <$> (o .: "env" >>= parseEnv) <*> (o .: "arms" >>= readText)
     "par" -> FrPar <$> (o .: "par" >>= parsePar)
+    "try" ->
+      FrTry
+        <$> (Ident <$> o .: "var")
+        <*> (o .: "env" >>= parseEnv)
+        <*> (o .: "handler" >>= readText)
     "confirm" -> FrConfirm <$> (o .: "confirm" >>= parseConfirm)
     "after_confirm" -> FrAfterConfirm <$> (o .: "current" >>= parseCurrent)
     "exec_approved" -> pure FrExecApproved

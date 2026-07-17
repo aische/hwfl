@@ -70,7 +70,7 @@ import Hwfl.Runtime.Agent
     validateSubmit,
     valueToJsonText,
   )
-import Hwfl.Runtime.Error (RuntimeError (..))
+import Hwfl.Runtime.Error (RuntimeError (..), isCatchable, renderRuntimeError)
 import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), execNeedsConfirm, runHostOp)
 import Hwfl.Runtime.Machine
 import Hwfl.Runtime.Skills
@@ -225,7 +225,7 @@ stepMachine ctx mode m = case m.mStatus of
   MsDraining -> afterCrunch
   where
     afterCrunch = case crunch ctx m of
-      Left e -> pure (Left e)
+      Left e -> abortOrCatch ctx mode m e
       Right m' -> case m'.mCurrent of
         CurHost op args -> doHost ctx mode m' op args
         CurAwaitConfirm c -> doConfirm ctx m' c
@@ -274,7 +274,7 @@ doHost ::
   IO (Either RuntimeError StepResult)
 doHost ctx mode m op args
   | op == HostHumanConfirm = case confirmArgs args of
-      Left e -> pure (Left e)
+      Left e -> abortOrCatch ctx mode m e
       Right c -> doConfirm ctx m c
   | op == HostExecRun =
       case m.mFrames of
@@ -293,14 +293,14 @@ doHost ctx mode m op args
             | obsSpanNeedsBody args,
               not (null more) ->
                 case applyOrArgs ctx m (VHostOp HostObsSpan) args env more rest of
-                  Left err -> pure (Left err)
+                  Left err -> abortOrCatch ctx mode m err
                   Right (Just m') -> pure (Right (StepResult m' False))
                   Right Nothing -> pure (Right (StepResult m False))
-          _ -> pure (Left e)
+          _ -> abortOrCatch ctx mode m e
   | op == HostObsLog = doObsLog ctx mode m args
   | op == HostLlmAgent = startAgent ctx mode m args Nothing
   | op == HostLlmAgentObject = case parseAgentObjectArgs args of
-      Left e -> pure (Left e)
+      Left e -> abortOrCatch ctx mode m e
       Right (system, prompt, tools, schema, model, maxRounds) ->
         startAgentPrepared
           ctx
@@ -335,10 +335,16 @@ doHostRun ctx mode m op args = do
   result <- runHostOp ctx.rcHost op args
   case result of
     Left e -> do
-      let m' = m {mStatus = MsFailed, mError = Just e}
-      seqNo <- persist ctx (Just op) Nothing MsFailed (Just m')
-      closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) (Just seqNo)
-      pure (Left e)
+      abortOrCatch ctx mode m e >>= \case
+        Right sr -> do
+          seqNo <- persist ctx (Just op) Nothing sr.srMachine.mStatus (Just sr.srMachine)
+          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) (Just seqNo)
+          pure (Right sr)
+        Left _ -> do
+          let m' = m {mStatus = MsFailed, mError = Just e}
+          seqNo <- persist ctx (Just op) Nothing MsFailed (Just m')
+          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) (Just seqNo)
+          pure (Left e)
     Right hr -> do
       let m' = pauseIfStep mode (m {mCurrent = CurReturn hr.hrValue})
       seqNo <- persist ctx (Just op) (Just hr.hrValue) m'.mStatus (Just m')
@@ -393,7 +399,7 @@ startAgent ::
   Maybe Aeson.Value ->
   IO (Either RuntimeError StepResult)
 startAgent ctx mode m args submitSchema = case parseAgentArgs args of
-  Left e -> pure (Left e)
+  Left e -> abortOrCatch ctx mode m e
   Right (system, prompt, tools, model, maxRounds) ->
     startAgentPrepared
       ctx
@@ -463,7 +469,7 @@ stepAgentModel ctx mode m ag
                   <> T.pack (show ag.agMaxRounds)
                   <> ") without terminating"
               )
-      failAgent ctx m ag err
+      failAgent ctx mode m ag err
   | otherwise = do
       roundSid <-
         openSpan
@@ -494,7 +500,7 @@ stepAgentModel ctx mode m ag
       case result of
         Left pe -> do
           closeSpan ctx.rcStore ctx.rcSpans roundSid SsError (object ["error" .= renderProviderError pe]) Nothing
-          failAgent ctx m ag' (ProviderErr (renderProviderError pe))
+          failAgent ctx mode m ag' (ProviderErr (renderProviderError pe))
         Right pr
           | null pr.prToolCalls -> finishAgentText ctx mode m ag' pr
           | otherwise -> do
@@ -549,6 +555,7 @@ finishAgentText ctx mode m ag pr = case ag.agSubmitSchema of
       ag.agRoundSpanId
     failAgent
       ctx
+      mode
       m
       ag
       ( ProviderErr
@@ -1011,11 +1018,12 @@ recoverableTool ctx mode m ag tr err =
 
 failAgent ::
   RunCtx ->
+  StepMode ->
   Machine ->
   AgentState ->
   RuntimeError ->
   IO (Either RuntimeError StepResult)
-failAgent ctx m ag err = do
+failAgent ctx mode m ag err = do
   case ag.agToolRound of
     Just tr ->
       mapM_
@@ -1036,9 +1044,14 @@ failAgent ctx m ag err = do
     SsError
     (object ["error" .= renderErr err])
     Nothing
-  let m' = m {mStatus = MsFailed, mError = Just err}
-  _ <- persist ctx (Just (agentHostOp ag)) Nothing MsFailed (Just m')
-  pure (Left err)
+  abortOrCatch ctx mode m err >>= \case
+    Right sr -> do
+      _ <- persist ctx (Just (agentHostOp ag)) Nothing sr.srMachine.mStatus (Just sr.srMachine)
+      pure (Right sr)
+    Left _ -> do
+      let m' = m {mStatus = MsFailed, mError = Just err}
+      _ <- persist ctx (Just (agentHostOp ag)) Nothing MsFailed (Just m')
+      pure (Left err)
 
 mergeObjects :: Aeson.Value -> Aeson.Value -> Aeson.Value
 mergeObjects a b = case (a, b) of
@@ -1048,7 +1061,7 @@ mergeObjects a b = case (a, b) of
 doObsLog ::
   RunCtx -> StepMode -> Machine -> [(Maybe Ident, Value)] -> IO (Either RuntimeError StepResult)
 doObsLog ctx mode m args = case parseObsLog args of
-  Left e -> pure (Left e)
+  Left e -> abortOrCatch ctx mode m e
   Right (level, message, fields) -> do
     sid <-
       openSpan
@@ -1066,7 +1079,7 @@ doObsLog ctx mode m args = case parseObsLog args of
 doObsSpan ::
   RunCtx -> StepMode -> Machine -> [(Maybe Ident, Value)] -> IO (Either RuntimeError StepResult)
 doObsSpan ctx mode m args = case parseObsSpan args of
-  Left e -> pure (Left e)
+  Left e -> abortOrCatch ctx mode m e
   Right (name, thunk) -> do
     sid <-
       openSpan
@@ -1078,7 +1091,7 @@ doObsSpan ctx mode m args = case parseObsSpan args of
     case openApply ctx thunk [] of
       Left e -> do
         closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) Nothing
-        pure (Left e)
+        abortOrCatch ctx mode m e
       Right current -> do
         let m' =
               m
@@ -1526,6 +1539,42 @@ joinSlots ParCollect slots =
 renderErr :: RuntimeError -> Text
 renderErr = T.pack . show
 
+-- | Nearest @FrTry@ on the kont stack (innermost first).
+tryFrame :: [Frame] -> Maybe (Ident, Env, Expr, [Frame])
+tryFrame frames =
+  case break isTryFr frames of
+    (_, FrTry var handlerEnv handler : after) ->
+      Just (var, handlerEnv, handler, after)
+    _ -> Nothing
+  where
+    isTryFr (FrTry {}) = True
+    isTryFr _ = False
+
+dispatchCatch :: Machine -> RuntimeError -> Maybe Machine
+dispatchCatch m err
+  | isCatchable err,
+    Just (var, handlerEnv, handler, rest) <- tryFrame m.mFrames =
+      Just
+        m
+          { mStatus = MsRunning,
+            mError = Nothing,
+            mCurrent =
+              CurEval
+                handler
+                (extendEnv var (VString (renderRuntimeError err)) handlerEnv),
+            mFrames = rest
+          }
+  | otherwise = Nothing
+
+abortOrCatch ::
+  RunCtx -> StepMode -> Machine -> RuntimeError -> IO (Either RuntimeError StepResult)
+abortOrCatch ctx mode m err = case dispatchCatch m err of
+  Nothing -> pure (Left err)
+  Just caught -> do
+    let m' = pauseIfStep mode caught
+    _ <- persist ctx Nothing Nothing m'.mStatus (Just m')
+    pure (Right (StepResult m' True))
+
 -------------------------------------------------------------------------------
 -- Pure crunch
 
@@ -1568,7 +1617,14 @@ crunchEval ctx m e env = case e of
   ESchema te -> case typeToSchemaWithDocs ctx.rcTypeEnv ctx.rcSchemaDocs te of
     Left err -> Left (EvalErr (Trap (renderCheckError err)))
     Right schema -> ret m (VSchema schema)
-  ETry {} -> Left (EvalErr (Unsupported "try/catch is not available yet"))
+  ETry body errVar handler ->
+    Right
+      ( Just
+          m
+            { mCurrent = CurEval body env,
+              mFrames = FrTry errVar env handler : m.mFrames
+            }
+      )
   EList [] -> ret m (VList [])
   EList (x : xs) ->
     Right (Just m {mCurrent = CurEval x env, mFrames = FrList [] env xs : m.mFrames})
@@ -1730,6 +1786,7 @@ crunchReturn ctx m v = case m.mFrames of
                       )
           _ -> Left (EvalErr (Trap "par source is not a list"))
       | otherwise -> Left (EvalErr (Trap "unexpected return into active FrPar"))
+    FrTry _ _ _ -> ret m {mFrames = rest} v
     FrConfirm _ -> case confirmFromValue v of
       Left e -> Left e
       Right c ->

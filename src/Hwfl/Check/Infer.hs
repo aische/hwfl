@@ -181,7 +181,10 @@ infer env = \case
   EConfirm e -> do
     _ <- infer env e
     pure tBool
-  ETry {} -> Left (Unsupported "try/catch")
+  ETry body errVar handler -> do
+    tBody <- infer env body
+    check (extendVar errVar tString env) handler tBody
+    pure tBody
   ESchema te -> do
     _ <- typeToSchema env te
     pure schemaType
@@ -243,6 +246,10 @@ check env e want = do
       _ -> do
         got <- infer env e
         unify want' got
+    ETry body errVar handler -> do
+      tBody <- infer env body
+      check (extendVar errVar tString env) handler tBody
+      unify want' tBody
     _ -> do
       got <- infer env e
       unify want' got
