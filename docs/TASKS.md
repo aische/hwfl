@@ -9,11 +9,11 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 ## Next (P1–P2)
 
 - [ ] Semantic-check deepen (layer 3 / self-check polish; optional CLI sugar)
+- [ ] Skills phase D (optional) — `examples/skills/` writer; no hidden
+      `skill.extract` host
 
 ## Later (P2–P3)
 
-- [ ] Skills — full plan: [skills-plan.md](skills-plan.md) (catalog +
-      `skill.discover` / `skill.load`, agent mid-loop load + resume)
 - [ ] Run-store interface over `.hwfl/runs`, then optional DB-backed store
 - [ ] Servant HTTP API on the same run/check APIs as the CLI
 - [ ] MCP client (tool provider behind existing `tool(f)` / host-op story)
@@ -35,4 +35,4 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07-15/16/17 completions (including P0 host gaps, coding-agent,
-tool-call spans + `--debug`, lifecycle tutorial).
+tool-call spans + `--debug`, lifecycle tutorial, skills A–C).

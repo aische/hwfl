@@ -21,12 +21,15 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Expr
-import Hwfl.Ast.Module (SchemaDoc)
-import Hwfl.Ast.Name (Ident (..), Slug, qnameToText, slugToText)
+import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), SchemaDoc)
+import Hwfl.Ast.Name (Ident (..), QName (..), Slug, qnameFromParts, qnameToText, slugToText)
 import Hwfl.Ast.Pat (Literal (..))
+import Hwfl.Ast.Skill (SkillMeta (..))
+import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Check.Env (TypeEnv)
 import Hwfl.Check.Error (renderCheckError)
-import Hwfl.Check.Schema (typeToSchemaWithDocs)
+import Hwfl.Check.Prelude (preludeTypeEnv)
+import Hwfl.Check.Schema (typeToSchema, typeToSchemaWithDocs)
 import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Prelude (applyBuiltin)
 import Hwfl.Eval.Pure (bindParams, matchPat)
@@ -61,6 +64,7 @@ import Hwfl.Runtime.Agent
     parseAgentArgs,
     parseAgentObjectArgs,
     providerToolSpecs,
+    sanitizeToolName,
     submitToolName,
     validateSubmit,
     valueToJsonText,
@@ -68,7 +72,13 @@ import Hwfl.Runtime.Agent
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), execNeedsConfirm, runHostOp)
 import Hwfl.Runtime.Machine
+import Hwfl.Runtime.Skills
+  ( AgentSkillLoad (..),
+    agentLoadSkill,
+    instructionInjectionText,
+  )
 import Hwfl.Runtime.Snapshot (RunStore (..), persistTransition)
+import Hwfl.SkillCatalog (SkillEntry (..), lookupSkillEntry)
 
 data RunCtx = RunCtx
   { rcHost :: HostEnv,
@@ -81,7 +91,11 @@ data RunCtx = RunCtx
     rcStore :: RunStore,
     rcProjectHash :: Text,
     rcSeq :: IORef Int,
-    rcSpans :: SpanState
+    rcSpans :: SpanState,
+    -- | Prebuilt env+funs for callable skills (keyed by skill qname).
+    rcSkillFuns :: Map QName (Env, FunTable),
+    -- | Loaded skill modules for tool schema / body rebuild.
+    rcSkillModules :: Map QName LoadedModule
   }
 
 data StepMode = StepOnce | StepRun
@@ -160,6 +174,13 @@ openApply ctx fv argv = case fv of
     Just (params, body) -> case bindParams params argv of
       Left e -> Left (EvalErr e)
       Right binds -> Right (CurEval body (extendEnvMany binds ctx.rcBaseEnv))
+  VSkillMain q -> case Map.lookup q ctx.rcSkillFuns of
+    Nothing -> Left (EvalErr (Trap ("unknown skill module: " <> qnameToText q)))
+    Just (env, funs) -> case Map.lookup (Ident "main") funs of
+      Nothing -> Left (EvalErr (Trap ("skill missing main: " <> qnameToText q)))
+      Just (params, body) -> case bindParams params argv of
+        Left e -> Left (EvalErr e)
+        Right binds -> Right (CurEval body (extendEnvMany binds env))
   VHostOp op -> Right (CurHost op argv)
   _ -> Left (EvalErr (Trap "applied a non-function value"))
 
@@ -449,11 +470,17 @@ stepAgentModel ctx mode m ag
           ctx.rcSpans
           ("agent_round:" <> T.pack (show ag.agRound))
           SkAgentRound
-          (object ["round" .= ag.agRound, "model" .= ag.agModel])
+          ( object
+              [ "round" .= ag.agRound,
+                "model" .= ag.agModel,
+                "active_tools" .= map (.tvsName) ag.agTools,
+                "loaded_instructions" .= ag.agLoadedInstructionIds
+              ]
+          )
       let ag' = ag {agRoundSpanId = Just roundSid}
           req =
             (emptyChatRequest ag.agModel)
-              { chatSystem = Just ag.agSystem,
+              { chatSystem = Just (agentSystemPrompt ctx ag),
                 chatTurns = ag.agHistory,
                 chatTools = providerToolSpecs ag.agTools
               }
@@ -671,43 +698,143 @@ startToolCall ctx mode m ag tr tc = do
           }
   if isSubmitCall tc
     then runSubmit ctx mode m ag tr0 tc
-    else case lookupTool ag.agTools tc.tcName of
-      Nothing ->
-        completeToolCall
-          ctx
-          mode
-          m
-          ag
-          tr0
-          ("unknown tool '" <> tc.tcName <> "'")
-      Just tool -> case coerceToolArgs tool tc.tcArguments of
-        Left reason ->
-          completeToolCall
-            ctx
-            mode
-            m
-            ag
-            tr0
-            ("invalid arguments: " <> reason)
-        Right argv -> case openApply ctx tool.tvsCallee argv of
-          Left e ->
+    else
+      if tc.tcName == "skill_load"
+        then runSkillLoadTool ctx mode m ag tr0 tc
+        else case lookupTool ag.agTools tc.tcName of
+          Nothing ->
             completeToolCall
               ctx
               mode
               m
               ag
               tr0
-              ("tool open failed: " <> renderErr e)
-          Right current -> do
-            let nested = initialMachine m.mProjectHash current
-                tr' =
+              ("unknown tool '" <> tc.tcName <> "'")
+          Just tool -> case coerceToolArgs tool tc.tcArguments of
+            Left reason ->
+              completeToolCall
+                ctx
+                mode
+                m
+                ag
+                tr0
+                ("invalid arguments: " <> reason)
+            Right argv -> case openApply ctx tool.tvsCallee argv of
+              Left e ->
+                completeToolCall
+                  ctx
+                  mode
+                  m
+                  ag
                   tr0
-                    { trActiveMachine = Just (mkBranch nested)
-                    }
-                ag' = ag {agToolRound = Just tr'}
-                m' = m {mCurrent = CurAgent ag'}
-            -- Continue into the nested machine this step.
-            stepAgentTool ctx mode m' ag' tr'
+                  ("tool open failed: " <> renderErr e)
+              Right current -> do
+                let nested = initialMachine m.mProjectHash current
+                    tr' =
+                      tr0
+                        { trActiveMachine = Just (mkBranch nested)
+                        }
+                    ag' = ag {agToolRound = Just tr'}
+                    m' = m {mCurrent = CurAgent ag'}
+                -- Continue into the nested machine this step.
+                stepAgentTool ctx mode m' ag' tr'
+
+runSkillLoadTool ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ToolRound ->
+  ToolCall ->
+  IO (Either RuntimeError StepResult)
+runSkillLoadTool ctx mode m ag tr tc =
+  case coerceToolArgs skillLoadToolSpec tc.tcArguments of
+    Left reason ->
+      completeToolCall ctx mode m ag tr ("invalid arguments: " <> reason)
+    Right argv -> case lookup (Just (Ident "id")) argv of
+      Just (VString skillId) -> do
+        let load =
+              agentLoadSkill
+                ctx.rcHost.heSkillCatalog
+                ag.agLoadedInstructionIds
+                ag.agActiveToolIds
+                ag.agInstructionChars
+                skillId
+            ag1 =
+              ag
+                { agLoadedInstructionIds = load.aslLoadedInstructionIds,
+                  agActiveToolIds = load.aslLoadedCallableIds,
+                  agInstructionChars = load.aslInstructionChars
+                }
+            ag2 = case load.aslNewCallable of
+              Nothing -> ag1
+              Just q ->
+                case buildSkillToolFromQName ctx q of
+                  Left _ -> ag1
+                  Right ts ->
+                    ag1 {agTools = insertSkillTool ag1.agTools ts}
+        completeToolCall ctx mode m ag2 tr (valueToJsonText load.aslResult)
+      _ ->
+        completeToolCall ctx mode m ag tr "invalid arguments: missing id"
+
+skillLoadToolSpec :: ToolSpecValue
+skillLoadToolSpec =
+  ToolSpecValue
+    { tvsName = "skill_load",
+      tvsDescription = "Load a skill by id",
+      tvsParameters = object [],
+      tvsCallee = VHostOp HostSkillLoad
+    }
+
+insertSkillTool :: [ToolSpecValue] -> ToolSpecValue -> [ToolSpecValue]
+insertSkillTool tools ts =
+  let (base, submit) = break ((== submitToolName) . (.tvsName)) tools
+   in case submit of
+        [] -> base ++ [ts]
+        s : rest -> base ++ [ts] ++ (s : rest)
+
+-- | Rebuild system prompt from base + loaded instruction ids (resume-safe).
+agentSystemPrompt :: RunCtx -> AgentState -> Text
+agentSystemPrompt ctx ag =
+  let injections =
+        [ instructionInjectionText sid body
+          | sid <- ag.agLoadedInstructionIds,
+            Just e <- [lookupSkillEntry (qnameFromText_ sid) ctx.rcHost.heSkillCatalog],
+            Just body <- [seBody e]
+        ]
+   in T.intercalate "\n\n" (filter (not . T.null) (ag.agSystem : injections))
+
+qnameFromText_ :: Text -> QName
+qnameFromText_ t = qnameFromParts (T.splitOn "/" t)
+
+buildSkillToolFromQName :: RunCtx -> QName -> Either RuntimeError ToolSpecValue
+buildSkillToolFromQName ctx q = case Map.lookup q ctx.rcSkillModules of
+  Nothing -> Left (HostErr ("skill module not loaded: " <> qnameToText q))
+  Just loaded -> buildSkillToolSpec q loaded
+
+buildSkillToolSpec :: QName -> LoadedModule -> Either RuntimeError ToolSpecValue
+buildSkillToolSpec q loaded =
+  let fm = loaded.lmFrontmatter
+      schema =
+        case typeToSchema preludeTypeEnv (TRecord fm.fmInputs) of
+          Right v -> v
+          Left _ ->
+            object
+              [ "type" .= Aeson.String "object",
+                "properties" .= object [],
+                "additionalProperties" .= False
+              ]
+      summary =
+        case fm.fmSkill of
+          Just meta -> fromMaybe ("skill " <> qnameToText q) meta.smSummary
+          Nothing -> "skill " <> qnameToText q
+   in Right
+        ToolSpecValue
+          { tvsName = sanitizeToolName (qnameToText q),
+            tvsDescription = summary,
+            tvsParameters = schema,
+            tvsCallee = VSkillMain q
+          }
 
 runSubmit ::
   RunCtx ->

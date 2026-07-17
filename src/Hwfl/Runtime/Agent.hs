@@ -147,6 +147,23 @@ hostToolMeta = \case
             ("stdin", t "String", "Standard input text")
           ]
       )
+  HostSkillDiscover ->
+    Right
+      ( "skill_discover",
+        "Discover project skills by query / kinds / limit (metadata only)",
+        describedObjectSchema
+          [ ("query", t "String", "Substring match on id, summary, and tags"),
+            ("kinds", TList (t "String"), "Filter: callable and/or instruction; empty = all"),
+            ("limit", t "Int", "Max results (default 20)")
+          ]
+      )
+  HostSkillLoad ->
+    Right
+      ( "skill_load",
+        "Load a skill by id: instruction injects context; callable expands tools",
+        describedObjectSchema
+          [("id", t "String", "Skill qname such as skills/shell-repair-guide")]
+      )
   other ->
     Left (HostErr ("host op not agent-eligible as tool: " <> hostOpName other))
 
@@ -309,7 +326,11 @@ initAgentState system prompt tools model maxRounds spanId submitSchema =
           agRound = 0,
           agToolRound = Nothing,
           agSpanId = spanId,
-          agRoundSpanId = Nothing
+          agRoundSpanId = Nothing,
+          agBaselineTools = tools',
+          agActiveToolIds = [],
+          agLoadedInstructionIds = [],
+          agInstructionChars = 0
         }
 
 expectTools :: [(Maybe Ident, Value)] -> Either RuntimeError [ToolSpecValue]
@@ -406,8 +427,33 @@ coerceToolArgs ts json = case ts.tvsCallee of
           (Just (Ident "stdin"), VString stdin)
         ]
     _ -> Left "exec_run arguments must be an object"
+  VHostOp HostSkillDiscover -> case json of
+    Aeson.Object o -> do
+      let query = case KM.lookup "query" o of
+            Just (Aeson.String q) -> q
+            _ -> ""
+          kinds = case KM.lookup "kinds" o of
+            Just (Aeson.Array arr) -> [s | Aeson.String s <- V.toList arr]
+            _ -> []
+          limit = case KM.lookup "limit" o of
+            Just (Aeson.Number n) -> round n
+            _ -> (20 :: Integer)
+      Right
+        [ (Just (Ident "query"), VString query),
+          (Just (Ident "kinds"), VList (map VString kinds)),
+          (Just (Ident "limit"), VInt limit)
+        ]
+    _ -> Left "skill_discover arguments must be an object"
+  VHostOp HostSkillLoad -> case json of
+    Aeson.Object o -> case KM.lookup "id" o of
+      Just (Aeson.String sid) -> Right [(Just (Ident "id"), VString sid)]
+      Just _ -> Left "skill_load.id must be a string"
+      Nothing -> Left "skill_load missing id"
+    Aeson.String sid -> Right [(Just (Ident "id"), VString sid)]
+    _ -> Left "skill_load arguments must be an object or string id"
   VTopFun {} -> namedObjectArgs json
   VClosure {} -> namedObjectArgs json
+  VSkillMain {} -> namedObjectArgs json
   _ -> Left "unsupported tool callee"
   where
     stringField o k = case KM.lookup (Key.fromText k) o of

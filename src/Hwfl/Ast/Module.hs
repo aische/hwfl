@@ -10,6 +10,7 @@ where
 import Data.Text (Text)
 import Hwfl.Ast.Decl (ModuleBody)
 import Hwfl.Ast.Name (Ident, QName, Slug, TypeName)
+import Hwfl.Ast.Skill (SkillMeta)
 import Hwfl.Ast.Type (Effect, TypeExpr)
 
 data Frontmatter = Frontmatter
@@ -18,7 +19,9 @@ data Frontmatter = Frontmatter
     fmInputs :: [(Ident, TypeExpr)],
     fmOutputs :: [(Ident, TypeExpr)],
     fmEffects :: Maybe [Effect],
-    fmImports :: [QName]
+    fmImports :: [QName],
+    -- | Nested @skill:@ block when present (skills-plan §4.1).
+    fmSkill :: Maybe SkillMeta
   }
   deriving stock (Eq, Show)
 
@@ -41,6 +44,8 @@ data LoadedModule = LoadedModule
     lmFrontmatter :: Frontmatter,
     lmSections :: [Section],
     lmSchemaDocs :: [SchemaDoc],
-    lmBody :: ModuleBody
+    lmBody :: ModuleBody,
+    -- | Markdown after frontmatter (instruction skill body / summary fallback).
+    lmProseBody :: Text
   }
   deriving stock (Eq, Show)

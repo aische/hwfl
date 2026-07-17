@@ -13,7 +13,7 @@ import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     runLoadedModule,
-  )
+    emptySkillRuntime)
 import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -51,7 +51,9 @@ spec = describe "semantic-check dogfood (M8 / E20)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                 }
               m
           case outcome of

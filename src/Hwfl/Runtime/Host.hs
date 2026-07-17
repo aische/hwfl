@@ -37,6 +37,7 @@ import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Project (ExecPolicy (..))
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Exec (ExecArgs (..), ExecOutcome (..), runExec)
+import Hwfl.Runtime.Skills (discoverSkillsResult, loadSkillScripted)
 import Hwfl.Runtime.Workspace
   ( Workspace,
     editFile,
@@ -47,6 +48,7 @@ import Hwfl.Runtime.Workspace
     workspaceRoot,
     writeTextFile,
   )
+import Hwfl.SkillCatalog (SkillCatalog)
 import Hwfl.Source (renderDiagnostics)
 import System.FilePath ((</>))
 
@@ -56,6 +58,7 @@ data HostEnv = HostEnv
     heProvider :: LlmProvider,
     -- | 'Nothing' when no project @exec@ policy is configured.
     heExec :: Maybe ExecPolicy,
+    heSkillCatalog :: SkillCatalog,
     heLog :: Text -> IO ()
   }
 
@@ -114,6 +117,12 @@ hostOpsEnv =
           [ (Ident "check_module", VHostOp HostMetaCheckModule),
             (Ident "check_project", VHostOp HostMetaCheckProject)
           ]
+      ),
+      ( Ident "skill",
+        VRecord
+          [ (Ident "discover", VHostOp HostSkillDiscover),
+            (Ident "load", VHostOp HostSkillLoad)
+          ]
       )
     ]
 
@@ -133,10 +142,12 @@ runHostOp env op args = case op of
   HostFsEdit -> doFsEdit env args
   HostFsGrep -> doFsGrep env args
   HostExecRun -> doExecRun env args
-  HostMetaCheckModule -> doMetaCheckModule env args
-  HostMetaCheckProject -> doMetaCheckProject env args
   HostLlmChat -> doLlmChat env args
   HostLlmObject -> doLlmObject env args
+  HostMetaCheckModule -> doMetaCheckModule env args
+  HostMetaCheckProject -> doMetaCheckProject env args
+  HostSkillDiscover -> doSkillDiscover env args
+  HostSkillLoad -> doSkillLoad env args
   HostLlmAgent ->
     pure (Left (HostErr "llm.agent must be driven by the machine (agent loop)"))
   HostLlmAgentObject ->
@@ -147,6 +158,52 @@ runHostOp env op args = case op of
     pure (Left (HostErr "human.confirm must be driven by the machine (approve gate)"))
   HostObsSpan ->
     pure (Left (HostErr "obs.span must be driven by the machine (region frame)"))
+
+doSkillDiscover :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doSkillDiscover env args = pure $ case skillDiscoverArgs args of
+  Left e -> Left e
+  Right (query, kinds, limit) ->
+    let v = discoverSkillsResult env.heSkillCatalog query kinds limit
+     in Right (HostResult v (object ["hits" .= skillHitCount v]))
+
+doSkillLoad :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doSkillLoad env args = pure $ case skillIdArg args of
+  Left e -> Left e
+  Right skillId ->
+    let v = loadSkillScripted env.heSkillCatalog skillId
+     in Right (HostResult v (object ["id" .= skillId]))
+
+skillDiscoverArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, [Text], Int)
+skillDiscoverArgs args = do
+  query <- case lookupNamed (Ident "query") args of
+    Just (VString q) -> Right q
+    Just _ -> Left (HostErr "skill.discover.query must be a String")
+    Nothing -> Right ""
+  kinds <- case lookupNamed (Ident "kinds") args of
+    Just (VList xs) -> traverse expectStringVal xs
+    Just _ -> Left (HostErr "skill.discover.kinds must be a List<String>")
+    Nothing -> Right []
+  let limit = case lookupNamed (Ident "limit") args of
+        Just (VInt n) | n > 0 -> fromIntegral n
+        _ -> 20
+  pure (query, kinds, limit)
+  where
+    expectStringVal = \case
+      VString s -> Right s
+      _ -> Left (HostErr "skill.discover.kinds elements must be strings")
+
+skillIdArg :: [(Maybe Ident, Value)] -> Either RuntimeError Text
+skillIdArg args = case lookupNamed (Ident "id") args of
+  Just (VString s) -> Right s
+  Just _ -> Left (HostErr "skill.load.id must be a String")
+  Nothing -> Left (HostErr "skill.load missing id")
+
+skillHitCount :: Value -> Int
+skillHitCount = \case
+  VRecord fs -> case lookup (Ident "skills") fs of
+    Just (VList xs) -> length xs
+    _ -> 0
+  _ -> 0
 
 doFsRead :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doFsRead env args = case fileRefArg args of

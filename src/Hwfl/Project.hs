@@ -29,6 +29,7 @@ import Hwfl.Ast.Module (LoadedModule (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), qnameFromParts, qnameToText)
 import Hwfl.Ast.Type (Effect (..), parseEffectName)
 import Hwfl.Parse.Load (loadModule)
+import Hwfl.SkillCatalog (SkillPolicy (..), defaultSkillPolicy)
 import Hwfl.Source (Diagnostic (..), renderDiagnostics)
 import System.Directory
   ( doesDirectoryExist,
@@ -67,7 +68,8 @@ data ProjectConfig = ProjectConfig
     pcEntrypoint :: QName,
     pcEnv :: [Text],
     pcEffects :: EffectsPolicy,
-    pcExec :: Maybe ExecPolicy
+    pcExec :: Maybe ExecPolicy,
+    pcSkills :: SkillPolicy
   }
   deriving stock (Eq, Show)
 
@@ -124,6 +126,7 @@ instance FromJSON ProjectConfig where
     env <- o .:? "env" .!= ([] :: [Text])
     effects <- o .:? "effects" .!= EffectsPolicy [] []
     exec <- o .:? "exec"
+    skills <- o .:? "skills" .!= defaultSkillPolicy
     pure
       ProjectConfig
         { pcRoot = "",
@@ -132,7 +135,8 @@ instance FromJSON ProjectConfig where
           pcEntrypoint = qnameFromText entry,
           pcEnv = env,
           pcEffects = effects,
-          pcExec = exec
+          pcExec = exec,
+          pcSkills = skills
         }
 
 loadProjectConfig :: FilePath -> IO (Either Text ProjectConfig)
@@ -192,7 +196,7 @@ discoverModules root = do
     else pure (Right ProjectIndex {piRoot = normalise root, piModules = Map.fromList pairs})
   where
     -- Spec layout: only these trees contain modules (skip README.md etc.).
-    moduleRoots = ["workflows", "lib", "tools", "types"]
+    moduleRoots = ["workflows", "lib", "tools", "types", "skills"]
     findMarkdownModules dir = do
       existing <-
         filterM

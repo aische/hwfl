@@ -33,6 +33,7 @@ library
         Hwfl.Ast.Name
         Hwfl.Ast.Pat
         Hwfl.Ast.Pretty
+        Hwfl.Ast.Skill
         Hwfl.Ast.Type
         Hwfl.Check.Effects
         Hwfl.Check.Env
@@ -78,7 +79,9 @@ library
         Hwfl.Runtime.Machine
         Hwfl.Runtime.Run
         Hwfl.Runtime.Snapshot
+        Hwfl.Runtime.Skills
         Hwfl.Runtime.Workspace
+        Hwfl.SkillCatalog
         Hwfl.Source
     build-depends:
         base                 ^>=4.18,
@@ -147,7 +150,9 @@ test-suite hwfl-test
         Hwfl.Runtime.ObjectSpec
         Hwfl.Runtime.RunSpec
         Hwfl.Runtime.SemanticCheckSpec
+        Hwfl.Runtime.SkillSpec
         Hwfl.Runtime.WorkspaceSpec
+        Hwfl.SkillCatalogSpec
     build-depends:
         base,
         hwfl,

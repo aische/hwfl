@@ -21,7 +21,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Expr (Expr, Param)
-import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Ast.Name (Ident (..), QName (..), TypeName (..))
 
 -- | Environment: identifier → value.
 type Env = Map Ident Value
@@ -85,6 +85,8 @@ data HostOpId
   | HostObsSpan
   | HostMetaCheckModule
   | HostMetaCheckProject
+  | HostSkillDiscover
+  | HostSkillLoad
   deriving stock (Eq, Ord, Show)
 
 -- | Runtime tool advertisement: schema + callable (host op / fun / closure).
@@ -117,6 +119,8 @@ data Value
     VHostOp HostOpId
   | -- | Agent tool spec from @tool(f)@.
     VToolSpec ToolSpecValue
+  | -- | Skill module @main@ resolved via 'RunCtx' skill tables.
+    VSkillMain QName
   | -- | Reflected JSON Schema from @schema(T)@ (check-time type @Schema@).
     VSchema Aeson.Value
   deriving stock (Eq, Show)
@@ -147,6 +151,7 @@ renderValue = \case
   VBuiltin {} -> Left "cannot render a builtin as text"
   VHostOp op -> Left ("cannot render host op as text: " <> hostOpName op)
   VToolSpec ts -> Left ("cannot render tool spec as text: " <> ts.tvsName)
+  VSkillMain q -> Left ("cannot render skill main as text: " <> T.intercalate "/" (map unIdent (qnParts q)))
   VSchema {} -> Left "cannot render a Schema as text"
 
 -- | Stable dotted name for spans / snapshots.
@@ -168,6 +173,8 @@ hostOpName = \case
   HostObsSpan -> "obs.span"
   HostMetaCheckModule -> "meta.check_module"
   HostMetaCheckProject -> "meta.check_project"
+  HostSkillDiscover -> "skill.discover"
+  HostSkillLoad -> "skill.load"
 
 renderJsonish :: Value -> Either Text Text
 renderJsonish = \case

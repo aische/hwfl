@@ -16,7 +16,7 @@ import Hwfl.Runtime.Run
     approveRun,
     resumeRun,
     runLoadedModule,
-  )
+    emptySkillRuntime)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -116,7 +116,9 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                 }
               loaded
           case outcome of
@@ -146,7 +148,9 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                 }
               loaded
           case outcome of
@@ -174,7 +178,9 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                 }
               loaded
           case outcome of
@@ -214,7 +220,9 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepOnce,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                 }
               loaded
           case o0 of
@@ -251,7 +259,9 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                 }
               loaded
           -- Mutate kernel body so project_hash changes.

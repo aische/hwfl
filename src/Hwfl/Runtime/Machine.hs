@@ -88,7 +88,15 @@ data AgentState = AgentState
     -- | Open @llm.agent@ / @llm.agent_object@ host span id (closed on finish).
     agSpanId :: Text,
     -- | Open @agent_round@ span for the current model/tool round, if any.
-    agRoundSpanId :: Maybe Text
+    agRoundSpanId :: Maybe Text,
+    -- | Baseline tools from the agent call (before skill loads).
+    agBaselineTools :: [ToolSpecValue],
+    -- | Callable skill qnames loaded mid-loop (@active_tool_ids@).
+    agActiveToolIds :: [Text],
+    -- | Instruction skill ids already merged (@loaded_instruction_ids@).
+    agLoadedInstructionIds :: [Text],
+    -- | Accumulated instruction body chars against @max_instruction_chars@.
+    agInstructionChars :: Int
   }
   deriving stock (Eq, Show)
 

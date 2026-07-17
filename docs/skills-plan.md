@@ -1,9 +1,7 @@
 # Skills — implementation plan
 
-**Status:** planned / not implemented. Guiding design until a numbered
-spec section and code land. Normative behaviour will move into
-`spec/01-modules.md`, `spec/05-host-ops.md`, and `spec/06-runtime.md`
-when shipped.
+**Status:** implemented (phases A–C). Normative behaviour should move into
+`spec/01-modules.md`, `spec/05-host-ops.md`, and `spec/06-runtime.md`.
 
 **Reference:** hwfi `docs/skills-design.md`, spec §6.6–§6.7, and
 `Hwfi.SkillCatalog` / `Hwfi.Runtime.Skills`. Reuse behaviour and tests;
@@ -293,17 +291,18 @@ stays a thin convenience over Mode A. Prefer in-language workflows.
 
 ## 10. Acceptance sketch (when implementing)
 
-- [ ] `skills/*.md` appear in catalog after `hwfl check`
-- [ ] `skill.discover` filters by query / kinds / limit; metadata only
-- [ ] `skill.load` instruction inside agent injects context next round
-- [ ] `skill.load` callable inside agent advertises tool next round
-- [ ] Double load is idempotent
-- [ ] Budget overflow is recoverable (`ok = false`)
-- [ ] Snapshot resume restores active tools + loaded instructions
-- [ ] Ineligible callable cannot be loaded as an agent tool
-- [ ] No implicit injection of discover/load into every agent
+- [x] `skills/*.md` appear in catalog after `hwfl check`
+- [x] `skill.discover` filters by query / kinds / limit; metadata only
+- [x] `skill.load` instruction inside agent injects context next round
+- [x] `skill.load` callable inside agent advertises tool next round
+- [x] Double load is idempotent
+- [x] Budget overflow is recoverable (`ok = false`)
+- [x] Snapshot resume restores active tools + loaded instructions
+- [x] Ineligible callable cannot be loaded as an agent tool
+- [x] No implicit injection of discover/load into every agent
 - [ ] Semantic-check (or a smaller example) can use skills without
       hardcoding every callable in the initial `tools` list
+      → covered by `examples/skills` + SkillSpec; semantic-check dogfood deferred
 
 ## 11. What not to build
 
@@ -325,13 +324,15 @@ stays a thin convenience over Mode A. Prefer in-language workflows.
 | Agent `active-tool-ids` / instruction ids | agent snapshot fields (§6) |
 | Mode A extraction | phase D; prefer hwfl modules |
 
-## 13. Open questions (resolve in implementation PR)
+## 13. Open questions (resolved in implementation)
 
-1. **Rebuild vs store instruction text** in snapshots — size vs simplicity.
-2. **Callable load outside agent** — return `ToolSpec` value vs qname string
-   for later `tools` assembly (depends on how dynamic `tools` lists are
-   typed today).
-3. **CLI** `hwfl skill list` — optional sugar over the catalog; not required
-   if discover suffices.
-4. Whether instruction skills may include non-executed prose fences for
-   examples — lean no until needed.
+1. **Rebuild vs store instruction text** — **rebuild-from-ids.** Snapshots
+   persist `loaded_instruction_ids` (+ char budget); model rounds rebuild
+   injection text from the catalog. Base `agSystem` is never mutated.
+2. **Callable load outside agent** — interim: `{ ok, kind=callable,
+   loaded=false, content="", error="" }` (no global tool install). Dynamic
+   `ToolSpec` values for later `tools` assembly deferred until first-class
+   tool refs are stable.
+3. **CLI** `hwfl skill list` — **skipped**; `skill.discover` suffices.
+4. Instruction skills with example fences — **rejected** (`hwfl` fence
+   forbidden on instruction skills).

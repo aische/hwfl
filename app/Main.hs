@@ -10,7 +10,7 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Ast.Pretty (prettyModuleBody)
 import Hwfl.Check.Error (renderCheckError)
 import Hwfl.Check.Module (checkLoadedModule)
-import Hwfl.Check.Project (checkProject, checkProjectLoaded, renderProjectCheckError)
+import Hwfl.Check.Project (CheckProjectResult (..), checkProject, checkProjectLoaded, renderProjectCheckError)
 import Hwfl.Env (loadDotenv)
 import Hwfl.Eval.Value (Value, renderValue)
 import Hwfl.Llm.Mock (mockProvider)
@@ -33,11 +33,14 @@ import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     approveRun,
+    emptySkillRuntime,
     parseCliInputs,
     resumeRun,
     runLoadedModule,
     stepRun,
   )
+import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
+import Hwfl.SkillCatalog (isSkillQName, skillMetaForModule)
 import Hwfl.Runtime.Snapshot (RunStore)
 import Hwfl.Source (renderDiagnostics)
 import System.Directory (getCurrentDirectory)
@@ -158,15 +161,26 @@ runProject flags ws inputs provider = do
       TIO.hPutStrLn stderr err
       exitWith (ExitFailure 1)
     Right lp -> do
-      unless flags.rfNoCheck $ do
-        hPutStrLn stderr "hwfl run: checking project…"
-        case checkProjectLoaded lp of
-          Left err -> do
-            TIO.hPutStrLn stderr (renderProjectCheckError err)
-            exitWith (ExitFailure 1)
-          Right _ -> pure ()
+      catalog <- case (flags.rfNoCheck, checkProjectLoaded lp) of
+        (True, _) ->
+          let (c, _) = emptySkillRuntime
+           in pure c
+        (False, Left err) -> do
+          hPutStrLn stderr "hwfl run: checking project…"
+          TIO.hPutStrLn stderr (renderProjectCheckError err)
+          exitWith (ExitFailure 1)
+        (False, Right cpr) -> do
+          hPutStrLn stderr "hwfl run: checking project…"
+          pure cpr.cprSkillCatalog
       let entry = lp.lpConfig.pcEntrypoint
           entryPath = modulePathForQname flags.rfModule entry
+          skillMods =
+            Map.filterWithKey
+              ( \q m ->
+                  isSkillQName q
+                    && smKind (skillMetaForModule m) == SkillCallable
+              )
+              lp.lpModules
       case Map.lookup entry lp.lpModules of
         Nothing -> do
           hPutStrLn stderr "entrypoint module missing after load"
@@ -183,7 +197,9 @@ runProject flags ws inputs provider = do
                     roMode = if flags.rfStep then StepOnce else StepRun,
                     roProjectHash = hash,
                     roExec = lp.lpConfig.pcExec,
-                    roDebug = flags.rfDebug
+                    roDebug = flags.rfDebug,
+                    roSkillCatalog = catalog,
+                    roSkillModules = skillMods
                   }
           handleOutcome (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
 
@@ -202,7 +218,8 @@ runSingleModule flags ws inputs provider = do
             TIO.hPutStrLn stderr (renderCheckError err)
             exitWith (ExitFailure 1)
           Right _ -> pure ()
-      let opts =
+      let (catalog, skillMods) = emptySkillRuntime
+          opts =
             RunOptions
               { roWorkspace = ws,
                 roProvider = provider,
@@ -212,7 +229,9 @@ runSingleModule flags ws inputs provider = do
                 roMode = if flags.rfStep then StepOnce else StepRun,
                 roProjectHash = Nothing,
                 roExec = Nothing,
-                roDebug = flags.rfDebug
+                roDebug = flags.rfDebug,
+                roSkillCatalog = catalog,
+                roSkillModules = skillMods
               }
       handleOutcome (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
 

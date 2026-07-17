@@ -24,7 +24,7 @@ import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     runLoadedModule,
-  )
+    emptySkillRuntime)
 import Hwfl.Runtime.Snapshot (RunStore (..), valueToJson)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
@@ -145,7 +145,9 @@ spec = describe "observability (M6)" $ do
                     roMode = StepRun,
                     roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                   }
                 loaded
             case outcome of
@@ -177,7 +179,9 @@ spec = describe "observability (M6)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of

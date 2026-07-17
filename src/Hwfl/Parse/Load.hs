@@ -1,4 +1,5 @@
--- | Load a markdown module: frontmatter + sections + primary @hwfl@ fence AST.
+-- | Load a markdown module: frontmatter + sections + primary @hwfl@ fence AST
+-- (or prose-only instruction skill under @skills/@).
 module Hwfl.Parse.Load
   ( loadModule,
     loadModuleText,
@@ -12,8 +13,10 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Hwfl.Ast.Module (LoadedModule (..), SchemaDoc (..), Section (..))
+import Hwfl.Ast.Decl (ModuleBody (..))
+import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), SchemaDoc (..), Section (..))
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Parse.Frontmatter (parseFrontmatter)
 import Hwfl.Parse.Lexer (bundleToDiagnostics)
 import Hwfl.Parse.Markdown (MarkdownFile (..), MdFence (..), parseMarkdown)
@@ -33,20 +36,74 @@ loadModuleText path src = do
     Just t -> Right t
     Nothing -> Left [mkDiagnostic path (Pos 1 1) "module requires YAML frontmatter"]
   fm <- parseFrontmatter path fmText
-  fence <- exactlyOneHwflFence path md.mdFences
-  body <- case parseModuleBody path fence.mfContent of
-    Left bundle -> Left (bundleToDiagnostics path bundle)
-    Right b -> Right b
-  let sections = buildSections md.mdLines md.mdHeadings md.mdFences
+  let prose = proseBodyAfterFrontmatter md.mdFrontmatter md.mdLines
+      sections = buildSections md.mdLines md.mdHeadings md.mdFences
       schemaDocs = mapMaybe schemaDocSection sections
-  pure
-    LoadedModule
-      { lmPath = path,
-        lmFrontmatter = fm,
-        lmSections = sections,
-        lmSchemaDocs = schemaDocs,
-        lmBody = body
-      }
+  case fmap smKind fm.fmSkill of
+    Just SkillInstruction -> do
+      ensureNoHwflFence path md.mdFences
+      ensureNonEmptyInstruction path prose
+      pure
+        LoadedModule
+          { lmPath = path,
+            lmFrontmatter = fm,
+            lmSections = sections,
+            lmSchemaDocs = schemaDocs,
+            lmBody = ModuleBody [] Nothing,
+            lmProseBody = prose
+          }
+    _ -> do
+      fence <- exactlyOneHwflFence path md.mdFences
+      body <- case parseModuleBody path fence.mfContent of
+        Left bundle -> Left (bundleToDiagnostics path bundle)
+        Right b -> Right b
+      pure
+        LoadedModule
+          { lmPath = path,
+            lmFrontmatter = fm,
+            lmSections = sections,
+            lmSchemaDocs = schemaDocs,
+            lmBody = body,
+            lmProseBody = prose
+          }
+
+-- | Markdown body after YAML frontmatter.
+proseBodyAfterFrontmatter :: Maybe Text -> [Text] -> Text
+proseBodyAfterFrontmatter mFm lines_ =
+  T.strip $
+    case mFm of
+      Nothing -> T.unlines lines_
+      Just _ -> bodyAfterFence lines_
+  where
+    bodyAfterFence lns = case lns of
+      (_ : rest) ->
+        case break (\l -> T.strip l == "---") rest of
+          (_, _ : bodyLines) -> T.unlines bodyLines
+          _ -> ""
+      [] -> ""
+
+ensureNoHwflFence :: FilePath -> [MdFence] -> Either [Diagnostic] ()
+ensureNoHwflFence path fences =
+  case filter isHwfl fences of
+    [] -> Right ()
+    _ ->
+      Left
+        [ mkDiagnostic
+            path
+            (Pos 1 1)
+            "instruction skill must not contain a ```hwfl fence"
+        ]
+  where
+    isHwfl f =
+      case T.words (T.strip f.mfInfo) of
+        ("hwfl" : _) -> True
+        _ -> False
+
+ensureNonEmptyInstruction :: FilePath -> Text -> Either [Diagnostic] ()
+ensureNonEmptyInstruction path body =
+  if T.null (T.strip body)
+    then Left [mkDiagnostic path (Pos 1 1) "instruction skill body must be non-empty"]
+    else Right ()
 
 exactlyOneHwflFence :: FilePath -> [MdFence] -> Either [Diagnostic] MdFence
 exactlyOneHwflFence path fences =

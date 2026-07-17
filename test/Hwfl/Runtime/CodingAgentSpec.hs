@@ -26,7 +26,7 @@ import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     runLoadedModule,
-  )
+    emptySkillRuntime)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -154,7 +154,9 @@ spec = describe "coding-agent example" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                   roExec = execPol,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                 }
               m
           case outcome of

@@ -13,7 +13,7 @@ import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     runLoadedModule,
-  )
+    emptySkillRuntime)
 import Hwfl.Runtime.Snapshot (RunSnapshot (..), readRunSnapshot)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -95,7 +95,9 @@ spec = describe "runtime run (M4/M5)" $ do
                     roMode = StepRun,
                     roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -124,7 +126,9 @@ spec = describe "runtime run (M4/M5)" $ do
                     roMode = StepRun,
                     roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -179,7 +183,9 @@ spec = describe "runtime run (M4/M5)" $ do
                     roMode = StepRun,
                     roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                   }
           outcome <- runLoadedModule opts loaded
           outcome `shouldSatisfy` isFailed

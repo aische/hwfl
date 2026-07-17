@@ -1,0 +1,10 @@
+{
+  "name": "skills-demo",
+  "version": "0.1.0",
+  "entrypoint": "workflows/main",
+  "skills": {
+    "max_instruction_loads": 5,
+    "max_instruction_chars": 12000,
+    "max_callable_loads": 20
+  }
+}

@@ -10,6 +10,7 @@ module Hwfl.Runtime.Run
     parseCliInputs,
     projectHashOf,
     newRunId,
+    emptySkillRuntime,
   )
 where
 
@@ -22,7 +23,8 @@ import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), Section (..))
-import Hwfl.Ast.Name (Ident (..), Slug, qnameToText)
+import Hwfl.Ast.Name (Ident (..), QName (..), Slug, qnameToText)
+import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Check.Env (TypeEnv)
 import Hwfl.Check.Infer (inferModuleEnv)
 import Hwfl.Check.Prelude (preludeTypeEnv)
@@ -41,7 +43,7 @@ import Hwfl.Obs.Trace
     openSpan,
     setSpanStack,
   )
-import Hwfl.Project (ExecPolicy (..), ProjectConfig (..), loadProjectConfig)
+import Hwfl.Project (ExecPolicy (..), LoadedProject (..), ProjectConfig (..), loadProject, loadProjectConfig)
 import Hwfl.Parse.Load (loadModule)
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Eval
@@ -54,6 +56,15 @@ import Hwfl.Runtime.Host (HostEnv (..), hostOpsEnv)
 import Hwfl.Runtime.Machine
 import Hwfl.Runtime.Snapshot
 import Hwfl.Runtime.Workspace (newWorkspace, workspaceRoot)
+import Data.Set qualified as Set
+import Hwfl.SkillCatalog
+  ( SkillCatalog,
+    buildSkillCatalog,
+    defaultSkillPolicy,
+    emptySkillCatalog,
+    isSkillQName,
+    skillMetaForModule,
+  )
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
@@ -68,7 +79,11 @@ data RunOptions = RunOptions
     -- | Exec policy from @project.json@; 'Nothing' disables @exec.run@.
     roExec :: Maybe ExecPolicy,
     -- | Live span open/close lines on stderr (CLI @--debug@).
-    roDebug :: Bool
+    roDebug :: Bool,
+    -- | Skill catalog from @hwfl check@ (empty when running a lone module).
+    roSkillCatalog :: SkillCatalog,
+    -- | Callable skill modules for mid-loop tool advertising.
+    roSkillModules :: Map QName LoadedModule
   }
 
 data RunOutcome
@@ -140,11 +155,13 @@ runLoadedModule opts loaded = do
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
       typeEnv = loadTypeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
+      skillFuns = buildSkillFunTables opts.roSkillModules
       host =
         HostEnv
           { heWorkspace = ws,
             heProvider = opts.roProvider,
             heExec = opts.roExec,
+            heSkillCatalog = opts.roSkillCatalog,
             heLog = \msg -> hPutStrLn stderr (T.unpack msg)
           }
       ctx =
@@ -158,7 +175,9 @@ runLoadedModule opts loaded = do
             rcStore = store,
             rcProjectHash = hash,
             rcSeq = seqRef,
-            rcSpans = spans
+            rcSpans = spans,
+            rcSkillFuns = skillFuns,
+            rcSkillModules = opts.roSkillModules
           }
       modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
   hPutStrLn stderr ("hwfl run: run_id=" <> T.unpack runId)
@@ -238,8 +257,10 @@ mkCtx ::
   Text ->
   IORef Int ->
   SpanState ->
+  SkillCatalog ->
+  Map QName LoadedModule ->
   IO RunCtx
-mkCtx provider wsRoot loaded store hash runId started seqRef spans = do
+mkCtx provider wsRoot loaded store hash runId started seqRef spans catalog skillMods = do
   ws <- newWorkspace wsRoot
   execPol <- loadExecPolicy wsRoot
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
@@ -250,6 +271,7 @@ mkCtx provider wsRoot loaded store hash runId started seqRef spans = do
           { heWorkspace = ws,
             heProvider = provider,
             heExec = execPol,
+            heSkillCatalog = catalog,
             heLog = \msg -> hPutStrLn stderr (T.unpack msg)
           }
   pure
@@ -263,8 +285,17 @@ mkCtx provider wsRoot loaded store hash runId started seqRef spans = do
         rcStore = store,
         rcProjectHash = hash,
         rcSeq = seqRef,
-        rcSpans = spans
+        rcSpans = spans,
+        rcSkillFuns = buildSkillFunTables skillMods,
+        rcSkillModules = skillMods
       }
+
+buildSkillFunTables :: Map QName LoadedModule -> Map QName (Env, FunTable)
+buildSkillFunTables =
+  Map.mapMaybeWithKey $ \_q m ->
+    case smKind (skillMetaForModule m) of
+      SkillInstruction -> Nothing
+      SkillCallable -> Just (loadRunEnv (lmBody m))
 
 -- | Load @exec@ policy from workspace @project.json@ when present.
 loadExecPolicy :: FilePath -> IO (Maybe ExecPolicy)
@@ -273,6 +304,25 @@ loadExecPolicy root = do
   pure $ case cfgE of
     Right cfg -> cfg.pcExec
     Left _ -> Nothing
+
+-- | Empty skill catalog / modules for single-module runs and tests.
+emptySkillRuntime :: (SkillCatalog, Map QName LoadedModule)
+emptySkillRuntime = (emptySkillCatalog defaultSkillPolicy, Map.empty)
+
+-- | Best-effort skill runtime from a workspace project (for resume).
+loadSkillRuntime :: FilePath -> IO (SkillCatalog, Map QName LoadedModule)
+loadSkillRuntime root = do
+  lpE <- loadProject root
+  pure $ case lpE of
+    Left _ -> (emptySkillCatalog defaultSkillPolicy, Map.empty)
+    Right lp ->
+      let skills =
+            Map.filterWithKey (\q _ -> isSkillQName q) lp.lpModules
+          checked = Set.fromList (Map.keys skills)
+          catalog = buildSkillCatalog lp.lpConfig.pcSkills skills checked
+          callables =
+            Map.filter (\m -> smKind (skillMetaForModule m) == SkillCallable) skills
+       in (catalog, callables)
 
 loadExisting ::
   FilePath ->
@@ -302,7 +352,20 @@ loadExisting workspace runId provider = do
                 spans <- newSpanStateDebug Nothing
                 writeIORef spans.ssCounter snap.rsSpanCounter
                 setSpanStack spans snap.rsSpanStack
-                ctx <- mkCtx provider root loaded store hash meta.rmRunId meta.rmStartedAt seqRef spans
+                (catalog, skillMods) <- loadSkillRuntime root
+                ctx <-
+                  mkCtx
+                    provider
+                    root
+                    loaded
+                    store
+                    hash
+                    meta.rmRunId
+                    meta.rmStartedAt
+                    seqRef
+                    spans
+                    catalog
+                    skillMods
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 

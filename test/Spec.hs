@@ -19,8 +19,10 @@ import Hwfl.Runtime.ConcurrentSpec
 import Hwfl.Runtime.HostOpsSpec
 import Hwfl.Runtime.ObjectSpec
 import Hwfl.Runtime.RunSpec
+import Hwfl.Runtime.SkillSpec
 import Hwfl.Runtime.SemanticCheckSpec
 import Hwfl.Runtime.WorkspaceSpec
+import Hwfl.SkillCatalogSpec
 import Test.Hspec
 
 main :: IO ()
@@ -35,6 +37,7 @@ main = hspec $ do
   Hwfl.Check.ModuleSpec.spec
   Hwfl.Check.ProjectSpec.spec
   Hwfl.Check.SchemaSpec.spec
+  Hwfl.SkillCatalogSpec.spec
   Hwfl.Llm.ProviderSpec.spec
   Hwfl.Runtime.WorkspaceSpec.spec
   Hwfl.Runtime.RunSpec.spec
@@ -44,5 +47,6 @@ main = hspec $ do
   Hwfl.Runtime.AgentObjectSpec.spec
   Hwfl.Runtime.ObjectSpec.spec
   Hwfl.Obs.SpanSpec.spec
+  Hwfl.Runtime.SkillSpec.spec
   Hwfl.Runtime.SemanticCheckSpec.spec
   Hwfl.Runtime.CodingAgentSpec.spec

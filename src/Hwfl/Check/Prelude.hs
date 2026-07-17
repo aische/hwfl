@@ -27,6 +27,7 @@ preludeTypeEnv =
                  (Ident "obs", obsType),
                  (Ident "exec", execType),
                  (Ident "meta", metaType),
+                 (Ident "skill", skillType),
                  (Ident "list", listType),
                  (Ident "text", textType),
                  (Ident "md", mdType),
@@ -275,6 +276,51 @@ metaType =
           (t "FileRef")
           [EffMeta, EffRead]
           (TRecord [(Ident "ok", t "Bool"), (Ident "error", t "String")])
+      )
+    ]
+
+skillEntryType :: TypeExpr
+skillEntryType =
+  TRecord
+    [ (Ident "id", t "String"),
+      (Ident "kind", t "String"),
+      (Ident "summary", t "String"),
+      (Ident "tags", TList (t "String")),
+      (Ident "checked", t "Bool"),
+      (Ident "agent_eligible", t "Bool")
+    ]
+
+skillType :: TypeExpr
+skillType =
+  TRecord
+    [ ( Ident "discover",
+        TEffFun
+          ( TRecord
+              [ (Ident "query", t "String"),
+                (Ident "kinds", TList (t "String")),
+                (Ident "limit", t "Int")
+              ]
+          )
+          [EffMeta, EffRead]
+          ( TRecord
+              [ (Ident "ok", t "Bool"),
+                (Ident "skills", TList skillEntryType),
+                (Ident "error", t "String")
+              ]
+          )
+      ),
+      ( Ident "load",
+        TEffFun
+          (TRecord [(Ident "id", t "String")])
+          [EffMeta, EffRead]
+          ( TRecord
+              [ (Ident "ok", t "Bool"),
+                (Ident "kind", t "String"),
+                (Ident "loaded", t "Bool"),
+                (Ident "content", t "String"),
+                (Ident "error", t "String")
+              ]
+          )
       )
     ]
 

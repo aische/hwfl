@@ -14,7 +14,7 @@ import Data.ByteString.Lazy.Char8 qualified as BL
 import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
 import Data.Vector qualified as V
-import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameToText)
 import Hwfl.Eval.Value (ToolSpecValue (..), Value (..), hostOpName)
 
 valueToJsonText :: Value -> Text
@@ -52,4 +52,5 @@ valueToAeson = \case
   VBuiltin {} -> Aeson.String "<builtin>"
   VHostOp op -> Aeson.String ("<" <> hostOpName op <> ">")
   VToolSpec ts -> Aeson.String ("<tool:" <> ts.tvsName <> ">")
+  VSkillMain q -> Aeson.String ("<skill:" <> qnameToText q <> ">")
   VSchema schema -> schema

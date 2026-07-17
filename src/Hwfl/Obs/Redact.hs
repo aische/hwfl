@@ -167,6 +167,16 @@ hostOpenAttrs op args = case op of
       [ "op" .= hostOpName op,
         "path" .= pathAttr args
       ]
+  HostSkillDiscover ->
+    object
+      [ "op" .= hostOpName op,
+        "query" .= stringAttr (Ident "query") args
+      ]
+  HostSkillLoad ->
+    object
+      [ "op" .= hostOpName op,
+        "id" .= stringAttr (Ident "id") args
+      ]
   HostLlmChat ->
     object
       [ "op" .= hostOpName op,

@@ -15,7 +15,7 @@ import Hwfl.Runtime.Run
     RunOutcome (..),
     approveRun,
     runLoadedModule,
-  )
+    emptySkillRuntime)
 import Hwfl.Runtime.Workspace
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
@@ -152,7 +152,9 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = allowEcho,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of
@@ -181,7 +183,9 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = allowEcho,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                     }
             outcome <- runLoadedModule opts loaded
             outcome `shouldSatisfy` isFailed
@@ -219,7 +223,9 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = confirmEcho,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of
@@ -252,7 +258,9 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of

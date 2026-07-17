@@ -30,7 +30,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
-import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Ast.Name (Ident (..), QName (..), TypeName (..), qnameFromParts, qnameToText)
 import Hwfl.Eval.Value (Env, HostOpId (..), ToolSpecValue (..), hostOpName)
 import Hwfl.Eval.Value qualified as V
 import Hwfl.Llm.Types (ToolCall (..), ToolResult (..), Turn (..))
@@ -348,7 +348,11 @@ agentToJson ag =
       "round" .= ag.agRound,
       "tool_round" .= fmap toolRoundToJson ag.agToolRound,
       "span_id" .= ag.agSpanId,
-      "round_span_id" .= ag.agRoundSpanId
+      "round_span_id" .= ag.agRoundSpanId,
+      "baseline_tools" .= map toolSpecToJson ag.agBaselineTools,
+      "active_tool_ids" .= ag.agActiveToolIds,
+      "loaded_instruction_ids" .= ag.agLoadedInstructionIds,
+      "instruction_chars" .= ag.agInstructionChars
     ]
       ++ case ag.agSubmitSchema of
         Nothing -> []
@@ -368,6 +372,10 @@ parseAgent = withObject "AgentState" $ \o ->
     <*> (o .:? "tool_round" >>= traverse parseToolRound)
     <*> o .: "span_id"
     <*> o .:? "round_span_id"
+    <*> (o .:? "baseline_tools" >>= maybe (o .: "tools" >>= mapM parseToolSpec) (mapM parseToolSpec))
+    <*> o .:? "active_tool_ids" .!= []
+    <*> o .:? "loaded_instruction_ids" .!= []
+    <*> o .:? "instruction_chars" .!= 0
 
 toolRoundToJson :: ToolRound -> Aeson.Value
 toolRoundToJson tr =
@@ -745,6 +753,8 @@ valueToJson = \case
   V.VBuiltin b -> object ["tag" .= String "builtin", "op" .= showText b]
   V.VHostOp op -> object ["tag" .= String "host", "op" .= hostOpName op]
   V.VToolSpec ts -> object ["tag" .= String "tool_spec", "tool" .= toolSpecToJson ts]
+  V.VSkillMain q ->
+    object ["tag" .= String "skill_main", "qname" .= qnameToText q]
   V.VSchema schema -> object ["tag" .= String "schema", "v" .= schema]
 
 valueFromJson :: Aeson.Value -> Either String V.Value
@@ -775,6 +785,7 @@ parseValue = withObject "Value" $ \o -> do
     "builtin" -> V.VBuiltin <$> (o .: "op" >>= readText)
     "host" -> V.VHostOp <$> (o .: "op" >>= parseHostOp)
     "tool_spec" -> V.VToolSpec <$> (o .: "tool" >>= parseToolSpec)
+    "skill_main" -> V.VSkillMain . qnameFromText <$> o .: "qname"
     "schema" -> V.VSchema <$> o .: "v"
     other -> fail ("unknown value tag: " <> T.unpack other)
 
@@ -796,7 +807,12 @@ parseHostOp = \case
   "obs.span" -> pure HostObsSpan
   "meta.check_module" -> pure HostMetaCheckModule
   "meta.check_project" -> pure HostMetaCheckProject
+  "skill.discover" -> pure HostSkillDiscover
+  "skill.load" -> pure HostSkillLoad
   other -> fail ("unknown host op: " <> T.unpack other)
+
+qnameFromText :: Text -> QName
+qnameFromText t = qnameFromParts (T.splitOn "/" t)
 
 showText :: (Show a) => a -> Text
 showText = T.pack . show

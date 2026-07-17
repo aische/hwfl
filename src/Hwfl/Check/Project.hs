@@ -21,6 +21,7 @@ import Data.Text qualified as T
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..))
 import Hwfl.Ast.Name (QName (..), qnameToText)
+import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Check.Env (ModuleExport (..), TypeEnv (..))
 import Hwfl.Check.Error (CheckError (..), renderCheckError)
 import Hwfl.Check.Module (CheckResult (..), checkLoadedModuleInContext)
@@ -33,12 +34,19 @@ import Hwfl.Project
     modulePathForQname,
     qnameFromRelPath,
   )
+import Hwfl.SkillCatalog
+  ( SkillCatalog,
+    buildSkillCatalog,
+    isSkillQName,
+    skillMetaForModule,
+  )
 import Hwfl.Source (Diagnostic (..), renderDiagnostics)
 import System.FilePath (makeRelative, normalise)
 
 data CheckProjectResult = CheckProjectResult
   { cprExports :: Map QName ModuleExport,
-    cprChecked :: Set QName
+    cprChecked :: Set QName,
+    cprSkillCatalog :: SkillCatalog
   }
   deriving stock (Eq, Show)
 
@@ -50,6 +58,7 @@ data ProjectCheckError
   | PceImportNotFound FilePath Text
   | PceQNameMismatch FilePath Text Text
   | PceEntryNotFound Text
+  | PceSkill FilePath Text
   deriving stock (Eq, Show)
 
 renderProjectCheckError :: ProjectCheckError -> Text
@@ -62,6 +71,7 @@ renderProjectCheckError = \case
   PceQNameMismatch path fm pathQ ->
     T.pack path <> ": frontmatter name " <> fm <> " does not match file qname " <> pathQ
   PceEntryNotFound q -> "entrypoint not found: " <> q
+  PceSkill path msg -> T.pack path <> ": " <> msg
 
 checkProject :: FilePath -> IO (Either ProjectCheckError CheckProjectResult)
 checkProject root = do
@@ -77,8 +87,57 @@ checkProjectLoaded lp = do
   forM_ (Map.toList lp.lpModules) (validateQname lp)
   reachable <- buildImportGraph lp cfg.pcEntrypoint
   order <- topoSort reachable lp
-  foldM (checkOne cfg execOk lp) (Map.empty, Set.empty) order >>= \(exports, checked) ->
-    Right CheckProjectResult {cprExports = exports, cprChecked = checked}
+  (exports, checked0) <- foldM (checkOne cfg execOk lp) (Map.empty, Set.empty) order
+  checkedSkills <- checkSkillModules cfg execOk lp exports checked0
+  let checked = checked0 <> checkedSkills
+      catalog = buildSkillCatalog cfg.pcSkills lp.lpModules checked
+  Right
+    CheckProjectResult
+      { cprExports = exports,
+        cprChecked = checked,
+        cprSkillCatalog = catalog
+      }
+
+-- | Typecheck / validate every @skills/*@ module (even if not import-reachable).
+checkSkillModules ::
+  ProjectConfig ->
+  Bool ->
+  LoadedProject ->
+  Map QName ModuleExport ->
+  Set QName ->
+  Either ProjectCheckError (Set QName)
+checkSkillModules cfg execOk lp exports already = do
+  let skills = [q | q <- Map.keys lp.lpModules, isSkillQName q, not (Set.member q already)]
+  foldM go Set.empty skills
+  where
+    go acc q = do
+      m <- maybe (Left (PceEntryNotFound (qnameToText q))) Right (Map.lookup q lp.lpModules)
+      case skillKind m of
+        SkillInstruction -> do
+          validateInstructionSkill m
+          pure (Set.insert q acc)
+        SkillCallable -> do
+          let importExports =
+                Map.fromList
+                  [ (qnameToText imp, ex)
+                    | imp <- fmImports m.lmFrontmatter,
+                      Just ex <- [Map.lookup imp exports]
+                  ]
+          _ <-
+            firstModuleErr m.lmPath $
+              checkLoadedModuleInContext cfg execOk importExports m
+          pure (Set.insert q acc)
+
+skillKind :: LoadedModule -> SkillKind
+skillKind m = smKind (skillMetaForModule m)
+
+validateInstructionSkill :: LoadedModule -> Either ProjectCheckError ()
+validateInstructionSkill m
+  | T.null (T.strip m.lmProseBody) =
+      Left (PceSkill m.lmPath "instruction skill body must be non-empty")
+  | not (null m.lmFrontmatter.fmInputs) || not (null m.lmFrontmatter.fmOutputs) =
+      Left (PceSkill m.lmPath "instruction skill must not declare inputs/outputs")
+  | otherwise = Right ()
 
 validateQname :: LoadedProject -> (QName, LoadedModule) -> Either ProjectCheckError ()
 validateQname lp (q, m) = do
@@ -163,17 +222,23 @@ checkOne cfg execOk lp (exports, checked) q
   | Set.member q checked = Right (exports, checked)
   | otherwise = do
       m <- maybe (Left (PceEntryNotFound (qnameToText q))) Right (Map.lookup q lp.lpModules)
-      let importExports =
-            Map.fromList
-              [ (qnameToText imp, ex)
-                | imp <- fmImports m.lmFrontmatter,
-                  Just ex <- [Map.lookup imp exports]
-              ]
-      result <-
-        firstModuleErr m.lmPath $
-          checkLoadedModuleInContext cfg execOk importExports m
-      let ex = moduleExportFrom (lmBody m) result
-      Right (Map.insert q ex exports, Set.insert q checked)
+      -- Instruction skills have no executable body; skip typecheck if reached via imports.
+      case skillKind m of
+        SkillInstruction -> do
+          validateInstructionSkill m
+          Right (exports, Set.insert q checked)
+        SkillCallable -> do
+          let importExports =
+                Map.fromList
+                  [ (qnameToText imp, ex)
+                    | imp <- fmImports m.lmFrontmatter,
+                      Just ex <- [Map.lookup imp exports]
+                  ]
+          result <-
+            firstModuleErr m.lmPath $
+              checkLoadedModuleInContext cfg execOk importExports m
+          let ex = moduleExportFrom (lmBody m) result
+          Right (Map.insert q ex exports, Set.insert q checked)
 
 firstModuleErr :: FilePath -> Either CheckError a -> Either ProjectCheckError a
 firstModuleErr path = \case

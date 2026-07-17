@@ -23,7 +23,7 @@ import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     runLoadedModule,
-  )
+    emptySkillRuntime)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -146,7 +146,9 @@ spec = describe "runtime llm.agent_object" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                 }
               loaded
           case outcome of
@@ -175,7 +177,9 @@ spec = describe "runtime llm.agent_object" $ do
                   roMode = StepRun,
                   roProjectHash = Nothing,
                     roExec = Nothing,
-                    roDebug = False
+                    roDebug = False,
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime
                 }
               loaded
           case outcome of
