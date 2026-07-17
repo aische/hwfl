@@ -6,6 +6,7 @@ module Hwfl.Check.Module
     CheckResult (..),
     ModuleCheckContext (..),
     emptyModuleCheckContext,
+    elaborateMainIO,
   )
 where
 

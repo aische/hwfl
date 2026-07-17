@@ -4,12 +4,12 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now (P1)
 
-- [ ] Semantic-check deepen (layer 3 / self-check polish; optional CLI sugar)
+- [ ] Skills phase D (optional) — `examples/skills/` writer; no hidden
+      `skill.extract` host
 
 ## Next (P1–P2)
 
-- [ ] Skills phase D (optional) — `examples/skills/` writer; no hidden
-      `skill.extract` host
+*(empty — promote from Later as needed)*
 
 ## Later (P2–P3)
 
@@ -71,4 +71,4 @@ multimodal — separate product; hwfl stays the orchestration kernel.
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07-15/16/17 completions (including P0 host gaps, coding-agent,
 tool-call spans + `--debug`, lifecycle tutorial, skills A–C, try/catch runtime,
-`--json` CLI errors, streaming LLM spans).
+`--json` CLI errors, streaming LLM spans, semantic-check deepen).

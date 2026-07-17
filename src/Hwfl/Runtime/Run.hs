@@ -27,6 +27,7 @@ import Hwfl.Ast.Name (Ident (..), QName (..), Slug, qnameToText)
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Check.Env (TypeEnv)
 import Hwfl.Check.Infer (inferModuleEnv)
+import Hwfl.Check.Module (elaborateMainIO)
 import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Prelude (preludeEnv)
@@ -107,10 +108,15 @@ loadRunEnv (ModuleBody decls _) =
    in (env, table)
 
 -- | Type env for @schema(T)@ at runtime (aliases from the loaded module).
-loadTypeEnv :: ModuleBody -> TypeEnv
-loadTypeEnv body = case inferModuleEnv body of
-  Right env -> env
-  Left _ -> preludeTypeEnv
+-- Elaborates @main@ I/O from frontmatter first — same as check — so untyped
+-- @main(inputs)@ does not fail infer and drop aliases.
+loadTypeEnv :: LoadedModule -> TypeEnv
+loadTypeEnv loaded =
+  case elaborateMainIO (lmFrontmatter loaded) (lmBody loaded) of
+    Left _ -> preludeTypeEnv
+    Right body -> case inferModuleEnv body of
+      Right env -> env
+      Left _ -> preludeTypeEnv
 
 -- | Ambient run context (spec §01 §4) injected at runtime only.
 mkCtxValue :: Text -> Text -> Value
@@ -157,7 +163,7 @@ runLoadedModule opts loaded = do
   spans <- newSpanStateDebug debugLog
   pricing <- loadModelPricing opts.roModelCatalog
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
-      typeEnv = loadTypeEnv (lmBody loaded)
+      typeEnv = loadTypeEnv loaded
       baseEnv = withRunCtx runId started baseEnv0
       skillFuns = buildSkillFunTables opts.roSkillModules
       host =
@@ -271,7 +277,7 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
   ws <- newWorkspace wsRoot
   execPol <- loadExecPolicy wsRoot
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
-      typeEnv = loadTypeEnv (lmBody loaded)
+      typeEnv = loadTypeEnv loaded
       baseEnv = withRunCtx runId started baseEnv0
       host =
         HostEnv

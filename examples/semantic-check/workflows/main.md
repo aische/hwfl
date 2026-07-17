@@ -2,19 +2,35 @@
 name: workflows/main
 inputs:
     entry: String
+    mode: String
+    model: String
 outputs:
     report_path: String
     ok: Bool
     finding_count: Int
-effects: [Read, Write, Meta]
+effects: [Read, Write, Meta, Net]
 ---
 
 ## overview
 
-Deterministic semantic review (layers 0–2b) written in hwfl. Workspace is the
-target project. Layer 0 uses `meta.check_module`; layers 1–2b use in-language
-list recursion over `list.length` / `list.concat` plus pure `text` / `md`
-helpers. No micro-tool fan-out.
+Semantic review written in hwfl (layers 0–2b deterministic; optional same-run
+layer 3 pragmatic via `llm.object`). Workspace is the target project. Always
+emits body-bearing `review_gate` items. Set `mode=pragmatic` (and a catalog
+`model`) to run gated LLM review in the same run; `mode=deterministic` skips
+LLM calls. No micro-tool fan-out.
+
+## reviewer
+
+You review workflow prose for pragmatic coherence. You receive a slice body and,
+for pair reviews, a peer slice body. Selection metadata explains why the slice
+was flagged; it is not part of the prose under review.
+
+Rules:
+- Judge only text in **Slice under review** and **Peer slice** sections.
+- Do not comment on entropy, compression, outliers, or review tooling unless
+  those words appear in the slice bodies.
+- Felicity violations must cite phrases from the slice bodies.
+- Be conservative: only flag issues with evidence in the bodies.
 
 ## body
 
@@ -43,6 +59,27 @@ type Slice = {
   entropy: Float,
   uniqueness: Float
 }
+
+type GateItem = {
+  slice_id: String,
+  file: String,
+  body: String,
+  gate_source: String,
+  review_task: String,
+  peer_file: String,
+  peer_body: String,
+  context: String,
+  priority: Int
+}
+
+type PragmaticOut = {
+  illocutionary_force: String,
+  felicity_violations: List<String>,
+  contradictions: List<{ other_location: String, evidence: String }>,
+  clarity_score: Float
+}
+
+type Contradiction = { other_location: String, evidence: String }
 
 fun has_string(xs: List<String>, q: String, i: Int, n: Int): Bool =
   if i >= n then false
@@ -260,14 +297,203 @@ fun concat3(a: List<Finding>, b: List<Finding>, c: List<Finding>): List<Finding>
 fun concat4(a: List<Finding>, b: List<Finding>, c: List<Finding>, d: List<Finding>): List<Finding> =
   list.concat(concat3(a, b, c), d)
 
-fun take_findings(xs: List<Finding>, k: Int, i: Int, n: Int): List<Finding> =
-  if i >= n || k <= 0 then []
-  else list.concat([xs[i]], take_findings(xs, k - 1, i + 1, n))
-
 fun all_ok(rows: List<CheckRow>, i: Int, n: Int): Bool =
   if i >= n then true
   else if not(rows[i].ok) then false
   else all_ok(rows, i + 1, n)
+
+fun find_slice(slices: List<Slice>, id: String, i: Int, n: Int): List<Slice> =
+  if i >= n then []
+  else if slices[i].id == id then [slices[i]]
+  else find_slice(slices, id, i + 1, n)
+
+fun find_slice_for_prose(slices: List<Slice>, file: String, evidence: String, i: Int, n: Int): List<Slice> =
+  if i >= n then []
+  else
+    let s = slices[i]
+    if s.file == file && text.contains(s.body, evidence) then [s]
+    else find_slice_for_prose(slices, file, evidence, i + 1, n)
+
+fun gate_has_id(xs: List<GateItem>, id: String, i: Int, n: Int): Bool =
+  if i >= n then false
+  else if xs[i].slice_id == id then true
+  else gate_has_id(xs, id, i + 1, n)
+
+fun gate_append_unique(acc: List<GateItem>, item: GateItem): List<GateItem> =
+  if gate_has_id(acc, item.slice_id, 0, list.length(acc)) then acc
+  else list.concat(acc, [item])
+
+fun gate_merge(acc: List<GateItem>, xs: List<GateItem>, i: Int, n: Int): List<GateItem> =
+  if i >= n then acc
+  else gate_merge(gate_append_unique(acc, xs[i]), xs, i + 1, n)
+
+fun take_gates(xs: List<GateItem>, k: Int, i: Int, n: Int): List<GateItem> =
+  if i >= n || k <= 0 then []
+  else list.concat([xs[i]], take_gates(xs, k - 1, i + 1, n))
+
+fun similarity_gates(slices: List<Slice>, i: Int, j: Int, n: Int): List<GateItem> =
+  if i >= n then []
+  else if j >= n then similarity_gates(slices, i + 1, i + 2, n)
+  else
+    let a = slices[i]
+    let b = slices[j]
+    let score = text.similarity(a.body, b.body)
+    let rest = similarity_gates(slices, i, j + 1, n)
+    if score > 0.85 && not(a.id == b.id) then
+      let item =
+        if a.entropy == b.entropy then
+          {
+            slice_id = a.id,
+            file = a.file,
+            body = a.body,
+            gate_source = "redundancy",
+            review_task = "check_redundancy",
+            peer_file = b.file,
+            peer_body = b.body,
+            context = $"{a.id} ~ {b.id}",
+            priority = 30
+          }
+        else
+          {
+            slice_id = a.id,
+            file = a.file,
+            body = a.body,
+            gate_source = "cluster_divergence",
+            review_task = "check_contradiction",
+            peer_file = b.file,
+            peer_body = b.body,
+            context = $"{a.id} ~ {b.id}; entropy diverge",
+            priority = 25
+          }
+      list.concat([item], rest)
+    else rest
+
+fun speech_gates(findings: List<Finding>, slices: List<Slice>, i: Int, n: Int): List<GateItem> =
+  if i >= n then []
+  else
+    let f = findings[i]
+    let rest = speech_gates(findings, slices, i + 1, n)
+    if not(f.category == "speech_act") then rest
+    else
+      let hits = find_slice(slices, f.evidence, 0, list.length(slices))
+      if list.length(hits) == 0 then rest
+      else
+        let s = hits[0]
+        list.concat(
+          [{
+            slice_id = s.id,
+            file = s.file,
+            body = s.body,
+            gate_source = "speech_act_mismatch",
+            review_task = "check_coverage_gap",
+            peer_file = "",
+            peer_body = "",
+            context = f.claim,
+            priority = 20
+          }],
+          rest
+        )
+
+fun prose_gates(findings: List<Finding>, slices: List<Slice>, i: Int, n: Int): List<GateItem> =
+  if i >= n then []
+  else
+    let f = findings[i]
+    let rest = prose_gates(findings, slices, i + 1, n)
+    if not(f.category == "prose") then rest
+    else if not(f.severity == "warning") then rest
+    else
+      let hits = find_slice_for_prose(slices, f.file, f.evidence, 0, list.length(slices))
+      if list.length(hits) == 0 then rest
+      else
+        let s = hits[0]
+        list.concat(
+          [{
+            slice_id = s.id,
+            file = s.file,
+            body = s.body,
+            gate_source = "dead_reference",
+            review_task = "check_dead_reference",
+            peer_file = "",
+            peer_body = "",
+            context = $"unresolved_qname={f.evidence}",
+            priority = 10
+          }],
+          rest
+        )
+
+fun build_gate(slices: List<Slice>, prose: List<Finding>, speech: List<Finding>): List<GateItem> =
+  let sim = similarity_gates(slices, 0, 1, list.length(slices))
+  let sp = speech_gates(speech, slices, 0, list.length(speech))
+  let pr = prose_gates(prose, slices, 0, list.length(prose))
+  let merged = gate_merge(gate_merge(gate_merge([], sim, 0, list.length(sim)), sp, 0, list.length(sp)), pr, 0, list.length(pr))
+  take_gates(merged, 8, 0, list.length(merged))
+
+fun bleed_felicity(s: String): Bool =
+  text.contains(s, "entropy")
+    || text.contains(s, "outlier")
+    || text.contains(s, "compression")
+    || text.contains(s, "review_gate")
+
+fun felicity_findings(xs: List<String>, file: String, i: Int, n: Int): List<Finding> =
+  if i >= n then []
+  else
+    let s = xs[i]
+    let rest = felicity_findings(xs, file, i + 1, n)
+    if bleed_felicity(s) then rest
+    else if s == "" then rest
+    else
+      list.concat(
+        [{
+          severity = "warning",
+          category = "ambiguity",
+          file = file,
+          claim = "Felicity violation in gated prose",
+          evidence = s,
+          suggestion = "Clarify preconditions or directive scope"
+        }],
+        rest
+      )
+
+fun contradiction_findings(xs: List<Contradiction>, file: String, i: Int, n: Int): List<Finding> =
+  if i >= n then []
+  else
+    let c = xs[i]
+    let rest = contradiction_findings(xs, file, i + 1, n)
+    list.concat(
+      [{
+        severity = "warning",
+        category = "contradiction",
+        file = file,
+        claim = $"Possible contradiction vs {c.other_location}",
+        evidence = c.evidence,
+        suggestion = "Reconcile conflicting guidance"
+      }],
+      rest
+    )
+
+fun pragmatic_to_findings(out: PragmaticOut, item: GateItem): List<Finding> =
+  list.concat(
+    felicity_findings(out.felicity_violations, item.file, 0, list.length(out.felicity_violations)),
+    contradiction_findings(out.contradictions, item.file, 0, list.length(out.contradictions))
+  )
+
+fun peer_block(item: GateItem): String =
+  if item.peer_body == "" then ""
+  else $"\n\n## Peer slice\nLocation: {item.peer_file}\n\n{item.peer_body}"
+
+fun review_one(item: GateItem, model: String): List<Finding> =
+  let prompt =
+    $"{@reviewer}\n\n## Slice under review\nLocation: {item.file}\n\n{item.body}{peer_block(item)}\n\n## Review task\n{item.review_task}\n\n## Context\n{item.context}"
+  let out = llm.object(
+    prompt = prompt,
+    schema = schema(PragmaticOut),
+    model = model
+  )
+  pragmatic_to_findings(out, item)
+
+fun review_all(gate: List<GateItem>, model: String, i: Int, n: Int): List<Finding> =
+  if i >= n then []
+  else list.concat(review_one(gate[i], model), review_all(gate, model, i + 1, n))
 
 fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
   let paths = fs.find(glob = "**/*.md")
@@ -285,15 +511,21 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
   )
   let speech = speech_all(slices, 0, ns)
   let findings = concat4(structural, entry, prose, list.concat(corpus, speech))
-  let gate = take_findings(findings, 8, 0, list.length(findings))
+  let gate = build_gate(slices, prose, speech)
+  let pragmatic =
+    if inputs.mode == "pragmatic" then
+      review_all(gate, inputs.model, 0, list.length(gate))
+    else
+      []
   let okv = all_ok(rows, 0, list.length(rows))
   let report_obj = {
     schema = "semantic-report/v1",
-    mode = "deterministic",
+    mode = inputs.mode,
     entry = inputs.entry,
     ok = okv,
     review_gate = gate,
-    findings = findings
+    findings = findings,
+    pragmatic_findings = pragmatic
   }
   let report = json.encode(report_obj)
   let report_path = $".hwfl/runs/{ctx.run.id}/semantic-report.json"

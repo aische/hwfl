@@ -4,7 +4,7 @@
   "entrypoint": "workflows/main",
   "env": [],
   "effects": {
-    "default": ["Read", "Write", "Meta"],
+    "default": ["Read", "Write", "Meta", "Net"],
     "deny": []
   }
 }

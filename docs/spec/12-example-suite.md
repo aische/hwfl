@@ -141,12 +141,12 @@ Change module source; resume refuses with exit code 4.
 
 ## E20 — Mini semantic gate **H**
 
-**Shipped (M8):** `examples/semantic-check/workflows/main.md` — layers 0–2b
-deterministic review (structural, prose refs, corpus, speech-act hints) +
-bounded `review_gate`. One module (~300 LOC); uses `meta.check_module`,
-`fs.find`, and pure `list` / `text` / `md` prelude helpers. No LLM in the
-check path (layer 3 pragmatic review deferred). Fixture:
-`test/fixtures/semantic-target`.
+**Shipped (M8 + deepen):** `examples/semantic-check/workflows/main.md` —
+layers 0–2b deterministic review (structural, prose refs, corpus, speech-act
+hints) + body-bearing `review_gate` (max 8). Optional same-run layer 3
+(`mode=pragmatic`) via `llm.object` on gated slices → `pragmatic_findings`.
+One module; uses `meta.check_module`, `fs.find`, pure `list` / `text` / `md`
+prelude helpers. Fixture: `test/fixtures/semantic-target`.
 
 ## E21 — Universal coding agent **A** **H**
 

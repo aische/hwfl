@@ -64,6 +64,8 @@
 - [x] Port slim semantic-check (layers 0–2 style) in hwfl
 - [x] Compare file count / LOC to hwfi example
 - [x] Decision log entry with results
+- [x] Semantic-check deepen: body-bearing `review_gate` + same-run
+      optional layer 3 (`mode=pragmatic` / `llm.object`)
 
 ### Post-M8 (not yet milestone-numbered)
 
