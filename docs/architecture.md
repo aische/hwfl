@@ -35,9 +35,9 @@ hwfl/
     Ast/                      # Expr, Decl, Type, Pat, Module
     Parse/                    # Kernel + markdown loader
     Check/                    # Types + effects + project graph
-    Eval/                     # CEK / frame driver
+    Eval/                     # pure big-step evaluator
     Runtime/
-      Machine.hs              # status, frames, path, bindings
+      Machine.hs              # frames, host/par/confirm transitions
       Snapshot.hs
       Host.hs                 # dispatch host ops
       Workspace.hs            # sandbox FS
@@ -62,7 +62,7 @@ All side effects go through **host ops** registered in the runtime:
 
 | Category    | Examples                                              |
 | ----------- | ----------------------------------------------------- |
-| FS          | `fs.read`, `fs.write`, `fs.list`, …                   |
+| FS          | `fs.read`, `fs.write`, `fs.edit`, `fs.patch`, …       |
 | LLM         | `llm.chat`, `llm.object`, `llm.agent`                 |
 | Process     | `exec.run`                                            |
 | Human       | `human.confirm`                                       |

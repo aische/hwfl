@@ -72,6 +72,6 @@ multimodal — separate product; hwfl stays the orchestration kernel.
 
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07-15/16/17 completions (including P0 host gaps, coding-agent,
-tool-call spans + `--debug`, lifecycle tutorial, skills A–C, try/catch runtime,
-`--json` CLI errors, streaming LLM spans, semantic-check deepen / A+B / S2 /
-S1 / S5 / S3).
+tool-call spans + `--debug`, lifecycle tutorial, skills A–C, `--json` CLI
+errors, streaming LLM spans, semantic-check deepen / A+B / S2 / S1 / S5 / S3,
+`fs.patch`, `--cost`).

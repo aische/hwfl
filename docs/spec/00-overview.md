@@ -58,6 +58,7 @@ multi-tenant isolation, embedding JS/Python/Lua VMs.
 | `12-example-suite`           | Design oracle; syntax may evolve but contracts stick |
 | `idea.md`, `architecture.md` | Guiding; defer to numbered specs on conflict         |
 | `skills-plan.md`             | Design + acceptance for skills (A–C shipped; phase D optional) |
+| `semantic-check-plan.md`     | Research backlog for semantic-check (S1–S3 + S5 shipped; S4/S6 later) |
 
 
 ## 5. Versioning

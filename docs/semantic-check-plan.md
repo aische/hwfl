@@ -110,14 +110,16 @@ Extract normative claims into a controlled schema on every gated
 Deterministic graph checks on the extracted set (no extra gate slots):
 
 - same `(actor, action, object)` with `must` and `must_not` (unconditioned
-  or same condition; finding cap 8)
-- workflows `must` vs skills `may`/`should` (soft / info; cap 8)
-- obligation `object` qname missing from the catalog (tie to layer 1; cap 8)
+  or same condition; finding cap 4)
+- workflows `must` vs skills `may`/`should` (soft / info; cap 4; skipped
+  when graph row count > 8)
+- obligation `object` qname missing from the catalog (tie to layer 1; cap 4)
 
 Caps to stay under pure crunch: extract only on
-`check_internal_conflict` gates; ≤8 usable obligations per slice; graph
-sees at most 32 rows. Pair scans early-exit on finding budget (single
-recursion, no full-triangle walk after saturation).
+`check_internal_conflict` gates; ≤4 obligations per slice (LLM may
+propose ≤8); graph sees at most 12 rows. Pair scans early-exit on finding
+budget (single recursion, no full-triangle walk after saturation). Pure
+crunch host limit raised to 500k for chatty extracts.
 
 Report: `obligations` + `pragmatic_findings` with `category: obligation`.
 Fixtures: `require-search` / `forbid-search` / `ghost-tool`. Still gated
@@ -219,5 +221,5 @@ separate workflow over `.hwfl/runs` rather than static module scan.
 2. ~~**S1 role typing**~~ **done**
 3. ~~**S5 prose↔code contracts**~~ **done**
 4. ~~**S3 proposition algebra**~~ **done**
-5. **S4** as gate features while doing the above
+5. **S4** as gate features (info-theoretic routing)
 6. **S6** when run-store / span APIs make dynamic checks cheap

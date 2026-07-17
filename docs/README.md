@@ -16,6 +16,7 @@ Start sessions from [STATUS.md](STATUS.md) and [TASKS.md](TASKS.md).
 | [architecture.md](architecture.md)     | Layers, components, boundaries   |
 | [hwfi-reference.md](hwfi-reference.md) | What to reuse / avoid from hwfi  |
 | [skills-plan.md](skills-plan.md)       | Skills catalog + agent load (A–C shipped) |
+| [semantic-check-plan.md](semantic-check-plan.md) | Semantic-check research (S1–S3 + S5 shipped; S4/S6 later) |
 | [log/](log/)                           | Decision / milestone log         |
 | [spec/](spec/)                         | Normative specification          |
 | [examples/](examples/)                 | Design examples (contracts)      |
