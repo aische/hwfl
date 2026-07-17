@@ -9,26 +9,16 @@ directory and is executed with `--workspace` pointed at the project to scan.
 
 | Layer | What |
 | ----- | ---- |
-| 0 | Module-tree `fs.find` + `meta.check_module` → structural findings |
-| 1 | Catalog from checked qnames; prose qname scan via `text.is_qname` |
-| 2 | `text.metrics` / `text.similarity` → entropy outliers + redundancy pairs |
-| 2b | `text.split_sentences` + directive heuristics → speech-act hints |
-| 3 | Optional same-run `llm.object` on body-bearing `review_gate` items |
+| 0 | Module-tree `meta.check_module` → structural findings |
+| 1 | Prose qnames via `text.is_qname` + catalog |
+| 2 | Entropy info; **within-slice quoted sentence redundancy** (cap 16) |
+| 2b | Speech-act heuristics on agent/system sections |
+| 3 | Gated `llm.object`: dead-ref / speech / similarity peers + **policy
+      slices** (`skills/*`, system/rules) with `check_internal_conflict` |
 
-Scans `workflows/`, `skills/`, `lib/`, and `types/` only (skips README and
-other docs). Always writes `.hwfl/runs/<run-id>/semantic-report.json` in the
-workspace (valid JSON via `json.encode`) and returns
-`{ report_path, ok, finding_count }`.
-
-Deterministic mode (`mode=deterministic`) needs no API keys. Pragmatic mode
-(`mode=pragmatic`) runs gated LLM review in the **same run** and fills
-`pragmatic_findings`.
-
-`review_gate` is always emitted (max 8): redundancy / contradiction pairs,
-speech-act coverage gaps, and dead-reference prose — with slice bodies for
-layer 3. Entropy outliers stay layer-2 info only (not gated). Prose qnames
-must match `root/seg…` with roots `workflows|lib|skills|tools|types|builtin`
-(after `text.normalize_token`).
+Scans `workflows/`, `skills/`, `lib/`, and `types/` only. Gate ≤ 8 items.
+Deterministic mode needs no API keys. Pragmatic mode fills
+`pragmatic_findings` (quoted contradictions when the model reports them).
 
 ## Run
 
@@ -43,7 +33,7 @@ cabal run hwfl -- run examples/semantic-check/workflows/main.md \
   --llm-provider mock
 ```
 
-Pragmatic (same module; needs a real catalog model unless mocking):
+Pragmatic (same module; real catalog model unless mocking):
 
 ```bash
 cabal run hwfl -- run examples/semantic-check/workflows/main.md \
@@ -55,11 +45,9 @@ cabal run hwfl -- run examples/semantic-check/workflows/main.md \
 
 ## Fitness vs hwfi
 
-| | hwfi `examples/semantic-check` | hwfl (this) |
+| | hwfi | hwfl (this) |
 | --- | --- | --- |
-| Author tools / modules | **74** tool markdown files + 1 workflow + 16 types | **1** module |
-| Author LOC (tools+workflow) | **~3175** | **~450** |
-| Ratio | — | **~7× fewer LOC**, **~75× fewer files** |
+| Author tools / modules | **74** + workflow | **1** module |
+| Policy | micro-tools | ordinary `fun`s + gated LLM |
 
-Policy and layering stayed; micro-tool staging dissolved into ordinary `fun`s.
-Layer 3 stays in-module (no split `semantic-pragmatic` workflow / JSON reload).
+Layer 3 stays in-module (no split pragmatic workflow / JSON reload).

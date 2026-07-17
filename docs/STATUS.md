@@ -8,13 +8,15 @@ Skills phase D (optional), then run-store interface.
 
 ## Done recently
 
-- **Semantic-check noise fix** — module-tree scan only; `text.is_qname` /
-  `normalize_token` / `starts_with` / `trim`; system speech-act + broader
-  directives; coding-agent dogfood `ok:true` (~2 findings vs ~35)
-- **Semantic-check deepen** — body-bearing `review_gate`; same-run layer 3;
-  `loadTypeEnv` elaborates `main` I/O for `schema(T)`
-- **Streaming LLM spans**; `--json` CLI; `fs.read_slice` / `fs.remove`;
-  try/catch; skills A–C; coding-agent; P0; M0–M9
+- **Semantic-check A+B** — policy gate (`check_internal_conflict` on
+  skills / system / rules); within-slice quoted sentence redundancy
+  (cap 16); H1-only skills get synthetic slices; gate unique by
+  `(slice_id, review_task)`, policy first, cap 8
+- **Semantic-check noise fix** — module-tree scan; `text.is_qname` /
+  friends; coding-agent dogfood `ok:true`
+- **Semantic-check deepen** — body-bearing `review_gate`; same-run
+  layer 3; `loadTypeEnv` elaborates `main` I/O for `schema(T)`
+- Streaming LLM spans; `--json` CLI; skills A–C; coding-agent; P0; M0–M9
 
 ## Blockers
 

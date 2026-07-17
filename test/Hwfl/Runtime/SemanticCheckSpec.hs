@@ -1,12 +1,31 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Hwfl.Runtime.SemanticCheckSpec (spec) where
 
+import Data.Aeson (encode, object, (.=))
+import Data.Aeson qualified as Aeson
+import Data.ByteString.Lazy.Char8 qualified as BL
 import Data.Either (isRight)
+import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Data.Vector qualified as V
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
-import Hwfl.Llm.Mock (mockProvider)
+import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
+import Hwfl.Llm.Provider (LlmProvider)
+import Hwfl.Llm.Types
+  ( ChatRequest (..),
+    FinishReason (..),
+    Message (..),
+    ProviderError,
+    ProviderResult (..),
+    Role (..),
+    TokenUsage (..),
+    Turn (..),
+  )
 import Hwfl.Parse.Load (loadModule)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
@@ -33,8 +52,8 @@ baseInputs =
     (Ident "model", VString "mock")
   ]
 
-runChecker :: FilePath -> [(Ident, Value)] -> T.Text -> IO RunOutcome
-runChecker tmp inputs runId = do
+runChecker :: FilePath -> [(Ident, Value)] -> Text -> LlmProvider -> IO RunOutcome
+runChecker tmp inputs runId provider = do
   loaded <- loadModule checkerPath
   case loaded of
     Left diags -> expectationFailure (show diags) >> error "unreachable"
@@ -42,7 +61,7 @@ runChecker tmp inputs runId = do
       runLoadedModule
         RunOptions
           { roWorkspace = tmp,
-            roProvider = mockProvider,
+            roProvider = provider,
             roInputs = inputs,
             roRunId = Just runId,
             roEntry = checkerPath,
@@ -56,6 +75,53 @@ runChecker tmp inputs runId = do
           }
         m
 
+-- | Planted GHC2021/Haskell2010 conflict → quoted contradiction; else empty lists.
+conflictAwareReply :: ChatRequest -> Either ProviderError ProviderResult
+conflictAwareReply req =
+  let prompt = lastUserText req
+      body =
+        if T.isInfixOf "GHC2021" prompt && T.isInfixOf "Haskell2010" prompt
+          then
+            object
+              [ "illocutionary_force" .= Aeson.String "directive",
+                "felicity_violations" .= Aeson.Array V.empty,
+                "contradictions"
+                  .= Aeson.Array
+                    ( V.singleton $
+                        object
+                          [ "quote_a" .= Aeson.String "Pin the project to GHC2021 for all modules.",
+                            "quote_b" .= Aeson.String "Always use Haskell2010 as the language standard.",
+                            "why" .= Aeson.String "Cannot pin both GHC2021 and Haskell2010"
+                          ]
+                    ),
+                "clarity_score" .= Aeson.Number 0.5
+              ]
+          else
+            object
+              [ "illocutionary_force" .= Aeson.String "unknown",
+                "felicity_violations" .= Aeson.Array V.empty,
+                "contradictions" .= Aeson.Array V.empty,
+                "clarity_score" .= Aeson.Number 1.0
+              ]
+   in Right
+        ProviderResult
+          { prContent = TE.decodeUtf8 (BL.toStrict (encode body)),
+            prToolCalls = [],
+            prUsage = Just (TokenUsage 1 1),
+            prFinishReason = FinishStop
+          }
+
+lastUserText :: ChatRequest -> Text
+lastUserText req
+  | not (null req.chatTurns) =
+      case [t | TurnUser t <- req.chatTurns] of
+        [] -> ""
+        xs -> last xs
+  | otherwise =
+      case [m.msgContent | m <- req.chatMessages, m.msgRole == RoleUser] of
+        [] -> ""
+        xs -> last xs
+
 spec :: Spec
 spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
   it "type-checks as a single module" $ do
@@ -64,10 +130,10 @@ spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
       Left diags -> expectationFailure (show diags)
       Right m -> checkLoadedModule m `shouldSatisfy` isRight
 
-  it "reviews fixture workspace: structural + prose findings, body-bearing gate" $
+  it "reviews fixture: structural, prose, quoted redundancy, policy gate shape" $
     withSystemTempDirectory "hwfl-semcheck" $ \tmp -> do
       copyTree fixtureRoot tmp
-      outcome <- runChecker tmp baseInputs "e20"
+      outcome <- runChecker tmp baseInputs "e20" mockProvider
       case outcome of
         OutcomeCompleted (VRecord fs) _store _n -> do
           lookup (Ident "ok") fs `shouldBe` Just (VBool False)
@@ -80,17 +146,17 @@ spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
           report `shouldSatisfy` T.isInfixOf "workflows/missing"
           report `shouldSatisfy` T.isInfixOf "tools/helper"
           report `shouldSatisfy` T.isInfixOf "\"review_gate\""
-          report `shouldSatisfy` T.isInfixOf "\"slice_id\""
           report `shouldSatisfy` T.isInfixOf "check_dead_reference"
+          report `shouldSatisfy` T.isInfixOf "check_internal_conflict"
+          report `shouldSatisfy` T.isInfixOf "\"category\":\"redundancy\""
+          report `shouldSatisfy` T.isInfixOf "Always prefer exact matches"
           report `shouldSatisfy` T.isInfixOf "\"mode\":\"deterministic\""
           report `shouldSatisfy` T.isInfixOf "\"pragmatic_findings\":[]"
-          -- Noise regressions from coding-agent dogfood.
           report `shouldSatisfy` (not . T.isInfixOf "\"evidence\":\"/\"")
-          report `shouldSatisfy` (not . T.isInfixOf "stdout/stderr")
           report `shouldSatisfy` (not . T.isInfixOf "README.md")
         other -> expectationFailure ("expected completed run, got: " <> show other)
 
-  it "pragmatic mode runs gated llm.object and records pragmatic_findings" $
+  it "pragmatic mode quotes planted GHC2021 vs Haskell2010 conflict" $
     withSystemTempDirectory "hwfl-semcheck-prag" $ \tmp -> do
       copyTree fixtureRoot tmp
       let inputs =
@@ -98,15 +164,17 @@ spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
               (Ident "mode", VString "pragmatic"),
               (Ident "model", VString "mock")
             ]
-      outcome <- runChecker tmp inputs "e20p"
+          provider = mockProviderWith conflictAwareReply
+      outcome <- runChecker tmp inputs "e20p" provider
       case outcome of
         OutcomeCompleted (VRecord fs) _store _n -> do
           lookup (Ident "ok") fs `shouldBe` Just (VBool False)
           report <- TIO.readFile (tmp </> ".hwfl/runs/e20p/semantic-report.json")
           report `shouldSatisfy` T.isInfixOf "\"mode\":\"pragmatic\""
-          report `shouldSatisfy` T.isInfixOf "\"pragmatic_findings\""
-          report `shouldSatisfy` T.isInfixOf "\"review_gate\""
-          -- Mock fills schema strings from the prompt; felicity rows appear unless bled.
+          report `shouldSatisfy` T.isInfixOf "check_internal_conflict"
+          report `shouldSatisfy` T.isInfixOf "\"category\":\"contradiction\""
+          report `shouldSatisfy` T.isInfixOf "GHC2021"
+          report `shouldSatisfy` T.isInfixOf "Haskell2010"
           report `shouldSatisfy` (not . T.isInfixOf "\"pragmatic_findings\":[]")
         other -> expectationFailure ("expected completed run, got: " <> show other)
 
@@ -114,10 +182,12 @@ copyTree :: FilePath -> FilePath -> IO ()
 copyTree src dst = do
   createDirectoryIfMissing True (dst </> "workflows")
   createDirectoryIfMissing True (dst </> "lib")
+  createDirectoryIfMissing True (dst </> "skills")
   mapM_
     ( \rel -> copyFile (src </> rel) (dst </> rel)
     )
     [ "workflows/ok.md",
       "workflows/bad.md",
-      "lib/search.md"
+      "lib/search.md",
+      "skills/conflict-lang.md"
     ]

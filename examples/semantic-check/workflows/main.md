@@ -16,15 +16,19 @@ effects: [Read, Write, Meta, Net]
 Semantic review written in hwfl (layers 0–2b deterministic; optional same-run
 layer 3 pragmatic via `llm.object`). Workspace is the target project. Scans
 module trees only (`workflows/`, `skills/`, `lib/`, `types/`) — not README or
-other docs. Always emits body-bearing `review_gate` items. Set
-`mode=pragmatic` (and a catalog `model`) to run gated LLM review in the same
-run; `mode=deterministic` skips LLM calls. No micro-tool fan-out.
+other docs.
+
+Deterministic: structural / prose qnames / entropy info / **within-slice
+quoted sentence redundancy** (capped). Pragmatic: gated `llm.object` including
+**internal conflict** on policy slices (skills, system, rules). Gate capped at
+8. Set `mode=pragmatic` + catalog `model` for LLM; `mode=deterministic` skips
+LLM calls.
 
 ## reviewer
 
-You review workflow prose for pragmatic coherence. You receive a slice body and,
-for pair reviews, a peer slice body. Selection metadata explains why the slice
-was flagged; it is not part of the prose under review.
+You review workflow / skill prose for pragmatic coherence. You receive a slice
+body and, for pair reviews, a peer slice body. Selection metadata explains why
+the slice was flagged; it is not part of the prose under review.
 
 Rules:
 - Judge only text in **Slice under review** and **Peer slice** sections.
@@ -32,6 +36,12 @@ Rules:
   those words appear in the slice bodies.
 - Felicity violations must cite phrases from the slice bodies.
 - Be conservative: only flag issues with evidence in the bodies.
+- For `check_internal_conflict`: flag instructions that are **jointly
+  unsatisfiable** (cannot both be followed). Conditional alternatives
+  ("in situation A … / in situation B …") are OK. Put the two quoted
+  instructions in `contradictions[].quote_a` and `contradictions[].quote_b`,
+  and a short `why`. If none, return an empty `contradictions` list.
+- For other review tasks: same contradiction shape when you find conflicts.
 
 ## body
 
@@ -73,14 +83,18 @@ type GateItem = {
   priority: Int
 }
 
+type Contradiction = {
+  quote_a: String,
+  quote_b: String,
+  why: String
+}
+
 type PragmaticOut = {
   illocutionary_force: String,
   felicity_violations: List<String>,
-  contradictions: List<{ other_location: String, evidence: String }>,
+  contradictions: List<Contradiction>,
   clarity_score: Float
 }
-
-type Contradiction = { other_location: String, evidence: String }
 
 fun has_string(xs: List<String>, q: String, i: Int, n: Int): Bool =
   if i >= n then false
@@ -229,35 +243,53 @@ fun corpus_entropy_outliers(slices: List<Slice>, mean: Float, i: Int, n: Int): L
           severity = "info",
           category = "corpus",
           file = s.file,
-          claim = "Section entropy above local mean",
-          evidence = s.id,
-          suggestion = "Review for noisy or duplicated guidance"
+          claim = $"Section word-entropy {s.entropy} above local mean {mean}",
+          evidence = $"{s.id} ({s.title})",
+          suggestion = "Long or varied prose; inspect only if guidance feels scattered"
         }],
         rest
       )
     else rest
 
-fun cluster_pairs(slices: List<Slice>, i: Int, j: Int, n: Int): List<Finding> =
-  if i >= n then []
-  else if j >= n then cluster_pairs(slices, i + 1, i + 2, n)
+fun sentence_usable(s: String): Bool =
+  text.metrics(s).chars > 40
+
+fun redundancy_sent_pairs(sents: List<String>, slice: Slice, i: Int, j: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else if j >= n then redundancy_sent_pairs(sents, slice, i + 1, i + 2, n, remaining)
   else
-    let a = slices[i]
-    let b = slices[j]
-    let score = text.similarity(a.body, b.body)
-    let rest = cluster_pairs(slices, i, j + 1, n)
-    if score > 0.85 && not(a.id == b.id) then
-      list.concat(
-        [{
-          severity = "info",
-          category = "corpus",
-          file = a.file,
-          claim = "Similar prose slices (possible redundancy)",
-          evidence = $"{a.id} ~ {b.id}",
-          suggestion = "Deduplicate or cross-link shared guidance"
-        }],
-        rest
-      )
-    else rest
+    let a = sents[i]
+    let b = sents[j]
+    let rest = redundancy_sent_pairs(sents, slice, i, j + 1, n, remaining)
+    if not(sentence_usable(a)) then rest
+    else if not(sentence_usable(b)) then rest
+    else
+      let score = text.similarity(a, b)
+      if score > 0.9 then
+        list.concat(
+          [{
+            severity = "warning",
+            category = "redundancy",
+            file = slice.file,
+            claim = $"Near-duplicate sentences in {slice.id}",
+            evidence = $"A: {a} | B: {b}",
+            suggestion = "Keep one wording or merge into a single rule"
+          }],
+          redundancy_sent_pairs(sents, slice, i, j + 1, n, remaining - 1)
+        )
+      else rest
+
+fun redundancy_in_slice(slice: Slice, remaining: Int): List<Finding> =
+  let sents = text.split_sentences(slice.body)
+  redundancy_sent_pairs(sents, slice, 0, 1, list.length(sents), remaining)
+
+fun redundancy_all(slices: List<Slice>, i: Int, n: Int, remaining: Int): List<Finding> =
+  if i >= n || remaining <= 0 then []
+  else
+    let here = redundancy_in_slice(slices[i], remaining)
+    let used = list.length(here)
+    list.concat(here, redundancy_all(slices, i + 1, n, remaining - used))
 
 fun is_directive(sentence: String): Bool =
   text.contains(sentence, "must ")
@@ -270,8 +302,6 @@ fun is_directive(sentence: String): Bool =
     || text.contains(sentence, "Never ")
     || text.contains(sentence, "do not ")
     || text.contains(sentence, "Do not ")
-    || text.contains(sentence, "don't ")
-    || text.contains(sentence, "Don't ")
 
 fun speech_in_slice(s: Slice): List<Finding> =
   let sents = text.split_sentences(s.body)
@@ -330,13 +360,14 @@ fun find_slice_for_prose(slices: List<Slice>, file: String, evidence: String, i:
     if s.file == file && text.contains(s.body, evidence) then [s]
     else find_slice_for_prose(slices, file, evidence, i + 1, n)
 
-fun gate_has_id(xs: List<GateItem>, id: String, i: Int, n: Int): Bool =
+fun gate_has(xs: List<GateItem>, id: String, rtask: String, i: Int, n: Int): Bool =
   if i >= n then false
-  else if xs[i].slice_id == id then true
-  else gate_has_id(xs, id, i + 1, n)
+  else if xs[i].slice_id == id then
+    if xs[i].review_task == rtask then true else false
+  else gate_has(xs, id, rtask, i + 1, n)
 
 fun gate_append_unique(acc: List<GateItem>, item: GateItem): List<GateItem> =
-  if gate_has_id(acc, item.slice_id, 0, list.length(acc)) then acc
+  if gate_has(acc, item.slice_id, item.review_task, 0, list.length(acc)) then acc
   else list.concat(acc, [item])
 
 fun gate_merge(acc: List<GateItem>, xs: List<GateItem>, i: Int, n: Int): List<GateItem> =
@@ -353,35 +384,24 @@ fun similarity_gates(slices: List<Slice>, i: Int, j: Int, n: Int): List<GateItem
   else
     let a = slices[i]
     let b = slices[j]
-    let score = text.similarity(a.body, b.body)
     let rest = similarity_gates(slices, i, j + 1, n)
-    if score > 0.85 && not(a.id == b.id) then
-      let item =
-        if a.entropy == b.entropy then
-          {
-            slice_id = a.id,
-            file = a.file,
-            body = a.body,
-            gate_source = "redundancy",
-            review_task = "check_redundancy",
-            peer_file = b.file,
-            peer_body = b.body,
-            context = $"{a.id} ~ {b.id}",
-            priority = 30
-          }
-        else
-          {
-            slice_id = a.id,
-            file = a.file,
-            body = a.body,
-            gate_source = "cluster_divergence",
-            review_task = "check_contradiction",
-            peer_file = b.file,
-            peer_body = b.body,
-            context = $"{a.id} ~ {b.id}; entropy diverge",
-            priority = 25
-          }
-      list.concat([item], rest)
+    if not(sentence_usable(a.body)) then rest
+    else if not(sentence_usable(b.body)) then rest
+    else if text.similarity(a.body, b.body) > 0.85 && not(a.id == b.id) then
+      list.concat(
+        [{
+          slice_id = a.id,
+          file = a.file,
+          body = a.body,
+          gate_source = "redundancy",
+          review_task = "check_redundancy",
+          peer_file = b.file,
+          peer_body = b.body,
+          context = $"{a.id} ~ {b.id}",
+          priority = 30
+        }],
+        rest
+      )
     else rest
 
 fun speech_gates(findings: List<Finding>, slices: List<Slice>, i: Int, n: Int): List<GateItem> =
@@ -437,12 +457,79 @@ fun prose_gates(findings: List<Finding>, slices: List<Slice>, i: Int, n: Int): L
           rest
         )
 
+fun has_file_slice(slices: List<Slice>, file: String, i: Int, n: Int): Bool =
+  if i >= n then false
+  else if slices[i].file == file then true
+  else has_file_slice(slices, file, i + 1, n)
+
+fun skill_file_slice(path: FileRef): List<Slice> =
+  let contents = fs.read(path)
+  let path_s = $"{path}"
+  let m = text.metrics(contents.text)
+  list.concat([{
+    id = $"{path_s}/skill",
+    file = path_s,
+    title = "skill",
+    body = contents.text,
+    entropy = m.entropy,
+    uniqueness = m.uniqueness
+  }], [])
+
+fun ensure_skill_slices(paths: List<FileRef>, slices: List<Slice>, i: Int, n: Int): List<Slice> =
+  if i >= n then slices
+  else
+    let p = paths[i]
+    let path_s = $"{p}"
+    let next =
+      if text.starts_with(path_s, "skills/") && not(has_file_slice(slices, path_s, 0, list.length(slices))) then
+        list.concat(slices, skill_file_slice(p))
+      else slices
+    ensure_skill_slices(paths, next, i + 1, n)
+
+fun is_policy_slice(s: Slice): Bool =
+  text.starts_with(s.file, "skills/")
+    || text.contains(s.title, "system")
+    || text.contains(s.title, "System")
+    || text.contains(s.title, "reviewer")
+    || text.contains(s.title, "Reviewer")
+    || text.contains(s.title, "rules")
+    || text.contains(s.title, "Rules")
+    || text.contains(s.title, "constraints")
+    || text.contains(s.title, "Constraints")
+
+fun policy_gates(slices: List<Slice>, i: Int, n: Int): List<GateItem> =
+  if i >= n then []
+  else
+    let s = slices[i]
+    let rest = policy_gates(slices, i + 1, n)
+    if not(is_policy_slice(s)) then rest
+    else if text.metrics(s.body).chars < 40 then rest
+    else
+      list.concat(
+        [{
+          slice_id = s.id,
+          file = s.file,
+          body = s.body,
+          gate_source = "policy",
+          review_task = "check_internal_conflict",
+          peer_file = "",
+          peer_body = "",
+          context = "policy surface (skill / system / rules)",
+          priority = 15
+        }],
+        rest
+      )
+
 fun build_gate(slices: List<Slice>, prose: List<Finding>, speech: List<Finding>): List<GateItem> =
-  let sim = similarity_gates(slices, 0, 1, list.length(slices))
+  let pol = policy_gates(slices, 0, list.length(slices))
   let sp = speech_gates(speech, slices, 0, list.length(speech))
   let pr = prose_gates(prose, slices, 0, list.length(prose))
-  let merged = gate_merge(gate_merge(gate_merge([], sim, 0, list.length(sim)), sp, 0, list.length(sp)), pr, 0, list.length(pr))
-  take_gates(merged, 8, 0, list.length(merged))
+  let sim = similarity_gates(slices, 0, 1, list.length(slices))
+  let merged0 = gate_merge([], pol, 0, list.length(pol))
+  let merged1 = gate_merge(merged0, sp, 0, list.length(sp))
+  let merged2 = gate_merge(merged1, pr, 0, list.length(pr))
+  let merged3 = gate_merge(merged2, sim, 0, list.length(sim))
+  take_gates(merged3, 8, 0, list.length(merged3))
 
 fun bleed_felicity(s: String): Bool =
   text.contains(s, "entropy")
@@ -475,17 +562,19 @@ fun contradiction_findings(xs: List<Contradiction>, file: String, i: Int, n: Int
   else
     let c = xs[i]
     let rest = contradiction_findings(xs, file, i + 1, n)
-    list.concat(
-      [{
-        severity = "warning",
-        category = "contradiction",
-        file = file,
-        claim = $"Possible contradiction vs {c.other_location}",
-        evidence = c.evidence,
-        suggestion = "Reconcile conflicting guidance"
-      }],
-      rest
-    )
+    if c.quote_a == "" && c.quote_b == "" then rest
+    else
+      list.concat(
+        [{
+          severity = "warning",
+          category = "contradiction",
+          file = file,
+          claim = if c.why == "" then "Conflicting instructions in gated prose" else c.why,
+          evidence = $"A: {c.quote_a} | B: {c.quote_b}",
+          suggestion = "Reconcile so both cannot apply in the same case, or remove one"
+        }],
+        rest
+      )
 
 fun pragmatic_to_findings(out: PragmaticOut, item: GateItem): List<Finding> =
   list.concat(
@@ -534,11 +623,12 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
   let structural = structural_from(rows, 0, list.length(rows))
   let entry = entry_findings(inputs.entry, names)
   let prose = prose_all(paths, names, 0, npaths)
-  let slices = slices_all(paths, 0, npaths)
+  let slices0 = slices_all(paths, 0, npaths)
+  let slices = ensure_skill_slices(paths, slices0, 0, npaths)
   let ns = list.length(slices)
   let corpus = list.concat(
     corpus_hints(slices),
-    cluster_pairs(slices, 0, 1, ns)
+    redundancy_all(slices, 0, ns, 16)
   )
   let speech = speech_all(slices, 0, ns)
   let findings = concat4(structural, entry, prose, list.concat(corpus, speech))
