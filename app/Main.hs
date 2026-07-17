@@ -88,7 +88,7 @@ usage = do
     "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
-    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug --json"
+    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug --cost --json"
   hPutStrLn stderr "  check options: --json"
   exitWith (ExitFailure 2)
 
@@ -190,6 +190,8 @@ data RunFlags = RunFlags
     rfVerbose :: Bool,
     -- | Live span open/close on stderr (implies verbose tree dump).
     rfDebug :: Bool,
+    -- | Prefix host progress lines with running LLM cost.
+    rfCost :: Bool,
     -- | Machine-readable diagnostics on stderr for failures.
     rfJson :: Bool
   }
@@ -266,6 +268,7 @@ runProject flags ws inputs provider = do
                     roProjectHash = hash,
                     roExec = lp.lpConfig.pcExec,
                     roDebug = flags.rfDebug,
+                    roCost = flags.rfCost,
                     roModelCatalog = flags.rfCatalog,
                     roSkillCatalog = catalog,
                     roSkillModules = skillMods
@@ -300,6 +303,7 @@ runSingleModule flags ws inputs provider = do
                 roProjectHash = Nothing,
                 roExec = Nothing,
                 roDebug = flags.rfDebug,
+                roCost = flags.rfCost,
                 roModelCatalog = flags.rfCatalog,
                 roSkillCatalog = catalog,
                 roSkillModules = skillMods
@@ -412,6 +416,7 @@ parseRunFlags args = do
           rfStep = False,
           rfVerbose = False,
           rfDebug = False,
+          rfCost = False,
           rfJson = False
         }
     takeModule [] _ = Left "hwfl run: missing <module.md>"
@@ -432,6 +437,7 @@ parseRunFlags args = do
       | x == "--step" = takeModule xs f {rfStep = True}
       | x == "-v" || x == "--verbose" = takeModule xs f {rfVerbose = True}
       | x == "--debug" = takeModule xs f {rfDebug = True, rfVerbose = True}
+      | x == "--cost" = takeModule xs f {rfCost = True}
       | x == "--json" = takeModule xs f {rfJson = True}
       | "-" `T.isPrefixOf` T.pack x = Left ("unknown flag: " <> x)
       | otherwise = consumeOpts xs f {rfModule = x}
@@ -453,6 +459,7 @@ parseRunFlags args = do
       | x == "--step" = consumeOpts xs f {rfStep = True}
       | x == "-v" || x == "--verbose" = consumeOpts xs f {rfVerbose = True}
       | x == "--debug" = consumeOpts xs f {rfDebug = True, rfVerbose = True}
+      | x == "--cost" = consumeOpts xs f {rfCost = True}
       | x == "--json" = consumeOpts xs f {rfJson = True}
       | otherwise = Left ("unexpected argument: " <> x)
 

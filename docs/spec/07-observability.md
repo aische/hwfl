@@ -36,7 +36,8 @@ Rules:
 - `obs.span("name") { … }` ⇒ region span
 - Agent model rounds ⇒ `agent_round` spans; each tool call ⇒ `tool:<name>`
   child span (args summarized/redacted); nested host ops under the tool
-- CLI: `hwfl run --debug` streams span open/close; `hwfl show` prints attrs
+- CLI: `hwfl run --debug` streams span open/close; `hwfl run --cost`
+  prefixes host progress lines with running LLM spend; `hwfl show` prints attrs
 
 ## 4. Redaction
 

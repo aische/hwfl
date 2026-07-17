@@ -11,6 +11,7 @@ module Hwfl.Obs.Trace
     getSpanStack,
     appendEvent,
     debugLog,
+    runCostPrefix,
     readSpanRecords,
     SpanRecord (..),
     SpanNode (..),
@@ -44,7 +45,7 @@ data SpanState = SpanState
   { ssCounter :: IORef Int,
     -- | Innermost span id at the head.
     ssStack :: IORef [SpanId],
-    -- | Running LLM cost (microdollars) for @--debug@ ledger prefix.
+    -- | Running LLM cost (microdollars) for @--debug@ / @--cost@ ledger prefix.
     ssRunCostMicros :: IORef Int,
     -- | Optional live debug logger (e.g. stderr under @--debug@).
     ssDebug :: Maybe (Text -> IO ())

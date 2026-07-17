@@ -8,6 +8,7 @@ Skills phase D (optional), then run-store interface.
 
 ## Done recently
 
+- **`--cost`** — prefix host progress lines with running LLM spend
 - **Semantic-check S3** — proposition algebra (`must`/`must_not`/`prefer`/
   `prefer_not`); Must∧MustNot + Must vs Prefer(~a); `category: proposition`;
   gate cap 10

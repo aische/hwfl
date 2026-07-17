@@ -7,7 +7,7 @@ Executable name provisional: **`hwfl`**.
 | Command                                                 | Purpose                                          |
 | ------------------------------------------------------- | ------------------------------------------------ |
 | `hwfl check <project> [--json]`                                  | Load + type + effects + graph; exit ≠0 on error  |
-| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug] [--json]` | Check (unless `--no-check`) + execute entrypoint |
+| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug] [--cost] [--json]` | Check (unless `--no-check`) + execute entrypoint |
 | `hwfl step <workspace> <run-id>`                        | One transition, then pause                       |
 | `hwfl resume <workspace> <run-id>`                      | Continue until end / pause / fail                |
 | `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |
@@ -24,6 +24,10 @@ Executable name provisional: **`hwfl`**.
   deltas (or compact progress) for in-flight `llm.chat` / `agent_round`
   spans — not one line per provider token. See
   [07-observability.md](07-observability.md) §9.
+- `--cost` (on `run`): prefix host progress lines (`fs.read …`,
+  `llm.object …`, …) with running LLM spend, e.g. `$0.12 │ fs.read …`.
+  Uses the same counter as `--debug` span lines; bumps on priced LLM
+  span close.
 
 ## 2. Inputs
 

@@ -43,6 +43,7 @@ import Hwfl.Obs.Trace
     getSpanStack,
     newSpanStateDebug,
     openSpan,
+    runCostPrefix,
     setSpanStack,
   )
 import Hwfl.Project (ExecPolicy (..), LoadedProject (..), ProjectConfig (..), loadProject, loadProjectConfig)
@@ -83,6 +84,8 @@ data RunOptions = RunOptions
     roExec :: Maybe ExecPolicy,
     -- | Live span open/close lines on stderr (CLI @--debug@).
     roDebug :: Bool,
+    -- | Prefix host progress lines with running LLM cost (CLI @--cost@).
+    roCost :: Bool,
     -- | Model catalog for LLM cost attribution.
     roModelCatalog :: FilePath,
     -- | Skill catalog from @hwfl check@ (empty when running a lone module).
@@ -173,7 +176,7 @@ runLoadedModule opts loaded = do
             heExec = opts.roExec,
             heSkillCatalog = opts.roSkillCatalog,
             hePricing = pricing,
-            heLog = hPutStrLn stderr . T.unpack,
+            heLog = mkHostLog opts.roCost spans,
             heLlmOnChunk = Nothing
           }
       ctx =
@@ -251,6 +254,17 @@ pauseMessage = \case
   PauseExplicit -> "paused after step"
   PauseAwaitingConfirm c -> "awaiting confirm: " <> c.crTitle
   PauseCrashRecovery -> "paused (crash recovery)"
+
+-- | Host progress logger; optional running-cost prefix for @--cost@.
+mkHostLog :: Bool -> SpanState -> Text -> IO ()
+mkHostLog showCost spans msg = do
+  line <-
+    if showCost
+      then do
+        prefix <- runCostPrefix spans
+        pure (prefix <> msg)
+      else pure msg
+  hPutStrLn stderr (T.unpack line)
 
 closeModuleSpan :: RunStore -> SpanState -> Text -> MachineStatus -> IO ()
 closeModuleSpan store spans sid status = case status of

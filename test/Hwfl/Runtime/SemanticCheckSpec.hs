@@ -69,6 +69,7 @@ runChecker tmp inputs runId provider = do
             roProjectHash = Nothing,
             roExec = Nothing,
             roDebug = False,
+            roCost = False,
             roModelCatalog = "model-catalog.json",
             roSkillCatalog = fst emptySkillRuntime,
             roSkillModules = snd emptySkillRuntime

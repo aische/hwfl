@@ -16,7 +16,7 @@ import Hwfl.Eval.Value (HostOpId (..), Value (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Redact (hostOpenAttrs, redactJson, redactMarker, redactValue)
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
-import Hwfl.Obs.Trace (SpanNode (..), buildSpanForest, readSpanRecords)
+import Hwfl.Obs.Trace (SpanNode (..), buildSpanForest, newSpanState, readSpanRecords, runCostPrefix)
 import Hwfl.Parse.Expr (parseExprText)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Eval (StepMode (..))
@@ -119,6 +119,12 @@ spec = describe "observability (M6)" $ do
             `shouldBe` Just (Aeson.Number (fromIntegral (T.length "TOP SECRET PROMPT BODY")))
         _ -> expectationFailure "expected attrs object"
 
+  describe "running cost prefix" $ do
+    it "formats $0.00 │ when no LLM spend yet" $ do
+      st <- newSpanState
+      prefix <- runCostPrefix st
+      prefix `shouldBe` "$0.00 │ "
+
   describe "polymorphic obs.span (E16)" $ do
     it "infers obs.span(name)(fun () => e) as the type of e" $ do
       inferE "obs.span(\"cluster\")(fun () => 42)"
@@ -146,6 +152,7 @@ spec = describe "observability (M6)" $ do
                     roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
@@ -181,6 +188,7 @@ spec = describe "observability (M6)" $ do
                       roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime

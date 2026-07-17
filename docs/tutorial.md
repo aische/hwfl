@@ -151,6 +151,9 @@ cabal run hwfl -- run examples/obs-span.md \
 `--debug` streams span open/close on stderr and prints the tree at the
 end (`-v` / `--verbose` only prints the end tree).
 
+`--cost` prefixes the usual host progress lines with running LLM spend
+(`$0.12 │ fs.read …`) without enabling the debug span stream.
+
 ## 6. Pause, approve, resume
 
 Host ops that need a human gate leave the machine **paused** (CLI exit

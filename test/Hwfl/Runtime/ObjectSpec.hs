@@ -70,6 +70,7 @@ spec = describe "runtime llm.object (E14)" $ do
                   roProjectHash = Nothing,
                     roExec = Nothing,
                     roDebug = False,
+                    roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
                     roSkillModules = snd emptySkillRuntime
