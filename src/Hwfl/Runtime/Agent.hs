@@ -111,6 +111,13 @@ hostToolMeta = \case
         describedObjectSchema
           [("path", t "FileRef", "Workspace-relative directory to list")]
       )
+  HostFsFind ->
+    Right
+      ( "fs_find",
+        "Find workspace files matching a glob pattern",
+        describedObjectSchema
+          [("glob", t "String", "File glob (**/*.ext or *.ext)")]
+      )
   HostFsEdit ->
     Right
       ( "fs_edit",
@@ -357,6 +364,13 @@ coerceToolArgs ts json = case ts.tvsCallee of
       Nothing -> Left "fs_list missing path"
     Aeson.String p -> Right [(Nothing, VString p)]
     _ -> Left "fs_list arguments must be an object or string path"
+  VHostOp HostFsFind -> case json of
+    Aeson.Object o -> case KM.lookup "glob" o of
+      Just (Aeson.String g) -> Right [(Just (Ident "glob"), VString g)]
+      Just _ -> Left "fs_find.glob must be a string"
+      Nothing -> Left "fs_find missing glob"
+    Aeson.String g -> Right [(Just (Ident "glob"), VString g)]
+    _ -> Left "fs_find arguments must be an object or string glob"
   VHostOp HostFsEdit -> case json of
     Aeson.Object o -> do
       path <- stringField o "path"

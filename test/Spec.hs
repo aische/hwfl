@@ -14,6 +14,7 @@ import Hwfl.Parse.SectionSpec
 import Hwfl.Parse.TypeSpec
 import Hwfl.Runtime.AgentObjectSpec
 import Hwfl.Runtime.AgentSpec
+import Hwfl.Runtime.CodingAgentSpec
 import Hwfl.Runtime.ConcurrentSpec
 import Hwfl.Runtime.HostOpsSpec
 import Hwfl.Runtime.ObjectSpec
@@ -44,3 +45,4 @@ main = hspec $ do
   Hwfl.Runtime.ObjectSpec.spec
   Hwfl.Obs.SpanSpec.spec
   Hwfl.Runtime.SemanticCheckSpec.spec
+  Hwfl.Runtime.CodingAgentSpec.spec

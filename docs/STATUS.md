@@ -1,20 +1,18 @@
 # Status
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 ## Current focus
 
-**Coding-agent dogfood** — P0 host gaps closed; next is a real edit/test
-agent example + tutorial, then CLI `--debug`.
+**Author-facing docs** — coding-agent example shipped; next is the tutorial
+(`check` → `run` → `resume` → `show`), then CLI `--debug`.
 
 ## Done recently
 
-- P0: runtime `exec.run` (allowlist + `exec.confirm` from `project.json`)
-- P0: `fs.list` / `fs.edit` / `fs.grep` (+ agent tool metadata)
-- P0: [language-reference.md](language-reference.md) card
-- Priority reorder: coding-agent host primitives ahead of streaming / DB /
-  skills / Servant / MCP
-- `schema(T)` optional field docs; builtin tool descriptions; `.env` load
+- Real coding-agent example: universal create/fix agent via
+  `llm.agent_object` + FS + `exec.run` (`examples/coding-agent`)
+- `fs.find` agent-tool eligible (explore before write)
+- P0: runtime `exec.run`; `fs.list` / `fs.edit` / `fs.grep`; language-reference
 - M0–M9 complete
 
 ## Blockers
@@ -23,14 +21,13 @@ None.
 
 ## Next up
 
-1. Real coding-agent example (sandbox edit / test loop using exec + FS)
-2. Tutorial: module → `check` → `run` → `resume` → `show`
-3. CLI `--debug` (and complete `-v` / `--json` where thin)
-4. Streaming LLM spans
-5. Semantic-check deepen (optional LLM layer; packaging)
-6. Skills ([skills-plan.md](skills-plan.md))
-7. Run-store interface → optional DB; later Servant API; later MCP client
-8. Alternate `LlmProvider` — low priority
+1. Tutorial: module → `check` → `run` → `resume` → `show`
+2. CLI `--debug` (and complete `-v` / `--json` where thin)
+3. Streaming LLM spans
+4. Semantic-check deepen (optional LLM layer; packaging)
+5. Skills ([skills-plan.md](skills-plan.md))
+6. Run-store interface → optional DB; later Servant API; later MCP client
+7. Alternate `LlmProvider` — low priority
 
 ## Open naming
 

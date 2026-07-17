@@ -141,6 +141,7 @@ test-suite hwfl-test
         Hwfl.Parse.TypeSpec
         Hwfl.Runtime.AgentSpec
         Hwfl.Runtime.AgentObjectSpec
+        Hwfl.Runtime.CodingAgentSpec
         Hwfl.Runtime.ConcurrentSpec
         Hwfl.Runtime.HostOpsSpec
         Hwfl.Runtime.ObjectSpec

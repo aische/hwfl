@@ -1,0 +1,43 @@
+{
+  "name": "coding-agent",
+  "version": "0.1.0",
+  "entrypoint": "workflows/main",
+  "env": [],
+  "effects": {
+    "default": ["Read", "Write", "Net", "Exec"],
+    "deny": []
+  },
+  "exec": {
+    "allow": [
+      "python3",
+      "python",
+      "pip3",
+      "pip",
+      "pytest",
+      "node",
+      "npm",
+      "npx",
+      "yarn",
+      "pnpm",
+      "cabal",
+      "ghc",
+      "runhaskell",
+      "cargo",
+      "rustc",
+      "go",
+      "make",
+      "git",
+      "bash",
+      "sh",
+      "echo",
+      "ls",
+      "cat",
+      "which",
+      "uname"
+    ],
+    "env": ["PATH", "HOME", "USER", "LANG", "TMPDIR", "TMP", "TEMP", "TERM"],
+    "timeout_ms": 300000,
+    "max_output_bytes": 2097152,
+    "confirm": false
+  }
+}

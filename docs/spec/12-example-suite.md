@@ -148,6 +148,13 @@ bounded `review_gate`. One module (~300 LOC); uses `meta.check_module`,
 check path (layer 3 pragmatic review deferred). Fixture:
 `test/fixtures/semantic-target`.
 
+## E21 — Universal coding agent **A** **H**
+
+**Shipped:** `examples/coding-agent` — `llm.agent_object` with FS +
+`exec.run` tools. Inputs `prompt` / `model`; workspace may be empty or an
+existing tree. Creates/edits files and runs allowlisted toolchain commands
+(python/npm/cabal/…). Fixture: `test/Hwfl/Runtime/CodingAgentSpec.hs`.
+
 ---
 
 ## Contracts table (summary)
@@ -163,6 +170,7 @@ check path (layer 3 pragmatic review deferred). Fixture:
 | E15b    | ✓           | ✓   | mid-tool | agent_object + submit |
 | E16     | ✓           | ✓   | —        | region `obs.span`     |
 | E20     | ✓           | ✓   | optional | library spans         |
+| E21     | ✓           | ✓   | mid-tool | agent_object + exec   |
 
 ## Using the suite
 
