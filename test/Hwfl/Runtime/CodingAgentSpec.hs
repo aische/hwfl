@@ -153,7 +153,8 @@ spec = describe "coding-agent example" $ do
                   roEntry = modulePath,
                   roMode = StepRun,
                   roProjectHash = Nothing,
-                  roExec = execPol
+                  roExec = execPol,
+                    roDebug = False
                 }
               m
           case outcome of

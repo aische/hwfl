@@ -50,7 +50,8 @@ spec = describe "semantic-check dogfood (M8 / E20)" $ do
                   roEntry = checkerPath,
                   roMode = StepRun,
                   roProjectHash = Nothing,
-                    roExec = Nothing
+                    roExec = Nothing,
+                    roDebug = False
                 }
               m
           case outcome of

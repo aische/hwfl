@@ -97,7 +97,9 @@ data ToolRound = ToolRound
   { trPending :: [ToolCall],
     trCompleted :: [ToolResult],
     trActiveCall :: Maybe ToolCall,
-    trActiveMachine :: Maybe BranchMachine
+    trActiveMachine :: Maybe BranchMachine,
+    -- | Open @tool:<name>@ span for the active call, if any.
+    trActiveSpanId :: Maybe Text
   }
   deriving stock (Eq, Show)
 

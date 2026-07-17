@@ -16,7 +16,7 @@ import Hwfl.Eval.Value (Value, renderValue)
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Simple (mkSimpleProvider)
-import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
+import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun, showStore)
 import Hwfl.Parse.Load (loadModule)
 import Hwfl.Project
   ( LoadedProject (..),
@@ -38,6 +38,7 @@ import Hwfl.Runtime.Run
     runLoadedModule,
     stepRun,
   )
+import Hwfl.Runtime.Snapshot (RunStore)
 import Hwfl.Source (renderDiagnostics)
 import System.Directory (getCurrentDirectory)
 import System.Environment (getArgs, lookupEnv)
@@ -75,7 +76,7 @@ usage = do
     "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
-    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step"
+    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step --debug"
   exitWith (ExitFailure 2)
 
 cmdParse :: FilePath -> IO ()
@@ -117,7 +118,8 @@ data RunFlags = RunFlags
     rfProvider :: String,
     rfNoCheck :: Bool,
     rfCatalog :: FilePath,
-    rfStep :: Bool
+    rfStep :: Bool,
+    rfDebug :: Bool
   }
 
 cmdRun :: [String] -> IO ()
@@ -177,9 +179,10 @@ runProject flags ws inputs provider = do
                     roEntry = entryPath,
                     roMode = if flags.rfStep then StepOnce else StepRun,
                     roProjectHash = hash,
-                    roExec = lp.lpConfig.pcExec
+                    roExec = lp.lpConfig.pcExec,
+                    roDebug = flags.rfDebug
                   }
-          handleOutcome =<< runLoadedModule opts loaded
+          handleOutcome flags.rfDebug =<< runLoadedModule opts loaded
 
 runSingleModule :: RunFlags -> FilePath -> [(Ident, Value)] -> LlmProvider -> IO ()
 runSingleModule flags ws inputs provider = do
@@ -205,30 +208,31 @@ runSingleModule flags ws inputs provider = do
                 roEntry = flags.rfModule,
                 roMode = if flags.rfStep then StepOnce else StepRun,
                 roProjectHash = Nothing,
-                    roExec = Nothing
+                roExec = Nothing,
+                roDebug = flags.rfDebug
               }
-      handleOutcome =<< runLoadedModule opts loaded
+      handleOutcome flags.rfDebug =<< runLoadedModule opts loaded
 
 cmdStep :: [String] -> IO ()
 cmdStep args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
     provider <- resolveProvider provName catalog
-    handleOutcome =<< stepRun ws runId provider
+    handleOutcome False =<< stepRun ws runId provider
 
 cmdResume :: [String] -> IO ()
 cmdResume args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
     provider <- resolveProvider provName catalog
-    handleOutcome =<< resumeRun ws runId provider
+    handleOutcome False =<< resumeRun ws runId provider
 
 cmdApprove :: [String] -> IO ()
 cmdApprove args = case parseApprove args of
   Left msg -> dieUsage msg
   Right (ws, runId, yes, provName, catalog) -> do
     provider <- resolveProvider provName catalog
-    handleOutcome =<< approveRun ws runId yes provider
+    handleOutcome False =<< approveRun ws runId yes provider
 
 cmdShow :: [String] -> IO ()
 cmdShow args = case parseShow args of
@@ -241,21 +245,34 @@ cmdShow args = case parseShow args of
         exitWith (ExitFailure 1)
       Right txt -> TIO.putStrLn txt
 
-handleOutcome :: RunOutcome -> IO ()
-handleOutcome = \case
-  OutcomeCompleted val _ _ -> case renderValue val of
-    Left msg -> do
-      hPutStrLn stderr ("result render failed: " <> T.unpack msg)
-      print val
-    Right t -> TIO.putStrLn t
-  OutcomePaused status msg _ _ -> do
+handleOutcome :: Bool -> RunOutcome -> IO ()
+handleOutcome debug = \case
+  OutcomeCompleted val store _ -> do
+    case renderValue val of
+      Left msg -> do
+        hPutStrLn stderr ("result render failed: " <> T.unpack msg)
+        print val
+      Right t -> TIO.putStrLn t
+    dumpDebugTrace debug store
+  OutcomePaused status msg store _ -> do
     TIO.hPutStrLn stderr msg
+    dumpDebugTrace debug store
     case status of
       MsPaused _ -> exitWith (ExitFailure 3)
       _ -> exitWith (ExitFailure 3)
-  OutcomeFailed err _ _ -> do
+  OutcomeFailed err store _ -> do
     TIO.hPutStrLn stderr (renderRuntimeError err)
+    dumpDebugTrace debug store
     exitWith (exitFor err)
+
+dumpDebugTrace :: Bool -> RunStore -> IO ()
+dumpDebugTrace False _ = pure ()
+dumpDebugTrace True store = do
+  hPutStrLn stderr "hwfl --debug: span tree"
+  shown <- showStore store ShowTree Nothing
+  case shown of
+    Left err -> TIO.hPutStrLn stderr err
+    Right txt -> TIO.hPutStrLn stderr txt
 
 exitFor :: RuntimeError -> ExitCode
 exitFor = \case
@@ -298,7 +315,8 @@ parseRunFlags args = do
           rfProvider = "simple",
           rfNoCheck = False,
           rfCatalog = "model-catalog.json",
-          rfStep = False
+          rfStep = False,
+          rfDebug = False
         }
     takeModule [] _ = Left "hwfl run: missing <module.md>"
     takeModule (x : xs) f
@@ -316,6 +334,7 @@ parseRunFlags args = do
           [] -> Left "--model-catalog needs a path"
       | x == "--no-check" = takeModule xs f {rfNoCheck = True}
       | x == "--step" = takeModule xs f {rfStep = True}
+      | x == "--debug" = takeModule xs f {rfDebug = True}
       | "--" `T.isPrefixOf` T.pack x = Left ("unknown flag: " <> x)
       | otherwise = consumeOpts xs f {rfModule = x}
     consumeOpts [] f = Right (f.rfModule, f)
@@ -334,6 +353,7 @@ parseRunFlags args = do
           [] -> Left "--model-catalog needs a path"
       | x == "--no-check" = consumeOpts xs f {rfNoCheck = True}
       | x == "--step" = consumeOpts xs f {rfStep = True}
+      | x == "--debug" = consumeOpts xs f {rfDebug = True}
       | otherwise = Left ("unexpected argument: " <> x)
 
 parseWsRun :: [String] -> Either String (FilePath, T.Text, String, FilePath)

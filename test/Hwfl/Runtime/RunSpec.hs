@@ -94,7 +94,8 @@ spec = describe "runtime run (M4/M5)" $ do
                     roEntry = dir </> "e03.md",
                     roMode = StepRun,
                     roProjectHash = Nothing,
-                    roExec = Nothing
+                    roExec = Nothing,
+                    roDebug = False
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -122,7 +123,8 @@ spec = describe "runtime run (M4/M5)" $ do
                     roEntry = dir </> "summarise.md",
                     roMode = StepRun,
                     roProjectHash = Nothing,
-                    roExec = Nothing
+                    roExec = Nothing,
+                    roDebug = False
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -176,7 +178,8 @@ spec = describe "runtime run (M4/M5)" $ do
                     roEntry = "escape.md",
                     roMode = StepRun,
                     roProjectHash = Nothing,
-                    roExec = Nothing
+                    roExec = Nothing,
+                    roDebug = False
                   }
           outcome <- runLoadedModule opts loaded
           outcome `shouldSatisfy` isFailed

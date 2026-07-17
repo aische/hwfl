@@ -21,11 +21,11 @@ Spans are nested. Events may hang off a span id.
 ```text
 Span
   id, parent_id?
-  name              # e.g. llm.chat, fs.read, user:cluster
-  kind              # host | region | module | agent_round
+  name              # e.g. llm.chat, fs.read, tool:fs_read, user:cluster
+  kind              # host | region | module | agent_round | agent_tool
   t_start, t_end?
   status            # ok | error | cancelled
-  attrs             # redacted JSON (model, path, token_in, token_out, cost?)
+  attrs             # redacted JSON (model, path, token_in, token_out, args?)
   snapshot_seq?     # link to machine seq when host transition
 ```
 
@@ -34,7 +34,9 @@ Rules:
 - Every host op ⇒ span
 - Module `main` ⇒ span
 - `obs.span("name") { … }` ⇒ region span
-- Agent model/tool rounds ⇒ child spans
+- Agent model rounds ⇒ `agent_round` spans; each tool call ⇒ `tool:<name>`
+  child span (args summarized/redacted); nested host ops under the tool
+- CLI: `hwfl run --debug` streams span open/close; `hwfl show` prints attrs
 
 ## 4. Redaction
 

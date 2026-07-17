@@ -151,7 +151,8 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roEntry = "echo.md",
                       roMode = StepRun,
                       roProjectHash = Nothing,
-                      roExec = allowEcho
+                      roExec = allowEcho,
+                    roDebug = False
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of
@@ -179,7 +180,8 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roEntry = "deny.md",
                       roMode = StepRun,
                       roProjectHash = Nothing,
-                      roExec = allowEcho
+                      roExec = allowEcho,
+                    roDebug = False
                     }
             outcome <- runLoadedModule opts loaded
             outcome `shouldSatisfy` isFailed
@@ -216,7 +218,8 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roEntry = dir </> "workflows" </> "echo.md",
                       roMode = StepRun,
                       roProjectHash = Nothing,
-                      roExec = confirmEcho
+                      roExec = confirmEcho,
+                    roDebug = False
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of
@@ -248,7 +251,8 @@ spec = describe "host ops P0 (exec + fs)" $ do
                       roEntry = "fsops.md",
                       roMode = StepRun,
                       roProjectHash = Nothing,
-                      roExec = Nothing
+                      roExec = Nothing,
+                    roDebug = False
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of

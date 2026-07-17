@@ -3,6 +3,7 @@ module Hwfl.Obs.Show
   ( ShowMode (..),
     ShowOptions (..),
     showRun,
+    showStore,
     formatSpanTree,
   )
 where
@@ -44,6 +45,11 @@ data ShowOptions = ShowOptions
 showRun :: ShowOptions -> IO (Either Text Text)
 showRun opts = do
   store <- openRunStore opts.soWorkspace opts.soRunId
+  showStore store opts.soMode opts.soFilter
+
+-- | Format an already-open run store (used by CLI @--debug@ after run).
+showStore :: RunStore -> ShowMode -> Maybe Text -> IO (Either Text Text)
+showStore store mode filt = do
   mMeta <- readRunMeta store
   mSnap <- readRunSnapshot store
   records <- readSpanRecords store
@@ -51,13 +57,13 @@ showRun opts = do
     (Nothing, Nothing) ->
       pure (Left ("no run found at " <> T.pack (store.storeRoot)))
     _ ->
-      pure . Right $ case opts.soMode of
+      pure . Right $ case mode of
         ShowSummary ->
           formatSummary mMeta mSnap (buildSpanForest records)
         ShowTree ->
           formatSummary mMeta mSnap (buildSpanForest records)
         ShowSpans ->
-          formatSpanLines (filterSpans opts.soFilter records)
+          formatSpanLines (filterSpans filt records)
         ShowSnapshot ->
           formatSnapshot mSnap
 
@@ -90,6 +96,8 @@ formatSpanTree = concatMap (go 0)
     go depth n =
       let pad = T.replicate depth "  "
           st = maybe "open" spanStatusText n.snStatus
+          attrs = compactAttrs n.snAttrs
+          attrSuffix = if T.null attrs then "" else "  " <> attrs
           line =
             pad
               <> "└─ "
@@ -98,6 +106,7 @@ formatSpanTree = concatMap (go 0)
               <> spanKindText n.snKind
               <> "] "
               <> st
+              <> attrSuffix
        in line : concatMap (go (depth + 1)) n.snChildren
 
 formatSpanLines :: [SpanRecord] -> Text
@@ -111,6 +120,8 @@ formatSpanLines =
             <> maybe "" (" " <>) r.srName
             <> maybe "" (\k -> " (" <> spanKindText k <> ")") r.srKind
             <> maybe "" (\s -> " " <> spanStatusText s) r.srStatus
+            <> let a = compactAttrs r.srAttrs
+                in if T.null a then "" else "  " <> a
       )
 
 formatSnapshot :: Maybe RunSnapshot -> Text

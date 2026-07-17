@@ -3,6 +3,8 @@ module Hwfl.Obs.Redact
   ( redactMarker,
     redactValue,
     redactJson,
+    summarizeJson,
+    toolCallOpenAttrs,
     hostOpenAttrs,
     sensitiveKey,
   )
@@ -14,8 +16,10 @@ import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Vector qualified as V
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Eval.Value (HostOpId (..), ToolSpecValue (..), Value (..), hostOpName)
+import Hwfl.Llm.Types (ToolCall (..))
 
 redactMarker :: Text
 redactMarker = "[REDACTED]"
@@ -85,6 +89,30 @@ looksLikeSecret t =
         || (c >= '0' && c <= '9')
         || c == '_'
         || c == '-'
+
+-- | Compact JSON for span attrs: redact secrets, truncate long strings.
+summarizeJson :: Aeson.Value -> Aeson.Value
+summarizeJson = go . redactJson
+  where
+    go = \case
+      Aeson.Object km ->
+        Aeson.Object $ KM.fromList [(k, go v) | (k, v) <- KM.toList km]
+      Aeson.Array xs ->
+        Aeson.Array (V.fromList (map go (V.toList xs)))
+      Aeson.String t
+        | T.length t > 120 ->
+            Aeson.String ("<" <> T.pack (show (T.length t)) <> " chars>")
+        | otherwise -> Aeson.String t
+      other -> other
+
+-- | Open-attrs for an agent tool call span.
+toolCallOpenAttrs :: ToolCall -> Aeson.Value
+toolCallOpenAttrs tc =
+  object
+    [ "tool" .= tc.tcName,
+      "call_id" .= tc.tcId,
+      "arguments" .= summarizeJson tc.tcArguments
+    ]
 
 -- | Redacted open-attrs for a host op (never full prompt/body text).
 hostOpenAttrs :: HostOpId -> [(Maybe Ident, Value)] -> Aeson.Value

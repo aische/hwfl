@@ -175,7 +175,8 @@ spec = describe "runtime agent (M7)" $ do
                   roEntry = path,
                   roMode = StepRun,
                   roProjectHash = Nothing,
-                    roExec = Nothing
+                    roExec = Nothing,
+                    roDebug = False
                 }
               loaded
           case outcome of
@@ -195,7 +196,10 @@ spec = describe "runtime agent (M7)" $ do
                 Right tree -> do
                   tree `shouldSatisfy` T.isInfixOf "llm.agent"
                   tree `shouldSatisfy` T.isInfixOf "agent_round"
+                  tree `shouldSatisfy` T.isInfixOf "tool:fs_read"
+                  tree `shouldSatisfy` T.isInfixOf "tool:search"
                   tree `shouldSatisfy` T.isInfixOf "fs.read"
+                  tree `shouldSatisfy` T.isInfixOf "path=note.txt"
             other -> expectationFailure (show other)
 
   it "E15 mid-tool step/resume continues agent loop" $
@@ -217,7 +221,8 @@ spec = describe "runtime agent (M7)" $ do
                   roEntry = path,
                   roMode = StepOnce,
                   roProjectHash = Nothing,
-                    roExec = Nothing
+                    roExec = Nothing,
+                    roDebug = False
                 }
               loaded
           case outcome0 of

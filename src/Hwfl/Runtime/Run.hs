@@ -37,7 +37,7 @@ import Hwfl.Obs.Trace
     closeSpan,
     currentSpanId,
     getSpanStack,
-    newSpanState,
+    newSpanStateDebug,
     openSpan,
     setSpanStack,
   )
@@ -66,7 +66,9 @@ data RunOptions = RunOptions
     roMode :: StepMode,
     roProjectHash :: Maybe Text,
     -- | Exec policy from @project.json@; 'Nothing' disables @exec.run@.
-    roExec :: Maybe ExecPolicy
+    roExec :: Maybe ExecPolicy,
+    -- | Live span open/close lines on stderr (CLI @--debug@).
+    roDebug :: Bool
   }
 
 data RunOutcome
@@ -130,7 +132,11 @@ runLoadedModule opts loaded = do
         rmStatus = "running"
       }
   seqRef <- newIORef (0 :: Int)
-  spans <- newSpanState
+  let debugLog =
+        if opts.roDebug
+          then Just (\msg -> hPutStrLn stderr (T.unpack msg))
+          else Nothing
+  spans <- newSpanStateDebug debugLog
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
       typeEnv = loadTypeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
@@ -293,7 +299,7 @@ loadExisting workspace runId provider = do
               then pure (Left (ConfigErr "stale project: hash mismatch"))
               else do
                 seqRef <- newIORef snap.rsSeq
-                spans <- newSpanState
+                spans <- newSpanStateDebug Nothing
                 writeIORef spans.ssCounter snap.rsSpanCounter
                 setSpanStack spans snap.rsSpanStack
                 ctx <- mkCtx provider root loaded store hash meta.rmRunId meta.rmStartedAt seqRef spans

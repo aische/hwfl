@@ -145,7 +145,8 @@ spec = describe "runtime llm.agent_object" $ do
                   roEntry = path,
                   roMode = StepRun,
                   roProjectHash = Nothing,
-                    roExec = Nothing
+                    roExec = Nothing,
+                    roDebug = False
                 }
               loaded
           case outcome of
@@ -173,7 +174,8 @@ spec = describe "runtime llm.agent_object" $ do
                   roEntry = path,
                   roMode = StepRun,
                   roProjectHash = Nothing,
-                    roExec = Nothing
+                    roExec = Nothing,
+                    roDebug = False
                 }
               loaded
           case outcome of

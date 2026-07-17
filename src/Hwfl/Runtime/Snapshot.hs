@@ -375,7 +375,8 @@ toolRoundToJson tr =
     [ "pending" .= map toolCallToJson tr.trPending,
       "completed" .= map toolResultToJson tr.trCompleted,
       "active_call" .= fmap toolCallToJson tr.trActiveCall,
-      "active_machine" .= fmap (machineToJson . unBranch) tr.trActiveMachine
+      "active_machine" .= fmap (machineToJson . unBranch) tr.trActiveMachine,
+      "active_span_id" .= tr.trActiveSpanId
     ]
 
 parseToolRound :: Aeson.Value -> Parser ToolRound
@@ -385,6 +386,7 @@ parseToolRound = withObject "ToolRound" $ \o ->
     <*> (o .: "completed" >>= mapM parseToolResult)
     <*> (o .:? "active_call" >>= traverse parseToolCall)
     <*> (o .:? "active_machine" >>= traverse (fmap mkBranch . parseMachine))
+    <*> o .:? "active_span_id"
 
 toolSpecToJson :: ToolSpecValue -> Aeson.Value
 toolSpecToJson ts =

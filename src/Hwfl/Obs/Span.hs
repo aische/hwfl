@@ -19,6 +19,7 @@ data SpanKind
   | SkRegion
   | SkModule
   | SkAgentRound
+  | SkAgentTool
   deriving stock (Eq, Show)
 
 data SpanStatus
@@ -33,6 +34,7 @@ spanKindText = \case
   SkRegion -> "region"
   SkModule -> "module"
   SkAgentRound -> "agent_round"
+  SkAgentTool -> "agent_tool"
 
 spanStatusText :: SpanStatus -> Text
 spanStatusText = \case
@@ -46,6 +48,7 @@ parseSpanKind = \case
   "region" -> Just SkRegion
   "module" -> Just SkModule
   "agent_round" -> Just SkAgentRound
+  "agent_tool" -> Just SkAgentTool
   _ -> Nothing
 
 parseSpanStatus :: Text -> Maybe SpanStatus

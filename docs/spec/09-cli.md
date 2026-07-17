@@ -7,7 +7,7 @@ Executable name provisional: **`hwfl`**.
 | Command                                                 | Purpose                                          |
 | ------------------------------------------------------- | ------------------------------------------------ |
 | `hwfl check <project>`                                  | Load + type + effects + graph; exit ≠0 on error  |
-| `hwfl run <project> [--workspace <dir>] [--input k=v…]` | Check (unless `--no-check`) + execute entrypoint |
+| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug]` | Check (unless `--no-check`) + execute entrypoint |
 | `hwfl step <workspace> <run-id>`                        | One transition, then pause                       |
 | `hwfl resume <workspace> <run-id>`                      | Continue until end / pause / fail                |
 | `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |
@@ -19,6 +19,7 @@ Executable name provisional: **`hwfl`**.
 - `--llm-provider <name>`
 - `--json` machine-readable diagnostics on check/run errors
 - `-v` / `--verbose`
+- `--debug` (on `run`): stream span open/close to stderr; print span tree at end
 
 ## 2. Inputs
 

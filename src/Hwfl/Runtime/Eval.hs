@@ -42,7 +42,7 @@ import Hwfl.Llm.Types
     emptyChatRequest,
     renderProviderError,
   )
-import Hwfl.Obs.Redact (hostOpenAttrs)
+import Hwfl.Obs.Redact (hostOpenAttrs, toolCallOpenAttrs)
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
 import Hwfl.Obs.Trace
   ( SpanState (..),
@@ -470,27 +470,27 @@ stepAgentModel ctx mode m ag
         Right pr
           | null pr.prToolCalls -> finishAgentText ctx mode m ag' pr
           | otherwise -> do
-              closeSpan
+              -- Keep agent_round open so tool spans nest under it.
+              appendEvent
                 ctx.rcStore
                 ctx.rcSpans
-                roundSid
-                SsOk
+                "debug"
+                "agent_round_model"
                 (llmRoundCloseAttrs pr)
-                Nothing
               let tr =
                     ToolRound
                       { trPending = pr.prToolCalls,
                         trCompleted = [],
                         trActiveCall = Nothing,
-                        trActiveMachine = Nothing
+                        trActiveMachine = Nothing,
+                        trActiveSpanId = Nothing
                       }
                   ag'' =
                     ag'
                       { agHistory =
                           ag.agHistory
                             <> [TurnAssistant pr.prContent pr.prToolCalls],
-                        agToolRound = Just tr,
-                        agRoundSpanId = Nothing
+                        agToolRound = Just tr
                       }
                   m' = pauseIfStep mode (m {mCurrent = CurAgent ag''})
               _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
@@ -638,7 +638,8 @@ handleMixedSubmit ctx mode m ag tr = do
           { trPending = [],
             trCompleted = results,
             trActiveCall = Nothing,
-            trActiveMachine = Nothing
+            trActiveMachine = Nothing,
+            trActiveSpanId = Nothing
           }
   finishToolRound ctx mode m ag tr'
 
@@ -655,47 +656,58 @@ startToolCall ::
   ToolRound ->
   ToolCall ->
   IO (Either RuntimeError StepResult)
-startToolCall ctx mode m ag tr tc
-  | isSubmitCall tc = runSubmit ctx mode m ag (tr {trActiveCall = Just tc}) tc
-  | otherwise =
-      case lookupTool ag.agTools tc.tcName of
-        Nothing ->
+startToolCall ctx mode m ag tr tc = do
+  sid <-
+    openSpan
+      ctx.rcStore
+      ctx.rcSpans
+      ("tool:" <> tc.tcName)
+      SkAgentTool
+      (toolCallOpenAttrs tc)
+  let tr0 =
+        tr
+          { trActiveCall = Just tc,
+            trActiveSpanId = Just sid
+          }
+  if isSubmitCall tc
+    then runSubmit ctx mode m ag tr0 tc
+    else case lookupTool ag.agTools tc.tcName of
+      Nothing ->
+        completeToolCall
+          ctx
+          mode
+          m
+          ag
+          tr0
+          ("unknown tool '" <> tc.tcName <> "'")
+      Just tool -> case coerceToolArgs tool tc.tcArguments of
+        Left reason ->
           completeToolCall
             ctx
             mode
             m
             ag
-            tr {trActiveCall = Just tc}
-            ("unknown tool '" <> tc.tcName <> "'")
-        Just tool -> case coerceToolArgs tool tc.tcArguments of
-          Left reason ->
+            tr0
+            ("invalid arguments: " <> reason)
+        Right argv -> case openApply ctx tool.tvsCallee argv of
+          Left e ->
             completeToolCall
               ctx
               mode
               m
               ag
-              tr {trActiveCall = Just tc}
-              ("invalid arguments: " <> reason)
-          Right argv -> case openApply ctx tool.tvsCallee argv of
-            Left e ->
-              completeToolCall
-                ctx
-                mode
-                m
-                ag
-                tr {trActiveCall = Just tc}
-                ("tool open failed: " <> renderErr e)
-            Right current -> do
-              let nested = initialMachine m.mProjectHash current
-                  tr' =
-                    tr
-                      { trActiveCall = Just tc,
-                        trActiveMachine = Just (mkBranch nested)
-                      }
-                  ag' = ag {agToolRound = Just tr'}
-                  m' = m {mCurrent = CurAgent ag'}
-              -- Continue into the nested machine this step.
-              stepAgentTool ctx mode m' ag' tr'
+              tr0
+              ("tool open failed: " <> renderErr e)
+          Right current -> do
+            let nested = initialMachine m.mProjectHash current
+                tr' =
+                  tr0
+                    { trActiveMachine = Just (mkBranch nested)
+                    }
+                ag' = ag {agToolRound = Just tr'}
+                m' = m {mCurrent = CurAgent ag'}
+            -- Continue into the nested machine this step.
+            stepAgentTool ctx mode m' ag' tr'
 
 runSubmit ::
   RunCtx ->
@@ -723,16 +735,39 @@ runSubmit ctx mode m ag tr tc = case ag.agSubmitSchema of
         ag
         tr
         ("submit decode error: " <> reason)
-    Right value -> finishAgentSubmit ctx mode m ag value
+    Right value -> finishAgentSubmit ctx mode m ag tr value
 
 finishAgentSubmit ::
   RunCtx ->
   StepMode ->
   Machine ->
   AgentState ->
+  ToolRound ->
   Value ->
   IO (Either RuntimeError StepResult)
-finishAgentSubmit ctx mode m ag value = do
+finishAgentSubmit ctx mode m ag tr value = do
+  mapM_
+    ( \sid ->
+        closeSpan
+          ctx.rcStore
+          ctx.rcSpans
+          sid
+          SsOk
+          (object ["via" .= submitToolName])
+          Nothing
+    )
+    tr.trActiveSpanId
+  mapM_
+    ( \sid ->
+        closeSpan
+          ctx.rcStore
+          ctx.rcSpans
+          sid
+          SsOk
+          (object ["via" .= submitToolName])
+          Nothing
+    )
+    ag.agRoundSpanId
   let result =
         VRecord
           [ (Ident "value", value),
@@ -760,12 +795,33 @@ completeToolCall ::
 completeToolCall ctx mode m ag tr content = case tr.trActiveCall of
   Nothing -> pure (Left (EvalErr (Trap "completeToolCall without active call")))
   Just tc -> do
+    let status =
+          if T.isPrefixOf "unknown tool" content
+            || T.isPrefixOf "invalid arguments" content
+            || T.isPrefixOf "tool open failed" content
+            || T.isPrefixOf "tool error" content
+            || content == "submit is not available for this agent step"
+            || T.isPrefixOf "submit decode error" content
+            then SsError
+            else SsOk
+    mapM_
+      ( \sid ->
+          closeSpan
+            ctx.rcStore
+            ctx.rcSpans
+            sid
+            status
+            (object ["result_len" .= T.length content, "tool" .= tc.tcName])
+            Nothing
+      )
+      tr.trActiveSpanId
     let result = ToolResult tc.tcId tc.tcName content
         tr' =
           tr
             { trCompleted = tr.trCompleted <> [result],
               trActiveCall = Nothing,
-              trActiveMachine = Nothing
+              trActiveMachine = Nothing,
+              trActiveSpanId = Nothing
             }
     if null tr'.trPending
       then finishToolRound ctx mode m ag tr'
@@ -783,11 +839,23 @@ finishToolRound ::
   ToolRound ->
   IO (Either RuntimeError StepResult)
 finishToolRound ctx mode m ag tr = do
+  mapM_
+    ( \sid ->
+        closeSpan
+          ctx.rcStore
+          ctx.rcSpans
+          sid
+          SsOk
+          (object ["tool_results" .= length tr.trCompleted])
+          Nothing
+    )
+    ag.agRoundSpanId
   let ag' =
         ag
           { agHistory = ag.agHistory <> [TurnTool tr.trCompleted],
             agRound = ag.agRound + 1,
-            agToolRound = Nothing
+            agToolRound = Nothing,
+            agRoundSpanId = Nothing
           }
       m' = pauseIfStep mode (m {mCurrent = CurAgent ag'})
   _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
@@ -811,6 +879,14 @@ failAgent ::
   RuntimeError ->
   IO (Either RuntimeError StepResult)
 failAgent ctx m ag err = do
+  case ag.agToolRound of
+    Just tr ->
+      mapM_
+        ( \sid ->
+            closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr err]) Nothing
+        )
+        tr.trActiveSpanId
+    Nothing -> pure ()
   mapM_
     ( \sid ->
         closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr err]) Nothing

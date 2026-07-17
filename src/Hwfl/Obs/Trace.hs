@@ -3,6 +3,7 @@
 module Hwfl.Obs.Trace
   ( SpanState (..),
     newSpanState,
+    newSpanStateDebug,
     openSpan,
     closeSpan,
     currentSpanId,
@@ -14,11 +15,13 @@ module Hwfl.Obs.Trace
     SpanNode (..),
     buildSpanForest,
     filterSpans,
+    compactAttrs,
   )
 where
 
 import Data.Aeson (Value (..), object, withObject, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
+import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.Aeson.Types (Parser, parseEither)
 import Data.ByteString.Lazy qualified as LBS
@@ -28,6 +31,7 @@ import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
+import Data.Vector qualified as V
 import Hwfl.Obs.Redact (redactJson)
 import Hwfl.Obs.Span
 import Hwfl.Runtime.Snapshot (RunStore (..))
@@ -37,11 +41,16 @@ import System.FilePath ((</>))
 data SpanState = SpanState
   { ssCounter :: IORef Int,
     -- | Innermost span id at the head.
-    ssStack :: IORef [SpanId]
+    ssStack :: IORef [SpanId],
+    -- | Optional live debug logger (e.g. stderr under @--debug@).
+    ssDebug :: Maybe (Text -> IO ())
   }
 
 newSpanState :: IO SpanState
-newSpanState = SpanState <$> newIORef 0 <*> newIORef []
+newSpanState = newSpanStateDebug Nothing
+
+newSpanStateDebug :: Maybe (Text -> IO ()) -> IO SpanState
+newSpanStateDebug dbg = SpanState <$> newIORef 0 <*> newIORef [] <*> pure dbg
 
 getSpanStack :: SpanState -> IO [SpanId]
 getSpanStack st = readIORef st.ssStack
@@ -55,6 +64,11 @@ currentSpanId st = do
   pure $ case stack of
     (x : _) -> Just x
     [] -> Nothing
+
+debugLog :: SpanState -> Text -> IO ()
+debugLog st msg = case st.ssDebug of
+  Nothing -> pure ()
+  Just log_ -> log_ msg
 
 -- | Open a span: append one jsonl line, push stack. O(1).
 openSpan ::
@@ -83,6 +97,17 @@ openSpan store st name kind attrs = do
           "attrs" .= redactJson attrs
         ]
     )
+  debugLog
+    st
+    ( "span open  "
+        <> sid
+        <> "  "
+        <> name
+        <> " ["
+        <> spanKindText kind
+        <> "] "
+        <> compactAttrs attrs
+    )
   pure sid
 
 -- | Close a span: append one jsonl line, pop stack. O(1).
@@ -108,10 +133,58 @@ closeSpan store st sid status attrs mSeq = do
           "snapshot_seq" .= mSeq
         ]
     )
+  debugLog
+    st
+    ( "span close "
+        <> sid
+        <> "  "
+        <> spanStatusText status
+        <> " "
+        <> compactAttrs attrs
+    )
   where
     pop target = \case
       (x : xs) | x == target -> xs
       xs -> xs
+
+-- | Compact one-line attrs for debug / show (scalars only; omit empty).
+compactAttrs :: Aeson.Value -> Text
+compactAttrs = \case
+  Null -> ""
+  Object km
+    | KM.null km -> ""
+    | otherwise ->
+        T.intercalate
+          " "
+          [ Key.toText k <> "=" <> compactVal v
+            | (k, v) <- KM.toList km,
+              not (isEmptyAttr v)
+          ]
+  other -> compactVal other
+  where
+    isEmptyAttr = \case
+      Null -> True
+      Object km -> KM.null km
+      Array xs -> V.null xs
+      String "" -> True
+      _ -> False
+    compactVal = \case
+      String t -> t
+      Number n -> T.pack (show n)
+      Bool b -> if b then "true" else "false"
+      Null -> "null"
+      Object km ->
+        "{"
+          <> T.intercalate
+            ","
+            [ Key.toText k <> ":" <> compactVal v
+              | (k, v) <- take 8 (KM.toList km)
+            ]
+          <> "}"
+      Array xs ->
+        "["
+          <> T.pack (show (V.length xs))
+          <> "]"
 
 appendEvent :: RunStore -> SpanState -> Text -> Text -> Aeson.Value -> IO ()
 appendEvent store st level message fields = do
