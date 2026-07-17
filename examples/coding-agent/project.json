@@ -4,8 +4,13 @@
   "entrypoint": "workflows/main",
   "env": [],
   "effects": {
-    "default": ["Read", "Write", "Net", "Exec"],
+    "default": ["Read", "Write", "Net", "Exec", "Meta"],
     "deny": []
+  },
+  "skills": {
+    "max_instruction_loads": 5,
+    "max_instruction_chars": 12000,
+    "max_callable_loads": 20
   },
   "exec": {
     "allow": [

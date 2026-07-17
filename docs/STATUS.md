@@ -4,18 +4,16 @@ Last updated: 2026-07-17
 
 ## Current focus
 
-Skills phases A–C landed. Next: streaming LLM spans, then
-semantic-check deepen / phase D extraction dogfood.
+Streaming LLM spans (progressive token / partial events), then
+semantic-check deepen / skills phase D.
 
 ## Done recently
 
-- Skills A–C: `skills/` catalog, `skill.discover` / `skill.load`, agent
-  mid-loop load + resume fields + budgets (`examples/skills`)
-- Lifecycle tutorial (`docs/tutorial.md`)
-- Detailed traces: per-tool-call spans, `hwfl show`, CLI `--debug`
-- Real coding-agent example (`examples/coding-agent`)
-- P0: `exec.run`; `fs.list` / `fs.edit` / `fs.grep`; language-reference
-- M0–M9 complete
+- Coding-agent + skills: stack instruction playbooks (python / react /
+  haskell / rust); discover/load in the agent toolbox
+- Skills A–C: catalog, `skill.*` host ops, mid-loop load + budgets
+- Lifecycle tutorial; tool-call spans + `--debug`
+- P0 host gaps; M0–M9 complete
 
 ## Blockers
 

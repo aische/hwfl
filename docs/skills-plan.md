@@ -300,9 +300,9 @@ stays a thin convenience over Mode A. Prefer in-language workflows.
 - [x] Snapshot resume restores active tools + loaded instructions
 - [x] Ineligible callable cannot be loaded as an agent tool
 - [x] No implicit injection of discover/load into every agent
-- [ ] Semantic-check (or a smaller example) can use skills without
+- [x] Semantic-check (or a smaller example) can use skills without
       hardcoding every callable in the initial `tools` list
-      → covered by `examples/skills` + SkillSpec; semantic-check dogfood deferred
+      → `examples/coding-agent` discovers/loads stack instruction skills
 
 ## 11. What not to build
 
