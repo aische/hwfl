@@ -1,4 +1,4 @@
-# semantic-check (M8 + deepen)
+# semantic-check (M8 + deepen + S2)
 
 Semantic review written **in hwfl**, not as a fan-out of micro-tools.
 
@@ -14,11 +14,16 @@ directory and is executed with `--workspace` pointed at the project to scan.
 | 2 | Entropy info; **within-slice quoted sentence redundancy** (cap 16) |
 | 2b | Speech-act heuristics on agent/system sections |
 | 3 | Gated `llm.object`: dead-ref / speech / similarity peers + **policy
-      slices** (`skills/*`, system/rules) with `check_internal_conflict` |
+      slices** (`skills/*`, system/rules) with `check_internal_conflict`;
+      same calls extract **obligations** (`must`/`should`/`may`/`must_not`) |
+| 3b | **Obligation graph** (S2): deterministic checks on extracted set —
+      must∧must_not, system must vs skill may/should, catalog-missing
+      objects; quoted evidence; caps 16 |
 
 Scans `workflows/`, `skills/`, `lib/`, and `types/` only. Gate ≤ 8 items.
 Deterministic mode needs no API keys. Pragmatic mode fills
-`pragmatic_findings` (quoted contradictions when the model reports them).
+`pragmatic_findings` (quoted contradictions + obligation-graph findings)
+and reports `obligations` extracted from gated slices.
 
 ## Run
 

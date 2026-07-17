@@ -20,8 +20,10 @@ other docs.
 
 Deterministic: structural / prose qnames / entropy info / **within-slice
 quoted sentence redundancy** (capped). Pragmatic: gated `llm.object` including
-**internal conflict** on policy slices (skills, system, rules). Gate capped at
-8. Set `mode=pragmatic` + catalog `model` for LLM; `mode=deterministic` skips
+**internal conflict** on policy slices (skills, system, rules) plus **obligation
+extraction**; deterministic graph checks on the extracted set (must∧must_not,
+system must vs skill may/should, catalog-missing objects). Gate capped at 8.
+Set `mode=pragmatic` + catalog `model` for LLM; `mode=deterministic` skips
 LLM calls.
 
 ## reviewer
@@ -42,6 +44,11 @@ Rules:
   instructions in `contradictions[].quote_a` and `contradictions[].quote_b`,
   and a short `why`. If none, return an empty `contradictions` list.
 - For other review tasks: same contradiction shape when you find conflicts.
+- Always fill `obligations` for normative claims in the slice (empty list if
+  none). Each row: `actor`, `modality` exactly one of
+  `must` | `should` | `may` | `must_not`, `action`, `object`, optional
+  `condition` (empty if unconditioned), and a **verbatim** `quote` from the
+  body. Prefer empty list over guessing. Do not invent modules or tools.
 
 ## body
 
@@ -89,11 +96,36 @@ type Contradiction = {
   why: String
 }
 
+type ObligationExtract = {
+  actor: String,
+  modality: String,
+  action: String,
+  object: String,
+  condition: String,
+  quote: String
+}
+
+type OblRow = {
+  actor: String,
+  modality: String,
+  action: String,
+  object: String,
+  condition: String,
+  quote: String,
+  file: String
+}
+
+type ReviewPack = {
+  findings: List<Finding>,
+  obligations: List<OblRow>
+}
+
 type PragmaticOut = {
   illocutionary_force: String,
   felicity_violations: List<String>,
   contradictions: List<Contradiction>,
-  clarity_score: Float
+  clarity_score: Float,
+  obligations: List<ObligationExtract>
 }
 
 fun has_string(xs: List<String>, q: String, i: Int, n: Int): Bool =
@@ -586,7 +618,147 @@ fun peer_block(item: GateItem): String =
   if item.peer_body == "" then ""
   else $"\n\n## Peer slice\nLocation: {item.peer_file}\n\n{item.peer_body}"
 
-fun review_one(item: GateItem, model: String): List<Finding> =
+fun stamp_obs(xs: List<ObligationExtract>, file: String, i: Int, n: Int): List<OblRow> =
+  if i >= n then []
+  else
+    let o = xs[i]
+    let row = {
+      actor = o.actor,
+      modality = o.modality,
+      action = o.action,
+      object = o.object,
+      condition = o.condition,
+      quote = o.quote,
+      file = file
+    }
+    list.concat([row], stamp_obs(xs, file, i + 1, n))
+
+fun obl_usable(o: OblRow): Bool =
+  not(o.quote == "")
+    && not(o.modality == "")
+    && not(o.action == "")
+    && not(o.object == "")
+
+fun same_obl_key(a: OblRow, b: OblRow): Bool =
+  a.actor == b.actor && a.action == b.action && a.object == b.object
+
+fun cond_compatible(a: OblRow, b: OblRow): Bool =
+  (a.condition == "" && b.condition == "") || a.condition == b.condition
+
+fun is_must_mod(m: String): Bool =
+  m == "must" || m == "Must"
+
+fun is_must_not_mod(m: String): Bool =
+  m == "must_not"
+    || m == "must not"
+    || m == "Must not"
+    || m == "Must_not"
+
+fun is_soft_mod(m: String): Bool =
+  m == "may" || m == "should" || m == "May" || m == "Should"
+
+fun polarity_pair(a: OblRow, b: OblRow): Bool =
+  same_obl_key(a, b)
+    && cond_compatible(a, b)
+    && ((is_must_mod(a.modality) && is_must_not_mod(b.modality))
+      || (is_must_not_mod(a.modality) && is_must_mod(b.modality)))
+
+fun soft_pair(a: OblRow, b: OblRow): Bool =
+  same_obl_key(a, b)
+    && cond_compatible(a, b)
+    && ((is_must_mod(a.modality)
+      && is_soft_mod(b.modality)
+      && text.starts_with(a.file, "workflows/")
+      && text.starts_with(b.file, "skills/"))
+      || (is_must_mod(b.modality)
+        && is_soft_mod(a.modality)
+        && text.starts_with(b.file, "workflows/")
+        && text.starts_with(a.file, "skills/")))
+
+fun polarity_findings(obs: List<OblRow>, i: Int, j: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else if j >= n then polarity_findings(obs, i + 1, i + 2, n, remaining)
+  else
+    let a = obs[i]
+    let b = obs[j]
+    let rest = polarity_findings(obs, i, j + 1, n, remaining)
+    if not(obl_usable(a)) then rest
+    else if not(obl_usable(b)) then rest
+    else if not(polarity_pair(a, b)) then rest
+    else
+      list.concat(
+        [{
+          severity = "warning",
+          category = "obligation",
+          file = a.file,
+          claim = $"must vs must_not on ({a.actor}, {a.action}, {a.object})",
+          evidence = $"A: {a.quote} ({a.file}) | B: {b.quote} ({b.file})",
+          suggestion = "Reconcile modalities across modules or add distinguishing conditions"
+        }],
+        polarity_findings(obs, i, j + 1, n, remaining - 1)
+      )
+
+fun soft_findings(obs: List<OblRow>, i: Int, j: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else if j >= n then soft_findings(obs, i + 1, i + 2, n, remaining)
+  else
+    let a = obs[i]
+    let b = obs[j]
+    let rest = soft_findings(obs, i, j + 1, n, remaining)
+    if not(obl_usable(a)) then rest
+    else if not(obl_usable(b)) then rest
+    else if not(soft_pair(a, b)) then rest
+    else
+      list.concat(
+        [{
+          severity = "info",
+          category = "obligation",
+          file = a.file,
+          claim = $"system must vs skill may/should on ({a.actor}, {a.action}, {a.object})",
+          evidence = $"A: {a.quote} ({a.file}) | B: {b.quote} ({b.file})",
+          suggestion = "Align skill preference with the system obligation, or scope with a condition"
+        }],
+        soft_findings(obs, i, j + 1, n, remaining - 1)
+      )
+
+fun dead_ref_findings(obs: List<OblRow>, names: List<String>, i: Int, n: Int): List<Finding> =
+  if i >= n then []
+  else
+    let o = obs[i]
+    let rest = dead_ref_findings(obs, names, i + 1, n)
+    if not(obl_usable(o)) then rest
+    else if not(looks_like_qname(o.object)) then rest
+    else if has_string(names, o.object, 0, list.length(names)) then rest
+    else
+      list.concat(
+        [{
+          severity = "warning",
+          category = "obligation",
+          file = o.file,
+          claim = "Obligation names a module absent from the catalog",
+          evidence = $"quote: {o.quote} | object: {o.object}",
+          suggestion = "Add the module or fix the obligation object"
+        }],
+        rest
+      )
+
+fun obligation_graph_findings(obs: List<OblRow>, names: List<String>): List<Finding> =
+  let n = list.length(obs)
+  let hard = polarity_findings(obs, 0, 1, n, 16)
+  let soft = soft_findings(obs, 0, 1, n, 16)
+  let dead = dead_ref_findings(obs, names, 0, n)
+  concat3(hard, soft, dead)
+
+fun empty_findings(_: Unit): List<Finding> = []
+
+fun empty_obligations(_: Unit): List<OblRow> = []
+
+fun empty_pack(_: Unit): ReviewPack =
+  { findings = empty_findings(()), obligations = empty_obligations(()) }
+
+fun review_one_pack(item: GateItem, model: String): ReviewPack =
   let prompt =
     $"{@reviewer}\n\n## Slice under review\nLocation: {item.file}\n\n{item.body}{peer_block(item)}\n\n## Review task\n{item.review_task}\n\n## Context\n{item.context}"
   let out = llm.object(
@@ -594,11 +766,20 @@ fun review_one(item: GateItem, model: String): List<Finding> =
     schema = schema(PragmaticOut),
     model = model
   )
-  pragmatic_to_findings(out, item)
+  {
+    findings = pragmatic_to_findings(out, item),
+    obligations = stamp_obs(out.obligations, item.file, 0, list.length(out.obligations))
+  }
 
-fun review_all(gate: List<GateItem>, model: String, i: Int, n: Int): List<Finding> =
-  if i >= n then []
-  else list.concat(review_one(gate[i], model), review_all(gate, model, i + 1, n))
+fun review_all_pack(gate: List<GateItem>, model: String, i: Int, n: Int): ReviewPack =
+  if i >= n then empty_pack(())
+  else
+    let here = review_one_pack(gate[i], model)
+    let rest = review_all_pack(gate, model, i + 1, n)
+    {
+      findings = list.concat(here.findings, rest.findings),
+      obligations = list.concat(here.obligations, rest.obligations)
+    }
 
 fun is_module_path(p: String): Bool =
   text.starts_with(p, "workflows/")
@@ -633,11 +814,13 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
   let speech = speech_all(slices, 0, ns)
   let findings = concat4(structural, entry, prose, list.concat(corpus, speech))
   let gate = build_gate(slices, prose, speech)
-  let pragmatic =
+  let pack =
     if inputs.mode == "pragmatic" then
-      review_all(gate, inputs.model, 0, list.length(gate))
+      review_all_pack(gate, inputs.model, 0, list.length(gate))
     else
-      []
+      empty_pack(())
+  let graph = obligation_graph_findings(pack.obligations, names)
+  let pragmatic = list.concat(pack.findings, graph)
   let okv = all_ok(rows, 0, list.length(rows))
   let report_obj = {
     schema = "semantic-report/v1",
@@ -646,6 +829,7 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
     ok = okv,
     review_gate = gate,
     findings = findings,
+    obligations = pack.obligations,
     pragmatic_findings = pragmatic
   }
   let report = json.encode(report_obj)

@@ -1,12 +1,13 @@
 # Semantic-check — research plan (“semantic type system”)
 
-**Status:** exploratory backlog. Not scheduled in [TASKS.md](TASKS.md)
-Now. Ship increments inside `examples/semantic-check/` (same-run layers;
-policy in workflow; no semantic host-op fan-out).
+**Status:** exploratory backlog. **S2 shipped** (obligation graph). Remaining
+phases S1/S3–S6 not scheduled in [TASKS.md](TASKS.md) Now. Ship increments
+inside `examples/semantic-check/` (same-run layers; policy in workflow; no
+semantic host-op fan-out).
 
 **Related:** [idea.md](idea.md) goal 8 (dogfood semantic analysis),
 `examples/semantic-check/`, [spec/12-example-suite.md](spec/12-example-suite.md)
-E20, log entries 2026-07-17 (deepen / noise fix / A+B).
+E20, log entries 2026-07-17 (deepen / noise fix / A+B / S2).
 
 ## 1. Stance (metaphor, not claim)
 
@@ -49,6 +50,7 @@ Implemented in `examples/semantic-check/workflows/main.md`:
 | 2 | Within-slice redundancy | similarity > 0.9, quoted pair evidence, cap 16 (**B**) |
 | 2b | Speech-act heuristic | agent/system sections should contain directives |
 | 3 | Policy conflict | skills / system / rules → `check_internal_conflict` (**A**); quoted `quote_a` / `quote_b` / `why` |
+| 3b | Obligation graph | extract `{actor, modality, action, object, condition?, quote}` on gated reviews; deterministic must∧must_not / system must vs skill may / catalog-missing object (**S2**) |
 | — | Gate discipline | body-bearing `review_gate`; unique by `(slice_id, review_task)`; policy first; cap 8; H1-only skills get synthetic `{path}/skill` slices |
 
 Scan scope: `workflows/` / `skills/` / `lib/` / `types/` only.
@@ -89,25 +91,27 @@ Schema-forced LLM output (`role`, `mismatched_sentences[]` with quotes).
 Closest thing to a **type** for prose sections: role ≈ kind; felicity ≈
 intro/elim rules.
 
-### Phase S2 — Obligation graph (preferred next after A+B)
+### Phase S2 — Obligation graph — **shipped**
 
 Cross-module consistency beats within-slice conflict for real agents.
 
-Extract normative claims into a controlled schema, e.g.:
+Extract normative claims into a controlled schema on every gated
+`llm.object` (field `PragmaticOut.obligations`):
 
 ```text
-{ actor, modality: must|should|may|must_not, action, object, condition? }
+{ actor, modality: must|should|may|must_not, action, object, condition?, quote }
 ```
 
-Deterministic graph checks on the extracted set:
+Deterministic graph checks on the extracted set (no extra gate slots):
 
-- same `(actor, action, object)` with `must` and `must_not`
-- system `must` vs skill `may` / “prefer otherwise” (soft conflict)
-- obligation names a tool/skill missing from the catalog (tie to layer 1)
+- same `(actor, action, object)` with `must` and `must_not` (unconditioned
+  or same condition; cap 16)
+- workflows `must` vs skills `may`/`should` (soft / info)
+- obligation `object` qname missing from the catalog (tie to layer 1)
 
-Generalizes GHC2021 vs Haskell2010 from “two sentences in one skill” to
-the agent’s **instruction lattice**. Still gated `llm.object` + quotes;
-no open-world NLI.
+Report: `obligations` + `pragmatic_findings` with `category: obligation`.
+Fixtures: `require-search` / `forbid-search` / `ghost-tool`. Still gated
+`llm.object` + quotes; no open-world NLI.
 
 ### Phase S3 — Narrow propositional projection
 
@@ -189,9 +193,9 @@ separate workflow over `.hwfl/runs` rather than static module scan.
 
 ## 8. Suggested order when resumed
 
-1. **S2 obligation graph** (highest leverage on coding-agent-class modules)
+1. ~~**S2 obligation graph**~~ **done**
 2. **S1 role typing** (sharpens speech-act layer already present)
 3. **S5 prose↔code contracts** (unique to hwfl modules)
-4. **S3** only if S2’s claim schema is stable
+4. **S3** only if S2’s claim schema stays stable
 5. **S4** as gate features while doing the above
 6. **S6** when run-store / span APIs make dynamic checks cheap

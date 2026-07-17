@@ -75,13 +75,33 @@ runChecker tmp inputs runId provider = do
           }
         m
 
--- | Planted GHC2021/Haskell2010 conflict → quoted contradiction; else empty lists.
+emptyPragmatic :: Aeson.Value
+emptyPragmatic =
+  object
+    [ "illocutionary_force" .= Aeson.String "unknown",
+      "felicity_violations" .= Aeson.Array V.empty,
+      "contradictions" .= Aeson.Array V.empty,
+      "clarity_score" .= Aeson.Number 1.0,
+      "obligations" .= Aeson.Array V.empty
+    ]
+
+obligationRow :: Text -> Text -> Text -> Text -> Text -> Aeson.Value
+obligationRow actor modality action obj quote =
+  object
+    [ "actor" .= Aeson.String actor,
+      "modality" .= Aeson.String modality,
+      "action" .= Aeson.String action,
+      "object" .= Aeson.String obj,
+      "condition" .= Aeson.String "",
+      "quote" .= Aeson.String quote
+    ]
+
+-- | Planted conflicts → quoted contradiction / obligations; else empty lists.
 conflictAwareReply :: ChatRequest -> Either ProviderError ProviderResult
 conflictAwareReply req =
   let prompt = lastUserText req
-      body =
-        if T.isInfixOf "GHC2021" prompt && T.isInfixOf "Haskell2010" prompt
-          then
+      body
+        | T.isInfixOf "GHC2021" prompt && T.isInfixOf "Haskell2010" prompt =
             object
               [ "illocutionary_force" .= Aeson.String "directive",
                 "felicity_violations" .= Aeson.Array V.empty,
@@ -94,15 +114,61 @@ conflictAwareReply req =
                             "why" .= Aeson.String "Cannot pin both GHC2021 and Haskell2010"
                           ]
                     ),
-                "clarity_score" .= Aeson.Number 0.5
+                "clarity_score" .= Aeson.Number 0.5,
+                "obligations" .= Aeson.Array V.empty
               ]
-          else
+        | T.isInfixOf "must use lib/search for all catalog lookups" prompt =
             object
-              [ "illocutionary_force" .= Aeson.String "unknown",
+              [ "illocutionary_force" .= Aeson.String "directive",
                 "felicity_violations" .= Aeson.Array V.empty,
                 "contradictions" .= Aeson.Array V.empty,
-                "clarity_score" .= Aeson.Number 1.0
+                "clarity_score" .= Aeson.Number 0.8,
+                "obligations"
+                  .= Aeson.Array
+                    ( V.singleton $
+                        obligationRow
+                          "agent"
+                          "must"
+                          "use"
+                          "lib/search"
+                          "The agent must use lib/search for all catalog lookups."
+                    )
               ]
+        | T.isInfixOf "must not use lib/search under any circumstance" prompt =
+            object
+              [ "illocutionary_force" .= Aeson.String "directive",
+                "felicity_violations" .= Aeson.Array V.empty,
+                "contradictions" .= Aeson.Array V.empty,
+                "clarity_score" .= Aeson.Number 0.8,
+                "obligations"
+                  .= Aeson.Array
+                    ( V.singleton $
+                        obligationRow
+                          "agent"
+                          "must_not"
+                          "use"
+                          "lib/search"
+                          "The agent must not use lib/search under any circumstance."
+                    )
+              ]
+        | T.isInfixOf "must load skills/does-not-exist before any edit" prompt =
+            object
+              [ "illocutionary_force" .= Aeson.String "directive",
+                "felicity_violations" .= Aeson.Array V.empty,
+                "contradictions" .= Aeson.Array V.empty,
+                "clarity_score" .= Aeson.Number 0.8,
+                "obligations"
+                  .= Aeson.Array
+                    ( V.singleton $
+                        obligationRow
+                          "agent"
+                          "must"
+                          "load"
+                          "skills/does-not-exist"
+                          "The agent must load skills/does-not-exist before any edit."
+                    )
+              ]
+        | otherwise = emptyPragmatic
    in Right
         ProviderResult
           { prContent = TE.decodeUtf8 (BL.toStrict (encode body)),
@@ -178,6 +244,28 @@ spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
           report `shouldSatisfy` (not . T.isInfixOf "\"pragmatic_findings\":[]")
         other -> expectationFailure ("expected completed run, got: " <> show other)
 
+  it "pragmatic mode builds obligation graph (must/must_not + dead catalog)" $
+    withSystemTempDirectory "hwfl-semcheck-obl" $ \tmp -> do
+      copyTree fixtureRoot tmp
+      let inputs =
+            [ (Ident "entry", VString "workflows/ok"),
+              (Ident "mode", VString "pragmatic"),
+              (Ident "model", VString "mock")
+            ]
+          provider = mockProviderWith conflictAwareReply
+      outcome <- runChecker tmp inputs "e20o" provider
+      case outcome of
+        OutcomeCompleted (VRecord fs) _store _n -> do
+          lookup (Ident "ok") fs `shouldBe` Just (VBool False)
+          report <- TIO.readFile (tmp </> ".hwfl/runs/e20o/semantic-report.json")
+          report `shouldSatisfy` T.isInfixOf "\"obligations\""
+          report `shouldSatisfy` T.isInfixOf "\"category\":\"obligation\""
+          report `shouldSatisfy` T.isInfixOf "must vs must_not"
+          report `shouldSatisfy` T.isInfixOf "lib/search"
+          report `shouldSatisfy` T.isInfixOf "skills/does-not-exist"
+          report `shouldSatisfy` T.isInfixOf "absent from the catalog"
+        other -> expectationFailure ("expected completed run, got: " <> show other)
+
 copyTree :: FilePath -> FilePath -> IO ()
 copyTree src dst = do
   createDirectoryIfMissing True (dst </> "workflows")
@@ -189,5 +277,8 @@ copyTree src dst = do
     [ "workflows/ok.md",
       "workflows/bad.md",
       "lib/search.md",
-      "skills/conflict-lang.md"
+      "skills/conflict-lang.md",
+      "skills/require-search.md",
+      "skills/forbid-search.md",
+      "skills/ghost-tool.md"
     ]
