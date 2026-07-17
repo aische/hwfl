@@ -82,7 +82,7 @@ tokenCostMicros (ModelPricing rates) model tin tout =
 
 microsToDollars :: Int -> Double
 microsToDollars micros =
-  fromIntegral (round (fromIntegral micros / (10000 :: Double) :: Double)) / (100 :: Double)
+  fromIntegral (round (fromIntegral micros / (10000 :: Double) :: Double) :: Integer) / (100 :: Double)
 
 dollarsToMicros :: Double -> Int
 dollarsToMicros dollars = round (dollars * 1_000_000 :: Double)

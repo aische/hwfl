@@ -18,6 +18,7 @@ import Control.Exception (IOException, try)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8With, encodeUtf8)
@@ -107,8 +108,8 @@ runExec ws policy args
         Right (Just (ec, out, err)) -> Right (mkOutcome ec out err)
   where
     program = args.eaProgram
-    cap = Data.Maybe.fromMaybe defaultExecMaxOutputBytes policy.execMaxOutputBytes
-    effectiveTimeout = Data.Maybe.fromMaybe defaultExecTimeoutMs policy.execTimeoutMs
+    cap = fromMaybe defaultExecMaxOutputBytes policy.execMaxOutputBytes
+    effectiveTimeout = fromMaybe defaultExecTimeoutMs policy.execTimeoutMs
 
     runIt cfg = withProcessTerm cfg $ \p -> do
       ec <- waitExitCode p
