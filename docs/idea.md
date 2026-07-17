@@ -34,7 +34,9 @@ We want language-level ergonomics **and** document-shaped authoring.
 4. **Durable execution** — stack/frame interpreter; checkpoints at host-op
    boundaries; crash/abort resume; `--step` / confirm gates.
 5. **Structured concurrency** — bounded `par` with cooperative freeze on
-   human confirm (policy proven useful in hwfi).
+   human confirm (policy proven useful in hwfi). M5 ships a cooperative
+   pool; overlapping host IO across branches is deferred
+   ([spec/06-runtime.md](spec/06-runtime.md) §10).
 6. **Observability** — span trees + append-only audit events; better
    “what happened / where are we” than a flat event soup.
 7. **Static check before run** — project graph, signatures, effects, and

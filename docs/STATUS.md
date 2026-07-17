@@ -29,6 +29,13 @@ None.
 4. Run-store interface → optional DB; later Servant API; later MCP client
 5. Alternate `LlmProvider` — low priority
 
+## Deferred (nice-to-have)
+
+- **`par` concurrent host IO** — M5 pool is cooperative (one branch
+  transition at a time; blocking host ops stall the whole driver). Future:
+  async at host boundaries without changing `par` language semantics.
+  See [spec/06-runtime.md](spec/06-runtime.md) §10.
+
 ## Open naming
 
 Working title **hwfl** / CLI `hwfl` / fence `hwfl` is provisional.

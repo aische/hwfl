@@ -136,6 +136,11 @@ confirm { title = …, detail = … }
 
 `confirm` / `human.confirm` inside `par` freezes the pool.
 
+**Runtime note:** `par(max = N)` caps active branches; result order
+matches input order. The M5 driver runs one branch transition at a time
+(cooperative). Overlapping blocking host IO across branches is a future
+nice-to-have ([spec/06-runtime.md](spec/06-runtime.md) §10).
+
 ## Effects
 
 `Read` · `Write` · `Net` · `Exec` · `Human` · `Meta` · `Parallel`

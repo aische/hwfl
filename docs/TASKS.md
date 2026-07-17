@@ -20,6 +20,11 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Low priority
 
+- [ ] Concurrent host transitions in `par` — overlap blocking IO (LLM,
+      `fs.read`, `exec.run`) across branches via async at host boundaries;
+      coordinator owns spans/snapshots; serial under `--step`. See
+      [spec/06-runtime.md](spec/06-runtime.md) §10. M5 shipped the
+      cooperative pool only.
 - [ ] Alternate `LlmProvider` (OpenAI/Anthropic SDK, etc.) — interface
       shipped; second adapter is swap proof only
 - [ ] In-language `lib/` modules (`list` / `string` / …) per [stdlib.md](stdlib.md)

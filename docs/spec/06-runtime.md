@@ -4,7 +4,8 @@
 
 1. Exact resume after crash/abort/pause
 2. Operator `--step` (one transition)
-3. Real bounded parallelism
+3. Bounded `par` pool with ordered results (**shipped:** cooperative
+   scheduler; **future:** concurrent host IO — §10)
 4. Cooperative confirm freeze inside `par`
 5. Pluggable persistence (filesystem first)
 
@@ -83,8 +84,17 @@ par(max = N, on_error = fail|collect) for x in xs { body }
 
 Semantics:
 
-- Cap concurrent active branches at `N` (default 4).
+- Cap concurrent **active** branches at `N` (default 4).
 - Result order = input order.
+
+**Current implementation (M5):** cooperative pool — up to `N` branch
+machines may be active, but the driver runs **one branch transition**
+at a time. Blocking host ops (LLM HTTP, `fs.read`, …) therefore do not
+overlap across branches. Confirm freeze, ordered slots, and resume of
+`FrPar` / `BranchMachine` are implemented and tested.
+
+**Future (§10):** overlap blocking host work without changing surface
+semantics.
 - `on_error = fail`: abort at lowest index failure after drain? Prefer:
   fail-fast after cooperative drain of in-flight — document.
 - `on_error = collect`: per-index `Result` envelopes.
@@ -147,3 +157,59 @@ Identical intent to hwfi:
 Prefer a single `stepMachine :: … -> IO (Machine, [SpanEvent])` loop
 driven by CLI `run` / `step` / `resume`, matching hwfi’s StepDriver
 pattern without the step-DSL AST.
+
+## 10. Concurrent host transitions in `par` (future, nice-to-have)
+
+**Goal:** wall-clock overlap when several branches are blocked on host
+IO, without changing `par` language semantics or snapshot/resume shape.
+
+**Non-goals:** user-visible threads; parallel pure reduction; rewriting
+the LLM provider as non-blocking IO.
+
+### 10.1 Terminology
+
+Three schedulers stack on top of each other:
+
+| Layer | Role |
+| ----- | ---- |
+| hwfl `par` pool | Structured concurrency: `BranchMachine` per slot, confirm drain, ordered join |
+| GHC lightweight threads | `async` / `forkIO` at host boundaries (if adopted) |
+| OS capabilities (`-N`) | Only needed for CPU-bound overlap; I/O-bound `par` usually needs layer 2 only |
+
+M5 deliberately shipped layer 1 only (cooperative stepping).
+
+### 10.2 Recommended approach
+
+Keep a **single coordinator** that owns `RunCtx`, span stack, snapshot
+seq, and `ParJoinState`. At `CurHost` on a branch:
+
+1. Open spans on the coordinator (per-branch parent, e.g. slot index).
+2. Submit `runHostOp` / provider IO to a worker (`async`).
+3. Mark slot in-flight; do not block the coordinator on the worker.
+4. On completion: close span, absorb result into `ParJoinState`, persist
+   one transition, continue scheduling.
+
+Pure crunch stays on the coordinator (big-step until next host boundary).
+
+### 10.3 Policies to decide before shipping
+
+- **`--step` / `StepOnce`:** cap in-flight host work to 1 (deterministic
+  stepping) vs allow parallel (faster but non-deterministic step
+  boundaries).
+- **Confirm drain:** wait for in-flight host IO to finish (no cancel
+  today); same semantics as §5.1 but with real blocking waits.
+- **Spans:** global `SpanState` is not thread-safe — coordinator-only
+  mutation, or per-branch span stacks merged on completion.
+- **Snapshot seq:** interleaved branch completions get monotonic seq
+  numbers; ordering rule must be deterministic.
+- **Crash mid-host-op:** at-least-once re-run per branch (possibly
+  several in-flight); document duplicate LLM cost.
+- **`on_error = fail`:** drain in-flight vs cancel siblings.
+- **Same-path `fs.write` in `par`:** undefined / warn / lock.
+
+### 10.4 Acceptance sketch
+
+- `par(max = 2)` over three mock-slow LLM or `fs.read` calls finishes
+  faster than sequential when not stepping.
+- Existing E07 par-confirm, step/resume, stale-hash tests stay green.
+- `hwfl step` behaviour documented and stable.

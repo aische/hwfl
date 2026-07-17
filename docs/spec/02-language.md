@@ -101,7 +101,9 @@ only; top-level mutual recursion optional if easy.
 - Call-by-value
 - Record fields left-to-right
 - List elements left-to-right
-- `par` iterations: concurrent up to `max`, **result list order = input order**
+- `par` iterations: up to `max` active branches, **result list order =
+  input order** (runtime may schedule cooperatively or concurrently —
+  see [06-runtime.md](06-runtime.md) §5 / §10)
 
 ## 8. Errors
 

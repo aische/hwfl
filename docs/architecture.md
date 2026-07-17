@@ -67,7 +67,7 @@ All side effects go through **host ops** registered in the runtime:
 | Process     | `exec.run`                                            |
 | Human       | `human.confirm`                                       |
 | Meta        | `meta.eval_module`, `meta.list_runs`, `obs.log`       |
-| Concurrency | `par` / `join` (runtime constructs, not user threads) |
+| Concurrency | `par` / `join` (runtime constructs, not user threads; M5 pool is cooperative — see [spec/06-runtime.md](spec/06-runtime.md) §10) |
 
 Host ops:
 
@@ -135,7 +135,7 @@ hwfl step / resume / show / approve
 | Construct                      | Layer                  | Notes                     |
 | ------------------------------ | ---------------------- | ------------------------- |
 | `let` / `fun` / `match` / `if` | L2 pure                | No snapshot mid-reduction |
-| `par` / `join`                 | L3 sugar + frames      | Structured concurrency    |
+| `par` / `join`                 | L3 sugar + frames      | Structured concurrency (cooperative today; concurrent host IO future) |
 | `confirm`                      | L3 host / Human effect | Freezes `par` pool        |
 | `try` / `catch` or `Result`    | L2 (+ catch frames)    | Catchable host errors     |
 | Agent tool loop                | L3 state machine       | Like hwfi agent `Current` |
