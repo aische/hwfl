@@ -1,4 +1,4 @@
-# semantic-check (M8 + deepen + S2 + S1)
+# semantic-check (M8 + deepen + S2 + S1 + S5)
 
 Semantic review written **in hwfl**, not as a fan-out of micro-tools.
 
@@ -13,6 +13,9 @@ directory and is executed with `--workspace` pointed at the project to scan.
 | 1 | Prose qnames via `text.is_qname` + catalog |
 | 2 | Entropy info; **within-slice quoted sentence redundancy** (cap 16) |
 | 2b | Speech-act heuristics on agent/system sections |
+| 2c | **Prose↔code contracts** (S5): dead bindable `@section`; prose host-op
+      vs `effects:` / `tools =`; schema field vs `outputs:`; skill
+      `exec.run` vs caller effects; `category: contract`; cap 16 |
 | 3 | Gated `llm.object`: dead-ref / speech / similarity peers + **policy
       slices** (`skills/*`, system/rules) with `check_internal_conflict`;
       same calls extract **obligations** (`must`/`should`/`may`/`must_not`)

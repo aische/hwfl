@@ -13,9 +13,9 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Later (P2–P3)
 
-- [ ] Semantic-check research phases (S3–S6) — see
+- [ ] Semantic-check research phases (S3–S4, S6) — see
       [semantic-check-plan.md](semantic-check-plan.md); S1 role typing +
-      S2 obligation graph shipped; prefer S5 prose↔code contracts next
+      S2 obligation graph + S5 prose↔code contracts shipped
 - [ ] Run-store interface over `.hwfl/runs`, then optional DB-backed store
 - [ ] Servant HTTP API on the same run/check APIs as the CLI
 - [ ] MCP client (tool provider behind existing `tool(f)` / host-op story)
@@ -75,4 +75,4 @@ See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07-15/16/17 completions (including P0 host gaps, coding-agent,
 tool-call spans + `--debug`, lifecycle tutorial, skills A–C, try/catch runtime,
 `--json` CLI errors, streaming LLM spans, semantic-check deepen / A+B / S2 /
-S1).
+S1 / S5).

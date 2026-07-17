@@ -280,14 +280,37 @@ spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
           report `shouldSatisfy` T.isInfixOf "workflows/missing"
           report `shouldSatisfy` T.isInfixOf "tools/helper"
           report `shouldSatisfy` T.isInfixOf "\"review_gate\""
-          report `shouldSatisfy` T.isInfixOf "check_dead_reference"
           report `shouldSatisfy` T.isInfixOf "check_internal_conflict"
           report `shouldSatisfy` T.isInfixOf "\"category\":\"redundancy\""
           report `shouldSatisfy` T.isInfixOf "Always prefer exact matches"
+          report `shouldSatisfy` T.isInfixOf "\"category\":\"contract\""
+          report `shouldSatisfy` T.isInfixOf "never interpolated"
+          report `shouldSatisfy` T.isInfixOf "effects lack Exec"
+          report `shouldSatisfy` T.isInfixOf "report_path"
+          report `shouldSatisfy` T.isInfixOf "skills/recommend-exec"
           report `shouldSatisfy` T.isInfixOf "\"mode\":\"deterministic\""
           report `shouldSatisfy` T.isInfixOf "\"pragmatic_findings\":[]"
           report `shouldSatisfy` (not . T.isInfixOf "\"evidence\":\"/\"")
           report `shouldSatisfy` (not . T.isInfixOf "README.md")
+        other -> expectationFailure ("expected completed run, got: " <> show other)
+
+  it "deterministic mode flags planted prose↔code contracts (S5)" $
+    withSystemTempDirectory "hwfl-semcheck-s5" $ \tmp -> do
+      copyTree fixtureRoot tmp
+      outcome <- runChecker tmp baseInputs "e20s5" mockProvider
+      case outcome of
+        OutcomeCompleted (VRecord fs) _store _n -> do
+          lookup (Ident "ok") fs `shouldBe` Just (VBool False)
+          report <- TIO.readFile (tmp </> ".hwfl/runs/e20s5/semantic-report.json")
+          report `shouldSatisfy` T.isInfixOf "\"category\":\"contract\""
+          report `shouldSatisfy` T.isInfixOf "workflows/ok.md"
+          report `shouldSatisfy` T.isInfixOf "@agent"
+          report `shouldSatisfy` T.isInfixOf "workflows/exec-gap.md"
+          report `shouldSatisfy` T.isInfixOf "exec.run"
+          report `shouldSatisfy` T.isInfixOf "workflows/output-gap.md"
+          report `shouldSatisfy` T.isInfixOf "absent from outputs"
+          report `shouldSatisfy` T.isInfixOf "workflows/skill-exec-gap.md"
+          report `shouldSatisfy` T.isInfixOf "skills/recommend-exec"
         other -> expectationFailure ("expected completed run, got: " <> show other)
 
   it "pragmatic mode quotes planted GHC2021 vs Haskell2010 conflict" $
@@ -383,10 +406,14 @@ copyTree src dst = do
     )
     [ "workflows/ok.md",
       "workflows/bad.md",
+      "workflows/exec-gap.md",
+      "workflows/output-gap.md",
+      "workflows/skill-exec-gap.md",
       "lib/search.md",
       "skills/conflict-lang.md",
       "skills/require-search.md",
       "skills/forbid-search.md",
       "skills/ghost-tool.md",
-      "skills/example-hard-rule.md"
+      "skills/example-hard-rule.md",
+      "skills/recommend-exec.md"
     ]

@@ -1,13 +1,14 @@
 # Semantic-check — research plan (“semantic type system”)
 
-**Status:** exploratory backlog. **S2** (obligation graph) and **S1** (role
-typing) shipped. Remaining phases S3–S6 not scheduled in [TASKS.md](TASKS.md)
-Now. Ship increments inside `examples/semantic-check/` (same-run layers;
-policy in workflow; no semantic host-op fan-out).
+**Status:** exploratory backlog. **S2** (obligation graph), **S1** (role
+typing), and **S5** (prose↔code contracts) shipped. Remaining phases S3–S4 /
+S6 not scheduled in [TASKS.md](TASKS.md) Now. Ship increments inside
+`examples/semantic-check/` (same-run layers; policy in workflow; no semantic
+host-op fan-out).
 
 **Related:** [idea.md](idea.md) goal 8 (dogfood semantic analysis),
 `examples/semantic-check/`, [spec/12-example-suite.md](spec/12-example-suite.md)
-E20, log entries 2026-07-17 (deepen / noise fix / A+B / S2 / S1).
+E20, log entries 2026-07-17 (deepen / noise fix / A+B / S2 / S1 / S5).
 
 ## 1. Stance (metaphor, not claim)
 
@@ -52,6 +53,7 @@ Implemented in `examples/semantic-check/workflows/main.md`:
 | 3 | Policy conflict | skills / system / rules → `check_internal_conflict` (**A**); quoted `quote_a` / `quote_b` / `why` |
 | 3b | Obligation graph | extract `{actor, modality, action, object, condition?, quote}` on gated reviews; deterministic must∧must_not / system must vs skill may / catalog-missing object (**S2**) |
 | 3a | Illocutionary role | forced `role` + quoted `mismatched_sentences`; Policy/System need directives; Example must not smuggle hard constraints (**S1**) |
+| 2c | Prose↔code contract | dead bindable `@section`; prose host-op vs `effects`/`tools`; schema field vs `outputs:`; skill `exec.run` vs caller effects (**S5**) |
 | — | Gate discipline | body-bearing `review_gate`; unique by `(slice_id, review_task)`; policy first; cap 8; H1-only skills get synthetic `{path}/skill` slices |
 
 Scan scope: `workflows/` / `skills/` / `lib/` / `types/` only.
@@ -144,20 +146,25 @@ Useful variants:
 - Surprise vs catalog: instructs “use the stack skill” but never names
   discoverable skills
 
-### Phase S5 — Prose ↔ code interface contracts
+### Phase S5 — Prose ↔ code interface contracts — **shipped**
 
 hwfl-specific leverage: bind section claims to frontmatter / effects /
-tools.
+tools. Deterministic layer 2c (no extra LLM / gate slots):
 
-Examples:
+- Bindable sections (`system` / `agent` / `reviewer` / `prompt` / `user` /
+  `instructions`) with body never referenced as `@slug` in a module that
+  has an `hwfl` fence
+- Prose names `exec.run` / `fs.write` / `llm.*` (etc.) but frontmatter
+  `effects:` lacks the matching capability (callable modules only)
+- When `tools =` is present, prose host-op names without matching
+  `tool(...)` form
+- `## schema …` bullet fields absent from typed `outputs:` lines
+- Skill recommends `exec.run` and a workflow without `Exec` names that
+  skill qname
 
-- `## system` names tools not allowed by `effects` / tool lists
-- skill recommends `exec` verify but caller lacks `Exec`
-- `@section` never interpolated (dead prose)
-- prose promises output fields absent from `outputs:`
-
-Classical types check the fence; this checks **prose as another interface
-surface** next to YAML.
+Findings `category: contract` (cap 16). Fixtures: `ok` dead `@agent`,
+`exec-gap`, `output-gap`, `skill-exec-gap` + `recommend-exec`. Coding-agent
+deterministic dogfood stays contract-clean.
 
 ### Phase S6 — Trace-conditioned (dynamic) semantics
 
@@ -202,7 +209,7 @@ separate workflow over `.hwfl/runs` rather than static module scan.
 
 1. ~~**S2 obligation graph**~~ **done**
 2. ~~**S1 role typing**~~ **done**
-3. **S5 prose↔code contracts** (unique to hwfl modules)
+3. ~~**S5 prose↔code contracts**~~ **done**
 4. **S3** only if S2’s claim schema stays stable
 5. **S4** as gate features while doing the above
 6. **S6** when run-store / span APIs make dynamic checks cheap

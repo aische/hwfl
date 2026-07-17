@@ -8,6 +8,8 @@ Skills phase D (optional), then run-store interface.
 
 ## Done recently
 
+- **Semantic-check S5** — prose↔code contracts (dead `@section`, effect/tool
+  gaps, schema vs `outputs:`, skill `exec.run` vs caller; `category: contract`)
 - **Semantic-check S1** — illocutionary role typing on gated slices
   (`role` + quoted mismatches; Policy/Example felicity; `category: role`)
 - **Semantic-check S2** — obligation graph + crunch-budget fix (≤12 graph
@@ -26,7 +28,7 @@ None.
 
 1. Skills phase D (optional) — writer workflow; no hidden `skill.extract`
 2. Run-store interface → optional DB; later Servant API; later MCP client
-3. Semantic-check S5 (prose↔code contracts) when resumed — see
+3. Semantic-check S3 / S4 / S6 when resumed — see
    [semantic-check-plan.md](semantic-check-plan.md)
 
 ## Deferred (nice-to-have)
@@ -42,7 +44,7 @@ None.
   IDE / product shell (Tier C) remains out of scope.
 - Split `semantic-pragmatic` / summary packaging / CLI sugar (same-run
   layer 3 is enough for now).
-- Semantic-check S3–S6 — [semantic-check-plan.md](semantic-check-plan.md).
+- Semantic-check S3–S4 / S6 — [semantic-check-plan.md](semantic-check-plan.md).
 
 ## Open naming
 
