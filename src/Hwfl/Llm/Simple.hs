@@ -22,11 +22,13 @@ import LLM.Generate
     GenerateError (..),
     GenerateErrorResult (..),
     ModelWithFallbacks (..),
+    StreamChunk (..),
     defaultDebugHooks,
     genObjectUntyped,
     generateTextWithFallbacks,
     llmHooks,
     noHooks,
+    streamTextWithFallbacks,
   )
 import LLM.Load (loadModelOrThrow)
 import System.Directory (doesFileExist)
@@ -73,7 +75,10 @@ chatWithCatalog catalogPath req = do
           models = ModelWithFallbacks model []
       case req.chatResponseFormat of
         Nothing -> do
-          result <- generateTextWithFallbacks gr models
+          result <- case req.chatOnChunk of
+            Nothing -> generateTextWithFallbacks gr models
+            Just onChunk ->
+              streamTextWithFallbacks (mapStreamChunk onChunk) gr models
           pure $ case result of
             Left genErr -> Left (mapGenerateError genErr)
             Right resp ->
@@ -91,6 +96,7 @@ chatWithCatalog catalogPath req = do
                       }
         Just schema -> do
           -- Structured object path: tools must stay empty (llm-simple contract).
+          -- Object mode stays on the non-stream generate path (spec §08 §2.2).
           let grObj = gr {grTools = []}
           result <- genObjectUntyped grObj models schema
           pure $ case result of
@@ -103,6 +109,17 @@ chatWithCatalog catalogPath req = do
                     prUsage = Just (mapUsage usage),
                     prFinishReason = FinishStop
                   }
+
+-- | Map llm-simple stream chunks onto engine 'StreamDelta's. Role-commit
+-- signals are internal and dropped; tool calls are complete only.
+mapStreamChunk :: (StreamDelta -> IO ()) -> StreamChunk -> IO ()
+mapStreamChunk onChunk = \case
+  AnswerDelta t -> onChunk (DeltaText t)
+  PreambleDelta t -> onChunk (DeltaText t)
+  TextDelta t -> onChunk (DeltaText t)
+  ReasoningDelta t -> onChunk (DeltaReasoning t)
+  RoundTextRoleCommitted _ -> pure ()
+  StreamToolCallChunk tc -> onChunk (DeltaToolCall (fromLLMToolCall tc))
 
 requestToTurns :: ChatRequest -> (Maybe Text, [LLM.Turn])
 requestToTurns req

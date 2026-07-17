@@ -76,7 +76,7 @@
 - [x] Skills catalog + `skill.discover` / `skill.load` + agent mid-loop
       load / resume fields (plan: [skills-plan.md](../skills-plan.md);
       dogfood: `examples/coding-agent`)
-- [ ] Streaming LLM spans — progressive events on open `llm.chat` /
+- [x] Streaming LLM spans — progressive events on open `llm.chat` /
       `agent_round` spans ([07-observability.md](07-observability.md) §9);
       mock-proven; host return types / snapshot grain unchanged
 
@@ -88,8 +88,8 @@ default substrate for all new agent work vs hwfi:
 - **Ongoing fitness:** resume, span comprehension, semantic-check-class ergonomics
 - **Deferred / low priority:** second LLM provider adapter (interface already exists)
 - **Shipped post-M9:** skills progressive disclosure A–C
-  ([skills-plan.md](../skills-plan.md)); optional phase D extraction writer
-
+  ([skills-plan.md](../skills-plan.md)); optional phase D extraction writer;
+  streaming LLM spans (07 §9)
 ## 4. Explicit non-acceptance
 
 - Shipping a second step-DSL

@@ -10,6 +10,7 @@ module Hwfl.Obs.Trace
     setSpanStack,
     getSpanStack,
     appendEvent,
+    debugLog,
     readSpanRecords,
     SpanRecord (..),
     SpanNode (..),

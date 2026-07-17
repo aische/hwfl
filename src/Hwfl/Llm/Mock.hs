@@ -18,6 +18,7 @@ import Hwfl.Llm.Types
 
 -- | Default mock: echoes a summary of the last user message (no tool calls).
 -- When 'chatResponseFormat' is set, synthesizes a JSON value from the schema.
+-- When 'chatOnChunk' is set (and not object mode), emits fake text chunks.
 mockProvider :: LlmProvider
 mockProvider = mockProviderWith defaultReply
 
@@ -25,9 +26,30 @@ mockProvider = mockProviderWith defaultReply
 mockProviderWith :: (ChatRequest -> Either ProviderError ProviderResult) -> LlmProvider
 mockProviderWith reply =
   LlmProvider
-    { llmChat = pure . reply,
+    { llmChat = \req -> case reply req of
+        Left err -> pure (Left err)
+        Right pr -> do
+          emitFakeChunks req pr
+          pure (Right pr),
       llmProviderName = "mock"
     }
+
+-- | Split the final reply into small text chunks (and complete tool-call
+-- deltas) so streaming-span tests need no network.
+emitFakeChunks :: ChatRequest -> ProviderResult -> IO ()
+emitFakeChunks req pr =
+  case (req.chatOnChunk, req.chatResponseFormat) of
+    (Just onChunk, Nothing) -> do
+      mapM_ (onChunk . DeltaText) (chunkText 8 pr.prContent)
+      mapM_ (onChunk . DeltaToolCall) pr.prToolCalls
+    _ -> pure ()
+
+chunkText :: Int -> Text -> [Text]
+chunkText n t
+  | T.null t = []
+  | otherwise =
+      let (a, b) = T.splitAt n t
+       in a : chunkText n b
 
 defaultReply :: ChatRequest -> Either ProviderError ProviderResult
 defaultReply req =

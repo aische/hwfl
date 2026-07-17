@@ -4,16 +4,10 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now (P1)
 
-- [ ] Streaming LLM spans — progressive events on open `llm.chat` /
-      `agent_round` spans (`events.jsonl` + coalesced `--debug`); extend
-      `LlmProvider` with optional chunk hook; mock coverage. Spec:
-      [07 §9](spec/07-observability.md), [08 §2.2](spec/08-llm-provider.md).
-      **Not:** in-language streams, mid-token snapshots, `llm.object`
-      streaming, or `par` host overlap.
+- [ ] Semantic-check deepen (layer 3 / self-check polish; optional CLI sugar)
 
 ## Next (P1–P2)
 
-- [ ] Semantic-check deepen (layer 3 / self-check polish; optional CLI sugar)
 - [ ] Skills phase D (optional) — `examples/skills/` writer; no hidden
       `skill.extract` host
 
@@ -42,8 +36,8 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 ## Future / nice-to-have (coding-agent capability)
 
 Toward a Cursor-class **headless** agent. Prefer MCP / workflow modules over
-growing the host-op set. Streaming, MCP, `meta.invoke`, and concurrent
-`par` host IO are listed above — not repeated here.
+growing the host-op set. MCP, `meta.invoke`, and concurrent `par` host IO are
+listed above — not repeated here.
 
 ### Tier A — credible autonomous coding agent (backend)
 
@@ -77,4 +71,4 @@ multimodal — separate product; hwfl stays the orchestration kernel.
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07-15/16/17 completions (including P0 host gaps, coding-agent,
 tool-call spans + `--debug`, lifecycle tutorial, skills A–C, try/catch runtime,
-`--json` CLI errors).
+`--json` CLI errors, streaming LLM spans).

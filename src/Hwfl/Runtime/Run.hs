@@ -167,7 +167,8 @@ runLoadedModule opts loaded = do
             heExec = opts.roExec,
             heSkillCatalog = opts.roSkillCatalog,
             hePricing = pricing,
-            heLog = hPutStrLn stderr . T.unpack
+            heLog = hPutStrLn stderr . T.unpack,
+            heLlmOnChunk = Nothing
           }
       ctx =
         RunCtx
@@ -279,7 +280,8 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
             heExec = execPol,
             heSkillCatalog = catalog,
             hePricing = pricing,
-            heLog = hPutStrLn stderr . T.unpack
+            heLog = hPutStrLn stderr . T.unpack,
+            heLlmOnChunk = Nothing
           }
   pure
     RunCtx

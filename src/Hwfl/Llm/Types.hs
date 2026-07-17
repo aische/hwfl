@@ -6,6 +6,7 @@ module Hwfl.Llm.Types
     ToolCall (..),
     ToolResult (..),
     Turn (..),
+    StreamDelta (..),
     ChatRequest (..),
     TokenUsage (..),
     FinishReason (..),
@@ -60,7 +61,18 @@ data Turn
   | TurnTool [ToolResult]
   deriving stock (Eq, Show)
 
+-- | Progressive provider delta (obs side channel only — not a language value).
+data StreamDelta
+  = -- | Answer / preamble / unclassified text partial.
+    DeltaText Text
+  | -- | Chain-of-thought / reasoning partial (when the provider emits it).
+    DeltaReasoning Text
+  | -- | Complete tool call (no fragment-level arg streaming).
+    DeltaToolCall ToolCall
+  deriving stock (Eq, Show)
+
 -- | Provider-agnostic chat request (host builds this from @llm.chat@ / agent rounds).
+-- No Eq/Show: @chatOnChunk@ is an IO hook.
 data ChatRequest = ChatRequest
   { -- | Simple @llm.chat@ path (system/user Messages). Ignored when 'chatTurns' is non-empty.
     chatMessages :: [Message],
@@ -72,9 +84,11 @@ data ChatRequest = ChatRequest
     -- | Optional JSON Schema for structured object mode (@llm.object@).
     chatResponseFormat :: Maybe Value,
     -- | Tools advertised for this request (agent model rounds).
-    chatTools :: [ToolSpec]
+    chatTools :: [ToolSpec],
+    -- | Optional progressive hook (provider → host obs). Ignored by adapters
+    -- without stream support; structured object mode need not invoke it.
+    chatOnChunk :: Maybe (StreamDelta -> IO ())
   }
-  deriving stock (Eq, Show)
 
 emptyChatRequest :: Text -> ChatRequest
 emptyChatRequest model =
@@ -84,7 +98,8 @@ emptyChatRequest model =
       chatSystem = Nothing,
       chatModel = model,
       chatResponseFormat = Nothing,
-      chatTools = []
+      chatTools = [],
+      chatOnChunk = Nothing
     }
 
 data TokenUsage = TokenUsage

@@ -48,6 +48,7 @@ import Hwfl.Llm.Types
   )
 import Hwfl.Obs.Redact (hostOpenAttrs, toolCallOpenAttrs)
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
+import Hwfl.Obs.Stream (StreamSink (..), newStreamSink)
 import Hwfl.Obs.Trace
   ( SpanState (..),
     appendEvent,
@@ -317,6 +318,7 @@ doHost ctx mode m op args
   | otherwise = doHostRun ctx mode m op args
 
 -- | Open span, run host op, close span (standard host transition).
+-- For @llm.chat@, attaches a coalescing stream sink to the open span.
 doHostRun ::
   RunCtx ->
   StepMode ->
@@ -332,7 +334,9 @@ doHostRun ctx mode m op args = do
       (hostOpName op)
       SkHost
       (hostOpenAttrs op args)
-  result <- runHostOp ctx.rcHost op args
+  (host, flushStream) <- attachLlmStream ctx op
+  result <- runHostOp host op args
+  flushStream
   case result of
     Left e -> do
       abortOrCatch ctx mode m e >>= \case
@@ -350,6 +354,17 @@ doHostRun ctx mode m op args = do
       seqNo <- persist ctx (Just op) (Just hr.hrValue) m'.mStatus (Just m')
       closeSpan ctx.rcStore ctx.rcSpans sid SsOk hr.hrCloseAttrs (Just seqNo)
       pure (Right (StepResult m' True))
+
+-- | Wire a progressive chunk sink for @llm.chat@ only (not @llm.object@).
+attachLlmStream :: RunCtx -> HostOpId -> IO (HostEnv, IO ())
+attachLlmStream ctx = \case
+  HostLlmChat -> do
+    sink <- newStreamSink ctx.rcStore ctx.rcSpans
+    pure
+      ( ctx.rcHost {heLlmOnChunk = Just sink.ssOnChunk},
+        sink.ssFlush
+      )
+  _ -> pure (ctx.rcHost {heLlmOnChunk = Nothing}, pure ())
 
 -- | Pause for human confirm before @exec.run@ when @exec.confirm@ is true.
 doExecConfirm ::
@@ -485,18 +500,21 @@ stepAgentModel ctx mode m ag
               ]
           )
       let ag' = ag {agRoundSpanId = Just roundSid}
-          req =
+          req0 =
             (emptyChatRequest ag.agModel)
               { chatSystem = Just (agentSystemPrompt ctx ag),
                 chatTurns = ag.agHistory,
                 chatTools = providerToolSpecs ag.agTools
               }
+      sink <- newStreamSink ctx.rcStore ctx.rcSpans
+      let req = req0 {chatOnChunk = Just sink.ssOnChunk}
       ctx.rcHost.heLog
         ( hostOpName (agentHostOp ag)
             <> " model round="
             <> T.pack (show ag.agRound)
         )
       result <- ctx.rcHost.heProvider.llmChat req
+      sink.ssFlush
       case result of
         Left pe -> do
           closeSpan ctx.rcStore ctx.rcSpans roundSid SsError (object ["error" .= renderProviderError pe]) Nothing

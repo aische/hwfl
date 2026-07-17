@@ -1,6 +1,7 @@
 module Hwfl.Llm.ProviderSpec (spec) where
 
 import Data.Aeson (object, (.=))
+import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
@@ -11,6 +12,7 @@ import Hwfl.Llm.Types
     Message (..),
     ProviderResult (..),
     Role (..),
+    StreamDelta (..),
     emptyChatRequest,
   )
 import Test.Hspec
@@ -78,3 +80,32 @@ spec = describe "LlmProvider" $ do
       Right pr -> do
         pr.prContent `shouldSatisfy` T.isInfixOf "SUMMARY:"
         pr.prContent `shouldSatisfy` T.isInfixOf "\"score\":1"
+
+  it "mock emits fake StreamDelta chunks when chatOnChunk is set" $ do
+    ref <- newIORef ([] :: [StreamDelta])
+    let req =
+          (emptyChatRequest "gpt-5")
+            { chatMessages = [Message RoleUser "abcdefghijklmnop"],
+              chatOnChunk = Just (\d -> modifyIORef' ref (d :))
+            }
+    result <- mockProvider.llmChat req
+    case result of
+      Left err -> expectationFailure (show err)
+      Right pr -> do
+        chunks <- reverse <$> readIORef ref
+        length chunks `shouldSatisfy` (>= 2)
+        mconcat [t | DeltaText t <- chunks] `shouldBe` pr.prContent
+        pr.prContent `shouldBe` "SUMMARY: abcdefghijklmnop"
+
+  it "mock does not emit chunks for object-mode requests" $ do
+    ref <- newIORef (0 :: Int)
+    let schema = object ["type" .= ("object" :: Text), "properties" .= object []]
+        req =
+          (emptyChatRequest "gpt-5")
+            { chatMessages = [Message RoleUser "x"],
+              chatResponseFormat = Just schema,
+              chatOnChunk = Just (\_ -> modifyIORef' ref (+ 1))
+            }
+    _ <- mockProvider.llmChat req
+    n <- readIORef ref
+    n `shouldBe` 0

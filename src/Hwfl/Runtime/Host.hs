@@ -30,6 +30,7 @@ import Hwfl.Llm.Types
     Message (..),
     ProviderResult (..),
     Role (..),
+    StreamDelta,
     emptyChatRequest,
     renderProviderError,
   )
@@ -62,7 +63,11 @@ data HostEnv = HostEnv
     heExec :: Maybe ExecPolicy,
     heSkillCatalog :: SkillCatalog,
     hePricing :: ModelPricing,
-    heLog :: Text -> IO ()
+    heLog :: Text -> IO (),
+    -- | Progressive LLM chunk hook for the in-flight @llm.chat@ / agent
+    -- model call (set by Eval around the open span). Object mode leaves this
+    -- unset.
+    heLlmOnChunk :: Maybe (StreamDelta -> IO ())
   }
 
 -- | Host outcome with redacted close-attrs for the span.
@@ -538,7 +543,8 @@ doLlmChat env args = case parseChatArgs args of
                 [ Message RoleSystem system,
                   Message RoleUser prompt
                 ],
-              chatSystem = Just system
+              chatSystem = Just system,
+              chatOnChunk = env.heLlmOnChunk
             }
     result <- env.heProvider.llmChat req
     pure $ case result of

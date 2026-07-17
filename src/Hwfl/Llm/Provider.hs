@@ -9,8 +9,9 @@ import Hwfl.Llm.Types (ChatRequest, ProviderError, ProviderResult)
 -- | Record-of-functions so adapters (mock, llm-simple, …) stay swappable
 -- without changing host or workflow code. Configured once at run start.
 data LlmProvider = LlmProvider
-  { -- | Single-shot chat (and agent model rounds later). Retries belong here
-    -- for M4 (host records a single span attempt; see decision log).
+  { -- | Chat / agent model round. When 'chatOnChunk' is set, adapters that
+    -- support streaming should invoke it with progressive 'StreamDelta's
+    -- before returning the final 'ProviderResult' (spec §08 §2.2).
     llmChat :: ChatRequest -> IO (Either ProviderError ProviderResult),
     -- | Short name for logs / @--llm-provider@.
     llmProviderName :: String

@@ -59,6 +59,7 @@ library
         Hwfl.Obs.Redact
         Hwfl.Obs.Show
         Hwfl.Obs.Span
+        Hwfl.Obs.Stream
         Hwfl.Obs.Trace
         Hwfl.Json.Encode
         Hwfl.Project
@@ -142,6 +143,7 @@ test-suite hwfl-test
         Hwfl.Llm.PricingSpec
         Hwfl.Llm.ProviderSpec
         Hwfl.Obs.SpanSpec
+        Hwfl.Obs.StreamSpec
         Hwfl.Parse.ExprSpec
         Hwfl.Parse.LoadSpec
         Hwfl.Parse.ModuleSpec
