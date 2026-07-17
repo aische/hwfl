@@ -96,6 +96,35 @@ obligationRow actor modality action obj quote =
       "quote" .= Aeson.String quote
     ]
 
+-- | Many distinct obligations (stress pair-scan / stamp caps).
+chattyObligationsReply :: ChatRequest -> Either ProviderError ProviderResult
+chattyObligationsReply _req =
+  let obs =
+        V.fromList
+          [ obligationRow
+              "agent"
+              (if even i then "must" else "must_not")
+              ("act-" <> T.pack (show i))
+              ("obj-" <> T.pack (show i))
+              ("quote " <> T.pack (show i))
+            | i <- [1 :: Int .. 40]
+          ]
+      body =
+        object
+          [ "illocutionary_force" .= Aeson.String "directive",
+            "felicity_violations" .= Aeson.Array V.empty,
+            "contradictions" .= Aeson.Array V.empty,
+            "clarity_score" .= Aeson.Number 0.7,
+            "obligations" .= Aeson.Array obs
+          ]
+   in Right
+        ProviderResult
+          { prContent = TE.decodeUtf8 (BL.toStrict (encode body)),
+            prToolCalls = [],
+            prUsage = Just (TokenUsage 1 1),
+            prFinishReason = FinishStop
+          }
+
 -- | Planted conflicts → quoted contradiction / obligations; else empty lists.
 conflictAwareReply :: ChatRequest -> Either ProviderError ProviderResult
 conflictAwareReply req =
@@ -264,6 +293,24 @@ spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
           report `shouldSatisfy` T.isInfixOf "lib/search"
           report `shouldSatisfy` T.isInfixOf "skills/does-not-exist"
           report `shouldSatisfy` T.isInfixOf "absent from the catalog"
+        other -> expectationFailure ("expected completed run, got: " <> show other)
+
+  it "pragmatic mode survives chatty obligation extracts without crunch trap" $
+    withSystemTempDirectory "hwfl-semcheck-chatty" $ \tmp -> do
+      copyTree fixtureRoot tmp
+      let inputs =
+            [ (Ident "entry", VString "workflows/ok"),
+              (Ident "mode", VString "pragmatic"),
+              (Ident "model", VString "mock")
+            ]
+          provider = mockProviderWith chattyObligationsReply
+      outcome <- runChecker tmp inputs "e20c" provider
+      case outcome of
+        OutcomeCompleted (VRecord fs) _store _n -> do
+          lookup (Ident "ok") fs `shouldBe` Just (VBool False)
+          report <- TIO.readFile (tmp </> ".hwfl/runs/e20c/semantic-report.json")
+          report `shouldSatisfy` T.isInfixOf "\"obligations\""
+          report `shouldSatisfy` (not . T.isInfixOf "pure crunch limit")
         other -> expectationFailure ("expected completed run, got: " <> show other)
 
 copyTree :: FilePath -> FilePath -> IO ()

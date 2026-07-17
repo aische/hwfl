@@ -105,9 +105,14 @@ Extract normative claims into a controlled schema on every gated
 Deterministic graph checks on the extracted set (no extra gate slots):
 
 - same `(actor, action, object)` with `must` and `must_not` (unconditioned
-  or same condition; cap 16)
-- workflows `must` vs skills `may`/`should` (soft / info)
-- obligation `object` qname missing from the catalog (tie to layer 1)
+  or same condition; finding cap 8)
+- workflows `must` vs skills `may`/`should` (soft / info; cap 8)
+- obligation `object` qname missing from the catalog (tie to layer 1; cap 8)
+
+Caps to stay under pure crunch: extract only on
+`check_internal_conflict` gates; ≤8 usable obligations per slice; graph
+sees at most 32 rows. Pair scans early-exit on finding budget (single
+recursion, no full-triangle walk after saturation).
 
 Report: `obligations` + `pragmatic_findings` with `category: obligation`.
 Fixtures: `require-search` / `forbid-search` / `ghost-tool`. Still gated

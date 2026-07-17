@@ -1600,7 +1600,7 @@ crunch :: RunCtx -> Machine -> Either RuntimeError Machine
 crunch ctx = go (0 :: Int)
   where
     go n m
-      | n > 100000 = Left (EvalErr (Trap "pure crunch limit exceeded"))
+      | n > 500000 = Left (EvalErr (Trap "pure crunch limit exceeded"))
       | otherwise = case crunchOnce ctx m of
           Left e -> Left e
           Right Nothing -> Right m

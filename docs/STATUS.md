@@ -8,10 +8,8 @@ Skills phase D (optional), then run-store interface.
 
 ## Done recently
 
-- **Semantic-check S2** — obligation graph: gated reviews extract
-  `{actor,modality,action,object,condition,quote}`; deterministic
-  must∧must_not / system must vs skill may / catalog-missing object;
-  report `obligations` + `category:obligation` findings
+- **Semantic-check S2** — obligation graph + crunch-budget fix (≤12 graph
+  rows; host pure crunch 500k; chatty-extract regression)
 - **`fs.patch`** — unique multi-hunk atomic edit; agent-tool eligible;
   coding-agent prefers it over replace-all `fs.edit`
 - **Semantic-check A+B** — policy gate (`check_internal_conflict`);

@@ -21,8 +21,9 @@ other docs.
 Deterministic: structural / prose qnames / entropy info / **within-slice
 quoted sentence redundancy** (capped). Pragmatic: gated `llm.object` including
 **internal conflict** on policy slices (skills, system, rules) plus **obligation
-extraction**; deterministic graph checks on the extracted set (must∧must_not,
-system must vs skill may/should, catalog-missing objects). Gate capped at 8.
+extraction** (policy gates only, ≤4 per slice); deterministic graph checks on
+the extracted set (must∧must_not, system must vs skill may/should,
+catalog-missing objects; ≤12 rows, finding caps 4). Gate capped at 8.
 Set `mode=pragmatic` + catalog `model` for LLM; `mode=deterministic` skips
 LLM calls.
 
@@ -44,11 +45,12 @@ Rules:
   instructions in `contradictions[].quote_a` and `contradictions[].quote_b`,
   and a short `why`. If none, return an empty `contradictions` list.
 - For other review tasks: same contradiction shape when you find conflicts.
-- Always fill `obligations` for normative claims in the slice (empty list if
-  none). Each row: `actor`, `modality` exactly one of
-  `must` | `should` | `may` | `must_not`, `action`, `object`, optional
-  `condition` (empty if unconditioned), and a **verbatim** `quote` from the
-  body. Prefer empty list over guessing. Do not invent modules or tools.
+- Always fill `obligations` for normative claims when the review task is
+  `check_internal_conflict` (empty list otherwise). Each row: `actor`,
+  `modality` exactly one of `must` | `should` | `may` | `must_not`,
+  `action`, `object`, optional `condition` (empty if unconditioned), and a
+  **verbatim** `quote` from the body. Prefer a short list (≤8) over guessing.
+  Do not invent modules or tools.
 
 ## body
 
@@ -569,13 +571,14 @@ fun bleed_felicity(s: String): Bool =
     || text.contains(s, "compression")
     || text.contains(s, "review_gate")
 
-fun felicity_findings(xs: List<String>, file: String, i: Int, n: Int): List<Finding> =
-  if i >= n then []
+fun felicity_findings(xs: List<String>, file: String, i: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
   else
     let s = xs[i]
-    let rest = felicity_findings(xs, file, i + 1, n)
-    if bleed_felicity(s) then rest
-    else if s == "" then rest
+    if bleed_felicity(s) then felicity_findings(xs, file, i + 1, n, remaining)
+    else if s == "" then felicity_findings(xs, file, i + 1, n, remaining)
+    else if i >= 32 then []
     else
       list.concat(
         [{
@@ -586,15 +589,16 @@ fun felicity_findings(xs: List<String>, file: String, i: Int, n: Int): List<Find
           evidence = s,
           suggestion = "Clarify preconditions or directive scope"
         }],
-        rest
+        felicity_findings(xs, file, i + 1, n, remaining - 1)
       )
 
-fun contradiction_findings(xs: List<Contradiction>, file: String, i: Int, n: Int): List<Finding> =
-  if i >= n then []
+fun contradiction_findings(xs: List<Contradiction>, file: String, i: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
   else
     let c = xs[i]
-    let rest = contradiction_findings(xs, file, i + 1, n)
-    if c.quote_a == "" && c.quote_b == "" then rest
+    if c.quote_a == "" && c.quote_b == "" then
+      contradiction_findings(xs, file, i + 1, n, remaining)
     else
       list.concat(
         [{
@@ -605,21 +609,23 @@ fun contradiction_findings(xs: List<Contradiction>, file: String, i: Int, n: Int
           evidence = $"A: {c.quote_a} | B: {c.quote_b}",
           suggestion = "Reconcile so both cannot apply in the same case, or remove one"
         }],
-        rest
+        contradiction_findings(xs, file, i + 1, n, remaining - 1)
       )
 
 fun pragmatic_to_findings(out: PragmaticOut, item: GateItem): List<Finding> =
   list.concat(
-    felicity_findings(out.felicity_violations, item.file, 0, list.length(out.felicity_violations)),
-    contradiction_findings(out.contradictions, item.file, 0, list.length(out.contradictions))
+    felicity_findings(out.felicity_violations, item.file, 0, list.length(out.felicity_violations), 4),
+    contradiction_findings(out.contradictions, item.file, 0, list.length(out.contradictions), 4)
   )
 
 fun peer_block(item: GateItem): String =
   if item.peer_body == "" then ""
   else $"\n\n## Peer slice\nLocation: {item.peer_file}\n\n{item.peer_body}"
 
-fun stamp_obs(xs: List<ObligationExtract>, file: String, i: Int, n: Int): List<OblRow> =
-  if i >= n then []
+fun stamp_obs(xs: List<ObligationExtract>, file: String, i: Int, n: Int, remaining: Int): List<OblRow> =
+  if remaining <= 0 then []
+  else if i >= n then []
+  else if i >= 16 then []
   else
     let o = xs[i]
     let row = {
@@ -631,7 +637,8 @@ fun stamp_obs(xs: List<ObligationExtract>, file: String, i: Int, n: Int): List<O
       quote = o.quote,
       file = file
     }
-    list.concat([row], stamp_obs(xs, file, i + 1, n))
+    if not(obl_usable(row)) then stamp_obs(xs, file, i + 1, n, remaining)
+    else list.concat([row], stamp_obs(xs, file, i + 1, n, remaining - 1))
 
 fun obl_usable(o: OblRow): Bool =
   not(o.quote == "")
@@ -682,10 +689,7 @@ fun polarity_findings(obs: List<OblRow>, i: Int, j: Int, n: Int, remaining: Int)
   else
     let a = obs[i]
     let b = obs[j]
-    let rest = polarity_findings(obs, i, j + 1, n, remaining)
-    if not(obl_usable(a)) then rest
-    else if not(obl_usable(b)) then rest
-    else if not(polarity_pair(a, b)) then rest
+    if not(polarity_pair(a, b)) then polarity_findings(obs, i, j + 1, n, remaining)
     else
       list.concat(
         [{
@@ -706,10 +710,7 @@ fun soft_findings(obs: List<OblRow>, i: Int, j: Int, n: Int, remaining: Int): Li
   else
     let a = obs[i]
     let b = obs[j]
-    let rest = soft_findings(obs, i, j + 1, n, remaining)
-    if not(obl_usable(a)) then rest
-    else if not(obl_usable(b)) then rest
-    else if not(soft_pair(a, b)) then rest
+    if not(soft_pair(a, b)) then soft_findings(obs, i, j + 1, n, remaining)
     else
       list.concat(
         [{
@@ -723,14 +724,14 @@ fun soft_findings(obs: List<OblRow>, i: Int, j: Int, n: Int, remaining: Int): Li
         soft_findings(obs, i, j + 1, n, remaining - 1)
       )
 
-fun dead_ref_findings(obs: List<OblRow>, names: List<String>, i: Int, n: Int): List<Finding> =
-  if i >= n then []
+fun dead_ref_findings(obs: List<OblRow>, names: List<String>, i: Int, n: Int, remaining: Int): List<Finding> =
+  if remaining <= 0 then []
+  else if i >= n then []
   else
     let o = obs[i]
-    let rest = dead_ref_findings(obs, names, i + 1, n)
-    if not(obl_usable(o)) then rest
-    else if not(looks_like_qname(o.object)) then rest
-    else if has_string(names, o.object, 0, list.length(names)) then rest
+    if not(looks_like_qname(o.object)) then dead_ref_findings(obs, names, i + 1, n, remaining)
+    else if has_string(names, o.object, 0, list.length(names)) then
+      dead_ref_findings(obs, names, i + 1, n, remaining)
     else
       list.concat(
         [{
@@ -741,14 +742,21 @@ fun dead_ref_findings(obs: List<OblRow>, names: List<String>, i: Int, n: Int): L
           evidence = $"quote: {o.quote} | object: {o.object}",
           suggestion = "Add the module or fix the obligation object"
         }],
-        rest
+        dead_ref_findings(obs, names, i + 1, n, remaining - 1)
       )
 
+fun take_obs(xs: List<OblRow>, k: Int, i: Int, n: Int): List<OblRow> =
+  if i >= n || k <= 0 then []
+  else list.concat([xs[i]], take_obs(xs, k - 1, i + 1, n))
+
 fun obligation_graph_findings(obs: List<OblRow>, names: List<String>): List<Finding> =
-  let n = list.length(obs)
-  let hard = polarity_findings(obs, 0, 1, n, 16)
-  let soft = soft_findings(obs, 0, 1, n, 16)
-  let dead = dead_ref_findings(obs, names, 0, n)
+  let capped = take_obs(obs, 12, 0, list.length(obs))
+  let n = list.length(capped)
+  let hard = polarity_findings(capped, 0, 1, n, 4)
+  let soft =
+    if n > 8 then empty_findings(())
+    else soft_findings(capped, 0, 1, n, 4)
+  let dead = dead_ref_findings(capped, names, 0, n, 4)
   concat3(hard, soft, dead)
 
 fun empty_findings(_: Unit): List<Finding> = []
@@ -758,6 +766,9 @@ fun empty_obligations(_: Unit): List<OblRow> = []
 fun empty_pack(_: Unit): ReviewPack =
   { findings = empty_findings(()), obligations = empty_obligations(()) }
 
+fun wants_obligations(item: GateItem): Bool =
+  item.review_task == "check_internal_conflict"
+
 fun review_one_pack(item: GateItem, model: String): ReviewPack =
   let prompt =
     $"{@reviewer}\n\n## Slice under review\nLocation: {item.file}\n\n{item.body}{peer_block(item)}\n\n## Review task\n{item.review_task}\n\n## Context\n{item.context}"
@@ -766,9 +777,14 @@ fun review_one_pack(item: GateItem, model: String): ReviewPack =
     schema = schema(PragmaticOut),
     model = model
   )
+  let obs =
+    if wants_obligations(item) then
+      stamp_obs(out.obligations, item.file, 0, list.length(out.obligations), 4)
+    else
+      empty_obligations(())
   {
     findings = pragmatic_to_findings(out, item),
-    obligations = stamp_obs(out.obligations, item.file, 0, list.length(out.obligations))
+    obligations = obs
   }
 
 fun review_all_pack(gate: List<GateItem>, model: String, i: Int, n: Int): ReviewPack =

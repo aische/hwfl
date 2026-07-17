@@ -18,7 +18,8 @@ directory and is executed with `--workspace` pointed at the project to scan.
       same calls extract **obligations** (`must`/`should`/`may`/`must_not`) |
 | 3b | **Obligation graph** (S2): deterministic checks on extracted set —
       must∧must_not, system must vs skill may/should, catalog-missing
-      objects; quoted evidence; caps 16 |
+      objects; policy gates only; ≤8 obs/slice, ≤32 graph rows; finding
+      caps 8; quoted evidence |
 
 Scans `workflows/`, `skills/`, `lib/`, and `types/` only. Gate ≤ 8 items.
 Deterministic mode needs no API keys. Pragmatic mode fills
