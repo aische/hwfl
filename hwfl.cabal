@@ -43,6 +43,7 @@ library
         Hwfl.Check.Overload
         Hwfl.Check.Prelude
         Hwfl.Check.Project
+        Hwfl.Cli.Json
         Hwfl.Check.Schema
         Hwfl.Eval.Error
         Hwfl.Eval.Module
@@ -135,6 +136,7 @@ test-suite hwfl-test
         Hwfl.Ast.PrettySpec
         Hwfl.Check.ModuleSpec
         Hwfl.Check.ProjectSpec
+        Hwfl.Cli.JsonSpec
         Hwfl.Check.SchemaSpec
         Hwfl.Eval.PureSpec
         Hwfl.Llm.PricingSpec

@@ -1786,7 +1786,7 @@ crunchReturn ctx m v = case m.mFrames of
                       )
           _ -> Left (EvalErr (Trap "par source is not a list"))
       | otherwise -> Left (EvalErr (Trap "unexpected return into active FrPar"))
-    FrTry _ _ _ -> ret m {mFrames = rest} v
+    FrTry {} -> ret m {mFrames = rest} v
     FrConfirm _ -> case confirmFromValue v of
       Left e -> Left e
       Right c ->

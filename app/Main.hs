@@ -3,14 +3,24 @@ module Main where
 import Control.Monad (unless)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Hwfl.Ast.Module (LoadedModule (lmBody))
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Ast.Pretty (prettyModuleBody)
-import Hwfl.Check.Error (renderCheckError)
+import Hwfl.Check.Error (CheckError (..), renderCheckError)
 import Hwfl.Check.Module (checkLoadedModule)
-import Hwfl.Check.Project (CheckProjectResult (..), checkProject, checkProjectLoaded, renderProjectCheckError)
+import Hwfl.Check.Project (CheckProjectResult (..), ProjectCheckError (..), checkProject, checkProjectLoaded, renderProjectCheckError)
+import Hwfl.Cli.Json
+  ( jsonCheckErrorAtPath,
+    jsonDiagnostics,
+    jsonPlainError,
+    jsonProjectCheckError,
+    jsonRuntimeError,
+    jsonUsageError,
+    renderCliError,
+  )
 import Hwfl.Env (loadDotenv)
 import Hwfl.Eval.Value (Value, renderValue)
 import Hwfl.Llm.Mock (mockProvider)
@@ -28,7 +38,6 @@ import Hwfl.Project
   )
 import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Hwfl.Runtime.Eval (StepMode (..))
-import Hwfl.Runtime.Machine (MachineStatus (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
@@ -42,7 +51,7 @@ import Hwfl.Runtime.Run
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.SkillCatalog (isSkillQName, skillMetaForModule)
 import Hwfl.Runtime.Snapshot (RunStore)
-import Hwfl.Source (renderDiagnostics)
+import Hwfl.Source (Diagnostic, renderDiagnostics)
 import System.Directory (getCurrentDirectory)
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (ExitCode (..), exitWith)
@@ -54,7 +63,7 @@ main = do
   args <- getArgs
   case args of
     ["parse", path] -> cmdParse path
-    ["check", path] -> cmdCheck path
+    ("check" : rest) -> cmdCheck rest
     ["version"] -> putStrLn "hwfl 0.1.0.0"
     ("run" : rest) -> cmdRun rest
     ("step" : rest) -> cmdStep rest
@@ -79,8 +88,15 @@ usage = do
     "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
-    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug"
+    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug --json"
+  hPutStrLn stderr "  check options: --json"
   exitWith (ExitFailure 2)
+
+reportUsage :: Bool -> String -> IO ()
+reportUsage json msg =
+  if json
+    then TIO.hPutStrLn stderr (renderCliError (jsonUsageError (T.pack msg)))
+    else hPutStrLn stderr msg
 
 cmdParse :: FilePath -> IO ()
 cmdParse path = do
@@ -91,28 +107,76 @@ cmdParse path = do
       exitWith (ExitFailure 1)
     Right loaded -> TIO.putStrLn (prettyModuleBody (lmBody loaded))
 
-cmdCheck :: FilePath -> IO ()
-cmdCheck path = do
-  isProj <- isProjectDir path
-  if isProj
-    then do
-      result <- checkProject path
-      case result of
-        Left err -> do
-          TIO.hPutStrLn stderr (renderProjectCheckError err)
-          exitWith (ExitFailure 1)
-        Right _ -> pure ()
-    else do
-      result <- loadModule path
-      case result of
-        Left diags -> do
-          TIO.hPutStrLn stderr (renderDiagnostics diags)
-          exitWith (ExitFailure 1)
-        Right loaded -> case checkLoadedModule loaded of
+cmdCheck :: [String] -> IO ()
+cmdCheck rest = case parseCheckFlags rest of
+  Left msg -> do
+    reportUsage ("--json" `elem` rest) msg
+    exitWith (ExitFailure 2)
+  Right (path, json) -> do
+    isProj <- isProjectDir path
+    if isProj
+      then do
+        result <- checkProject path
+        case result of
           Left err -> do
-            TIO.hPutStrLn stderr (renderCheckError err)
+            reportCheckFailure json err
             exitWith (ExitFailure 1)
           Right _ -> pure ()
+      else do
+        result <- loadModule path
+        case result of
+          Left diags -> do
+            reportParseFailure json path diags
+            exitWith (ExitFailure 1)
+          Right loaded -> case checkLoadedModule loaded of
+            Left err -> do
+              reportModuleCheckFailure json path err
+              exitWith (ExitFailure 1)
+            Right _ -> pure ()
+
+parseCheckFlags :: [String] -> Either String (FilePath, Bool)
+parseCheckFlags = go False Nothing
+  where
+    go json mPath = \case
+      [] -> case mPath of
+        Just path -> Right (path, json)
+        Nothing -> Left "hwfl check: missing <project|module.md>"
+      ("--json" : rest) -> go True mPath rest
+      (x : rest)
+        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
+        | otherwise -> case mPath of
+            Nothing -> go json (Just x) rest
+            Just _ -> Left ("unexpected argument: " <> x)
+
+reportCheckFailure :: Bool -> ProjectCheckError -> IO ()
+reportCheckFailure json err =
+  if json
+    then TIO.hPutStrLn stderr (renderCliError (jsonProjectCheckError err))
+    else TIO.hPutStrLn stderr (renderProjectCheckError err)
+
+reportParseFailure :: Bool -> FilePath -> [Diagnostic] -> IO ()
+reportParseFailure json path diags =
+  if json
+    then TIO.hPutStrLn stderr (renderCliError (jsonDiagnostics path diags))
+    else TIO.hPutStrLn stderr (renderDiagnostics diags)
+
+reportModuleCheckFailure :: Bool -> FilePath -> CheckError -> IO ()
+reportModuleCheckFailure json path err =
+  if json
+    then TIO.hPutStrLn stderr (renderCliError (jsonCheckErrorAtPath (Just path) err))
+    else TIO.hPutStrLn stderr (renderCheckError err)
+
+reportPlainFailure :: Bool -> Int -> Text -> Text -> Text -> IO ()
+reportPlainFailure json exitCode category kind msg =
+  if json
+    then TIO.hPutStrLn stderr (renderCliError (jsonPlainError exitCode category kind msg))
+    else TIO.hPutStrLn stderr msg
+
+reportRuntimeFailure :: Bool -> Int -> RuntimeError -> IO ()
+reportRuntimeFailure json exitCode err =
+  if json
+    then TIO.hPutStrLn stderr (renderCliError (jsonRuntimeError exitCode err))
+    else TIO.hPutStrLn stderr (renderRuntimeError err)
 
 data RunFlags = RunFlags
   { rfModule :: FilePath,
@@ -125,15 +189,18 @@ data RunFlags = RunFlags
     -- | Print span tree after the run.
     rfVerbose :: Bool,
     -- | Live span open/close on stderr (implies verbose tree dump).
-    rfDebug :: Bool
+    rfDebug :: Bool,
+    -- | Machine-readable diagnostics on stderr for failures.
+    rfJson :: Bool
   }
 
 cmdRun :: [String] -> IO ()
 cmdRun rest = case parseRunFlags rest of
   Left msg -> do
-    hPutStrLn stderr msg
+    reportUsage ("--json" `elem` rest) msg
     exitWith (ExitFailure 2)
   Right flags0 -> do
+    let json = flags0.rfJson
     envProv <- lookupEnv "HWFL_LLM_PROVIDER"
     let flags =
           case (flagProviderSet rest, envProv) of
@@ -144,10 +211,10 @@ cmdRun rest = case parseRunFlags rest of
     let ws = fromMaybe cwd flags.rfWorkspace
     inputs <- case parseCliInputs flags.rfInputs of
       Left err -> do
-        TIO.hPutStrLn stderr (renderRuntimeError err)
+        reportRuntimeFailure json 2 err
         exitWith (ExitFailure 2)
       Right is -> pure is
-    provider <- resolveProvider flags.rfProvider flags.rfCatalog
+    provider <- resolveProvider json flags.rfProvider flags.rfCatalog
     isProj <- isProjectDir flags.rfModule
     if isProj
       then runProject flags ws inputs provider
@@ -155,10 +222,11 @@ cmdRun rest = case parseRunFlags rest of
 
 runProject :: RunFlags -> FilePath -> [(Ident, Value)] -> LlmProvider -> IO ()
 runProject flags ws inputs provider = do
+  let json = flags.rfJson
   lpE <- loadProject flags.rfModule
   case lpE of
     Left err -> do
-      TIO.hPutStrLn stderr err
+      reportPlainFailure json 1 "project" "LoadError" err
       exitWith (ExitFailure 1)
     Right lp -> do
       catalog <- case (flags.rfNoCheck, checkProjectLoaded lp) of
@@ -166,11 +234,11 @@ runProject flags ws inputs provider = do
           let (c, _) = emptySkillRuntime
            in pure c
         (False, Left err) -> do
-          hPutStrLn stderr "hwfl run: checking project…"
-          TIO.hPutStrLn stderr (renderProjectCheckError err)
+          unless json $ hPutStrLn stderr "hwfl run: checking project…"
+          reportCheckFailure json err
           exitWith (ExitFailure 1)
         (False, Right cpr) -> do
-          hPutStrLn stderr "hwfl run: checking project…"
+          unless json $ hPutStrLn stderr "hwfl run: checking project…"
           pure cpr.cprSkillCatalog
       let entry = lp.lpConfig.pcEntrypoint
           entryPath = modulePathForQname flags.rfModule entry
@@ -183,7 +251,7 @@ runProject flags ws inputs provider = do
               lp.lpModules
       case Map.lookup entry lp.lpModules of
         Nothing -> do
-          hPutStrLn stderr "entrypoint module missing after load"
+          reportPlainFailure json 1 "project" "EntryMissing" "entrypoint module missing after load"
           exitWith (ExitFailure 1)
         Just loaded -> do
           let hash = Just (projectHashForModules lp.lpModules)
@@ -202,21 +270,22 @@ runProject flags ws inputs provider = do
                     roSkillCatalog = catalog,
                     roSkillModules = skillMods
                   }
-          handleOutcome (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
+          handleOutcome json (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
 
 runSingleModule :: RunFlags -> FilePath -> [(Ident, Value)] -> LlmProvider -> IO ()
 runSingleModule flags ws inputs provider = do
+  let json = flags.rfJson
   result <- loadModule flags.rfModule
   case result of
     Left diags -> do
-      TIO.hPutStrLn stderr (renderDiagnostics diags)
+      reportParseFailure json flags.rfModule diags
       exitWith (ExitFailure 1)
     Right loaded -> do
-      unless flags.rfNoCheck $ do
-        hPutStrLn stderr "hwfl run: checking module…"
+      unless (flags.rfNoCheck || json) $ hPutStrLn stderr "hwfl run: checking module…"
+      unless flags.rfNoCheck $
         case checkLoadedModule loaded of
           Left err -> do
-            TIO.hPutStrLn stderr (renderCheckError err)
+            reportModuleCheckFailure json flags.rfModule err
             exitWith (ExitFailure 1)
           Right _ -> pure ()
       let (catalog, skillMods) = emptySkillRuntime
@@ -235,28 +304,28 @@ runSingleModule flags ws inputs provider = do
                 roSkillCatalog = catalog,
                 roSkillModules = skillMods
               }
-      handleOutcome (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
+      handleOutcome json (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
 
 cmdStep :: [String] -> IO ()
 cmdStep args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
-    provider <- resolveProvider provName catalog
-    handleOutcome False =<< stepRun ws runId provider catalog
+    provider <- resolveProvider False provName catalog
+    handleOutcome False False =<< stepRun ws runId provider catalog
 
 cmdResume :: [String] -> IO ()
 cmdResume args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
-    provider <- resolveProvider provName catalog
-    handleOutcome False =<< resumeRun ws runId provider catalog
+    provider <- resolveProvider False provName catalog
+    handleOutcome False False =<< resumeRun ws runId provider catalog
 
 cmdApprove :: [String] -> IO ()
 cmdApprove args = case parseApprove args of
   Left msg -> dieUsage msg
   Right (ws, runId, yes, provName, catalog) -> do
-    provider <- resolveProvider provName catalog
-    handleOutcome False =<< approveRun ws runId yes provider catalog
+    provider <- resolveProvider False provName catalog
+    handleOutcome False False =<< approveRun ws runId yes provider catalog
 
 cmdShow :: [String] -> IO ()
 cmdShow args = case parseShow args of
@@ -269,23 +338,21 @@ cmdShow args = case parseShow args of
         exitWith (ExitFailure 1)
       Right txt -> TIO.putStrLn txt
 
-handleOutcome :: Bool -> RunOutcome -> IO ()
-handleOutcome showTrace = \case
+handleOutcome :: Bool -> Bool -> RunOutcome -> IO ()
+handleOutcome json showTrace = \case
   OutcomeCompleted val store _ -> do
     case renderValue val of
       Left msg -> do
-        hPutStrLn stderr ("result render failed: " <> T.unpack msg)
+        reportPlainFailure json 1 "runtime" "RenderError" ("result render failed: " <> msg)
         print val
       Right t -> TIO.putStrLn t
     dumpTrace showTrace store
-  OutcomePaused status msg store _ -> do
-    TIO.hPutStrLn stderr msg
+  OutcomePaused _ msg store _ -> do
+    reportPlainFailure json 3 "runtime" "Paused" msg
     dumpTrace showTrace store
-    case status of
-      MsPaused _ -> exitWith (ExitFailure 3)
-      _ -> exitWith (ExitFailure 3)
+    exitWith (ExitFailure 3)
   OutcomeFailed err store _ -> do
-    TIO.hPutStrLn stderr (renderRuntimeError err)
+    reportRuntimeFailure json (exitCodeFor err) err
     dumpTrace showTrace store
     exitWith (exitFor err)
 
@@ -299,28 +366,31 @@ dumpTrace True store = do
     Right txt -> TIO.hPutStrLn stderr txt
 
 exitFor :: RuntimeError -> ExitCode
-exitFor = \case
+exitFor err = ExitFailure (exitCodeFor err)
+
+exitCodeFor :: RuntimeError -> Int
+exitCodeFor = \case
   ConfigErr t
-    | "stale project" `T.isInfixOf` t -> ExitFailure 4
-  _ -> ExitFailure 1
+    | "stale project" `T.isInfixOf` t -> 4
+  _ -> 1
 
 dieUsage :: String -> IO ()
 dieUsage msg = do
   hPutStrLn stderr msg
   exitWith (ExitFailure 2)
 
-resolveProvider :: String -> FilePath -> IO LlmProvider
-resolveProvider name catalog = case name of
+resolveProvider :: Bool -> String -> FilePath -> IO LlmProvider
+resolveProvider json name catalog = case name of
   "mock" -> pure mockProvider
   "simple" -> do
     ep <- mkSimpleProvider catalog
     case ep of
       Left err -> do
-        hPutStrLn stderr (T.unpack err)
+        reportPlainFailure json 2 "config" "ProviderError" err
         exitWith (ExitFailure 2)
       Right p -> pure p
   other -> do
-    hPutStrLn stderr ("unknown --llm-provider: " <> other <> " (use mock|simple)")
+    reportPlainFailure json 2 "usage" "UnknownProvider" ("unknown --llm-provider: " <> T.pack other <> " (use mock|simple)")
     exitWith (ExitFailure 2)
 
 flagProviderSet :: [String] -> Bool
@@ -341,7 +411,8 @@ parseRunFlags args = do
           rfCatalog = "model-catalog.json",
           rfStep = False,
           rfVerbose = False,
-          rfDebug = False
+          rfDebug = False,
+          rfJson = False
         }
     takeModule [] _ = Left "hwfl run: missing <module.md>"
     takeModule (x : xs) f
@@ -361,6 +432,7 @@ parseRunFlags args = do
       | x == "--step" = takeModule xs f {rfStep = True}
       | x == "-v" || x == "--verbose" = takeModule xs f {rfVerbose = True}
       | x == "--debug" = takeModule xs f {rfDebug = True, rfVerbose = True}
+      | x == "--json" = takeModule xs f {rfJson = True}
       | "-" `T.isPrefixOf` T.pack x = Left ("unknown flag: " <> x)
       | otherwise = consumeOpts xs f {rfModule = x}
     consumeOpts [] f = Right (f.rfModule, f)
@@ -381,6 +453,7 @@ parseRunFlags args = do
       | x == "--step" = consumeOpts xs f {rfStep = True}
       | x == "-v" || x == "--verbose" = consumeOpts xs f {rfVerbose = True}
       | x == "--debug" = consumeOpts xs f {rfDebug = True, rfVerbose = True}
+      | x == "--json" = consumeOpts xs f {rfJson = True}
       | otherwise = Left ("unexpected argument: " <> x)
 
 parseWsRun :: [String] -> Either String (FilePath, T.Text, String, FilePath)

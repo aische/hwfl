@@ -6,8 +6,8 @@ Executable name provisional: **`hwfl`**.
 
 | Command                                                 | Purpose                                          |
 | ------------------------------------------------------- | ------------------------------------------------ |
-| `hwfl check <project>`                                  | Load + type + effects + graph; exit ≠0 on error  |
-| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug]` | Check (unless `--no-check`) + execute entrypoint |
+| `hwfl check <project> [--json]`                                  | Load + type + effects + graph; exit ≠0 on error  |
+| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug] [--json]` | Check (unless `--no-check`) + execute entrypoint |
 | `hwfl step <workspace> <run-id>`                        | One transition, then pause                       |
 | `hwfl resume <workspace> <run-id>`                      | Continue until end / pause / fail                |
 | `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |

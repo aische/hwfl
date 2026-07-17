@@ -579,8 +579,7 @@ parseFrame = withObject "Frame" $ \o -> do
       FrMatch <$> (o .: "env" >>= parseEnv) <*> (o .: "arms" >>= readText)
     "par" -> FrPar <$> (o .: "par" >>= parsePar)
     "try" ->
-      FrTry
-        <$> (Ident <$> o .: "var")
+      (FrTry . Ident <$> (o .: "var"))
         <*> (o .: "env" >>= parseEnv)
         <*> (o .: "handler" >>= readText)
     "confirm" -> FrConfirm <$> (o .: "confirm" >>= parseConfirm)

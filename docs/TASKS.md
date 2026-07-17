@@ -33,10 +33,10 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [ ] `fs.read_slice` / move / copy / remove / mkdir (P0 shipped list/edit/grep;
       `fs.write` already creates parent dirs)
 - [ ] `hwfl init` / shell completions
-- [ ] Complete thin `--json` CLI flag where still a stub
 
 ## Done
 
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07-15/16/17 completions (including P0 host gaps, coding-agent,
-tool-call spans + `--debug`, lifecycle tutorial, skills A–C, try/catch runtime).
+tool-call spans + `--debug`, lifecycle tutorial, skills A–C, try/catch runtime,
+`--json` CLI errors).

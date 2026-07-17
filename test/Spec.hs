@@ -3,6 +3,7 @@ module Spec (main) where
 import Hwfl.Ast.PrettySpec
 import Hwfl.Check.ModuleSpec
 import Hwfl.Check.ProjectSpec
+import Hwfl.Cli.JsonSpec
 import Hwfl.Check.SchemaSpec
 import Hwfl.Eval.PureSpec
 import Hwfl.Llm.PricingSpec
@@ -38,6 +39,7 @@ main = hspec $ do
   Hwfl.Eval.PureSpec.spec
   Hwfl.Check.ModuleSpec.spec
   Hwfl.Check.ProjectSpec.spec
+  Hwfl.Cli.JsonSpec.spec
   Hwfl.Check.SchemaSpec.spec
   Hwfl.SkillCatalogSpec.spec
   Hwfl.Llm.PricingSpec.spec
