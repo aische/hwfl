@@ -131,6 +131,34 @@ fsSliceRemoveSrc =
       "```"
     ]
 
+fsPatchSrc :: Text
+fsPatchSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/fs-patch",
+      "inputs: {}",
+      "outputs:",
+      "  ok: Bool",
+      "  applied: Int",
+      "  error: String",
+      "effects: [Read, Write]",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { ok: Bool, applied: Int, error: String } =",
+      "  let r = fs.patch(",
+      "    path = \"src/a.txt\",",
+      "    hunks = [",
+      "      { old = \"alpha\", new = \"ALPHA\" },",
+      "      { old = \"gamma\", new = \"GAMMA\" }",
+      "    ]",
+      "  )",
+      "  { ok = r.ok, applied = r.applied, error = r.error }",
+      "```"
+    ]
+
 spec :: Spec
 spec = describe "host ops P0 (exec + fs)" $ do
   describe "workspace helpers" $ do
@@ -156,6 +184,50 @@ spec = describe "host ops P0 (exec + fs)" $ do
         case grep of
           Left e -> expectationFailure (show e)
           Right hits -> length hits `shouldBe` 2
+
+    it "patches unique multi-hunk edits atomically" $
+      withSystemTempDirectory "hwfl-patch" $ \dir -> do
+        ws <- newWorkspace dir
+        _ <- writeTextFile ws "src/a.txt" "alpha\nbeta\ngamma\n"
+        ok <-
+          patchFile
+            ws
+            "src/a.txt"
+            [("alpha", "ALPHA"), ("gamma", "GAMMA")]
+        ok `shouldBe` Right (True, 2, "")
+        readTextFile ws "src/a.txt" >>= \case
+          Left e -> expectationFailure (show e)
+          Right t -> t `shouldBe` "ALPHA\nbeta\nGAMMA\n"
+
+    it "rejects ambiguous patch hunks without writing" $
+      withSystemTempDirectory "hwfl-patch-ambig" $ \dir -> do
+        ws <- newWorkspace dir
+        _ <- writeTextFile ws "src/a.txt" "aa\naa\n"
+        bad <- patchFile ws "src/a.txt" [("aa", "bb")]
+        case bad of
+          Right (False, 0, err) ->
+            err `shouldSatisfy` T.isInfixOf "matches 2 times"
+          other -> expectationFailure (show other)
+        readTextFile ws "src/a.txt" >>= \case
+          Left e -> expectationFailure (show e)
+          Right t -> t `shouldBe` "aa\naa\n"
+
+    it "rejects a later missing hunk without writing earlier ones" $
+      withSystemTempDirectory "hwfl-patch-miss" $ \dir -> do
+        ws <- newWorkspace dir
+        _ <- writeTextFile ws "src/a.txt" "keep\n"
+        bad <-
+          patchFile
+            ws
+            "src/a.txt"
+            [("keep", "KEEP"), ("missing", "x")]
+        case bad of
+          Right (False, 0, err) ->
+            err `shouldSatisfy` T.isInfixOf "hunk 2"
+          other -> expectationFailure (show other)
+        readTextFile ws "src/a.txt" >>= \case
+          Left e -> expectationFailure (show e)
+          Right t -> t `shouldBe` "keep\n"
 
     it "reads an inclusive line slice" $
       withSystemTempDirectory "hwfl-slice" $ \dir -> do
@@ -365,6 +437,43 @@ spec = describe "host ops P0 (exec + fs)" $ do
                   other -> expectationFailure (show other)
                 tmpExists <- doesFileExist (dir </> "src" </> "tmp.txt")
                 tmpExists `shouldBe` False
+              other -> expectationFailure (show other)
+
+  describe "fs.patch" $ do
+    it "runs through the machine" $
+      withSystemTempDirectory "hwfl-fs-patch" $ \dir -> do
+        createDirectoryIfMissing True (dir </> "src")
+        writeFile (dir </> "src" </> "a.txt") "alpha\nbeta\ngamma\n"
+        case loadModuleText "fs-patch.md" fsPatchSrc of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            let opts =
+                  RunOptions
+                    { roWorkspace = dir,
+                      roProvider = mockProvider,
+                      roInputs = [],
+                      roRunId = Just "fs-patch",
+                      roEntry = "fs-patch.md",
+                      roMode = StepRun,
+                      roProjectHash = Nothing,
+                      roExec = Nothing,
+                      roDebug = False,
+                      roModelCatalog = "model-catalog.json",
+                      roSkillCatalog = fst emptySkillRuntime,
+                      roSkillModules = snd emptySkillRuntime
+                    }
+            outcome <- runLoadedModule opts loaded
+            case outcome of
+              OutcomeCompleted val _ _ -> do
+                case val of
+                  VRecord fs -> do
+                    lookup (Ident "ok") fs `shouldBe` Just (VBool True)
+                    lookup (Ident "applied") fs `shouldBe` Just (VInt 2)
+                    lookup (Ident "error") fs `shouldBe` Just (VString "")
+                  other -> expectationFailure (show other)
+                contents <- readFile (dir </> "src" </> "a.txt")
+                contents `shouldBe` "ALPHA\nbeta\nGAMMA\n"
               other -> expectationFailure (show other)
 
 isRight :: Either a b -> Bool

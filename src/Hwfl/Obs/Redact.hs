@@ -146,6 +146,12 @@ hostOpenAttrs op args = case op of
         "old_len" .= textLenAttr (Ident "old") args,
         "new_len" .= textLenAttr (Ident "new") args
       ]
+  HostFsPatch ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args,
+        "hunks" .= listLenAttr (Ident "hunks") args
+      ]
   HostFsGrep ->
     object
       [ "op" .= hostOpName op,

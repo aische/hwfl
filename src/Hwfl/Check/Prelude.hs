@@ -116,6 +116,28 @@ fsType =
           [EffWrite]
           (TRecord [(Ident "ok", t "Bool")])
       ),
+      ( Ident "patch",
+        TEffFun
+          ( TRecord
+              [ (Ident "path", t "FileRef"),
+                ( Ident "hunks",
+                  TList
+                    ( TRecord
+                        [ (Ident "old", t "String"),
+                          (Ident "new", t "String")
+                        ]
+                    )
+                )
+              ]
+          )
+          [EffWrite]
+          ( TRecord
+              [ (Ident "ok", t "Bool"),
+                (Ident "applied", t "Int"),
+                (Ident "error", t "String")
+              ]
+          )
+      ),
       ( Ident "grep",
         TEffFun
           ( TRecord

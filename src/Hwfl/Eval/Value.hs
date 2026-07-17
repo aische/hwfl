@@ -78,6 +78,7 @@ data HostOpId
   | HostFsFind
   | HostFsList
   | HostFsEdit
+  | HostFsPatch
   | HostFsGrep
   | HostFsReadSlice
   | HostFsRemove
@@ -168,6 +169,7 @@ hostOpName = \case
   HostFsFind -> "fs.find"
   HostFsList -> "fs.list"
   HostFsEdit -> "fs.edit"
+  HostFsPatch -> "fs.patch"
   HostFsGrep -> "fs.grep"
   HostFsReadSlice -> "fs.read_slice"
   HostFsRemove -> "fs.remove"

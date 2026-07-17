@@ -1,15 +1,18 @@
 [
     {
-      "modelConfigName": "mistral",
-      "providerName": "ollama",
-      "modelName": "mistral:latest",
-      "pricing": { "pricePerMillionInput": 0.0, "pricePerMillionOutput": 0.0 },
-      "maxTokens": 8192,
-      "temperature": 0.3,
-      "requestTimeout": 180000,
-      "throttleDelay": 0,
-      "retryCount": 2,
-      "jitterBackoff": 1000
+        "modelConfigName": "mistral",
+        "providerName": "ollama",
+        "modelName": "mistral:latest",
+        "pricing": {
+            "pricePerMillionInput": 0.0,
+            "pricePerMillionOutput": 0.0
+        },
+        "maxTokens": 8192,
+        "temperature": 0.3,
+        "requestTimeout": 180000,
+        "throttleDelay": 0,
+        "retryCount": 2,
+        "jitterBackoff": 1000
     },
     {
         "modelConfigName": "deepseek4flash",
@@ -25,6 +28,20 @@
         "throttleDelay": 3000,
         "retryCount": 3,
         "jitterBackoff": 1000
-    }  
-  ]
-  
+    },
+    {
+        "modelConfigName": "haiku_4_5",
+        "providerName": "claude",
+        "modelName": "claude-haiku-4-5-20251001",
+        "pricing": {
+            "pricePerMillionInput": 1,
+            "pricePerMillionOutput": 5
+        },
+        "maxTokens": 1024,
+        "temperature": 0.5,
+        "requestTimeout": 30000,
+        "throttleDelay": 5000,
+        "retryCount": 3,
+        "jitterBackoff": 5000
+    }
+]

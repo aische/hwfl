@@ -17,6 +17,7 @@ opens/closes a **span**.
 | `fs.find` | Read | `(glob: String) -> List<FileRef>` |
 | `fs.grep` | Read | `(pattern, glob?) -> List<Hit>` |
 | `fs.edit` | Write | `(path, old, new) -> { ok: Bool }` |
+| `fs.patch` | Write | `(path, hunks: List<{old, new}>) -> { ok, applied, error }` — unique multi-hunk; atomic |
 | `fs.move` / `copy` / `remove` / `mkdir` | Write | as expected |
 
 All paths constrained to the **workspace sandbox** (hwfi containment

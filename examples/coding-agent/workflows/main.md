@@ -26,8 +26,10 @@ Workflow:
    "rust"), then skill_load the best matching instruction skill before writing
    files. Do not guess stack conventions when a skill exists.
 3. Plan the minimal file set.
-4. Create or update files with fs_write / fs_edit (parent dirs are created by
-   fs_write — no mkdir).
+4. Create or update files with fs_write / fs_patch / fs_edit (parent dirs are
+   created by fs_write — no mkdir). Prefer fs_patch for multi-site edits:
+   each hunk.old must match exactly once; failed patches leave the file
+   unchanged. Use fs_edit only for intentional replace-all.
 5. Verify with exec_run using the skill's recommended commands. Read
    stdout/stderr, edit, re-run until green or stuck after a few honest tries.
 6. Call submit alone with the structured result. Never mix submit with other
@@ -79,6 +81,7 @@ fun main(inputs: { prompt: String, model: String }): {
       tool(fs.read),
       tool(fs.write),
       tool(fs.edit),
+      tool(fs.patch),
       tool(fs.grep),
       tool(exec.run)
     ],

@@ -129,6 +129,23 @@ hostToolMeta = \case
             ("new", t "String", "Replacement text")
           ]
       )
+  HostFsPatch ->
+    Right
+      ( "fs_patch",
+        "Apply ordered unique search/replace hunks atomically (each old must match exactly once)",
+        describedObjectSchema
+          [ ("path", t "FileRef", "Workspace-relative file path to patch"),
+            ( "hunks",
+              TList
+                ( TRecord
+                    [ (Ident "old", t "String"),
+                      (Ident "new", t "String")
+                    ]
+                ),
+              "Ordered hunks; each old must occur exactly once after prior hunks"
+            )
+          ]
+      )
   HostFsGrep ->
     Right
       ( "fs_grep",
@@ -422,6 +439,15 @@ coerceToolArgs ts json = case ts.tvsCallee of
           (Just (Ident "new"), VString new)
         ]
     _ -> Left "fs_edit arguments must be an object"
+  VHostOp HostFsPatch -> case json of
+    Aeson.Object o -> do
+      path <- stringField o "path"
+      hunks <- hunkListField o "hunks"
+      Right
+        [ (Just (Ident "path"), VString path),
+          (Just (Ident "hunks"), VList hunks)
+        ]
+    _ -> Left "fs_patch arguments must be an object"
   VHostOp HostFsGrep -> case json of
     Aeson.Object o -> do
       pattern <- stringField o "pattern"
@@ -513,6 +539,22 @@ coerceToolArgs ts json = case ts.tvsCallee of
           (V.toList arr)
       Just _ -> Left (k <> " must be an array of strings")
       Nothing -> Right []
+    hunkListField o k = case KM.lookup (Key.fromText k) o of
+      Just (Aeson.Array arr) -> traverse parseHunk (V.toList arr)
+      Just _ -> Left (k <> " must be an array of { old, new } objects")
+      Nothing -> Left ("missing " <> k)
+      where
+        parseHunk = \case
+          Aeson.Object ho -> do
+            old <- stringField ho "old"
+            new <- stringField ho "new"
+            Right
+              ( VRecord
+                  [ (Ident "old", VString old),
+                    (Ident "new", VString new)
+                  ]
+              )
+          _ -> Left (k <> " elements must be objects with old and new")
     namedObjectArgs = \case
       Aeson.Object o ->
         Right

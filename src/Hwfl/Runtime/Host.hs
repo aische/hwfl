@@ -45,6 +45,7 @@ import Hwfl.Runtime.Workspace
     findFiles,
     grepFiles,
     listDir,
+    patchFile,
     readTextFile,
     readTextSlice,
     removePath,
@@ -93,6 +94,7 @@ hostOpsEnv =
             (Ident "find", VHostOp HostFsFind),
             (Ident "list", VHostOp HostFsList),
             (Ident "edit", VHostOp HostFsEdit),
+            (Ident "patch", VHostOp HostFsPatch),
             (Ident "grep", VHostOp HostFsGrep),
             (Ident "read_slice", VHostOp HostFsReadSlice),
             (Ident "remove", VHostOp HostFsRemove)
@@ -150,6 +152,7 @@ runHostOp env op args = case op of
   HostFsFind -> doFsFind env args
   HostFsList -> doFsList env args
   HostFsEdit -> doFsEdit env args
+  HostFsPatch -> doFsPatch env args
   HostFsGrep -> doFsGrep env args
   HostFsReadSlice -> doFsReadSlice env args
   HostFsRemove -> doFsRemove env args
@@ -300,6 +303,26 @@ doFsEdit env args = case parseEditArgs args of
           ( HostResult
               (VRecord [(Ident "ok", VBool ok)])
               (object ["replacements" .= n, "ok" .= ok])
+          )
+
+doFsPatch :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsPatch env args = case parsePatchArgs args of
+  Left e -> pure (Left e)
+  Right (path, hunks) -> do
+    env.heLog ("fs.patch " <> path <> " (" <> T.pack (show (length hunks)) <> " hunks)")
+    result <- patchFile env.heWorkspace path hunks
+    pure $ case result of
+      Left e -> Left e
+      Right (ok, applied, err) ->
+        Right
+          ( HostResult
+              ( VRecord
+                  [ (Ident "ok", VBool ok),
+                    (Ident "applied", VInt (fromIntegral applied)),
+                    (Ident "error", VString err)
+                  ]
+              )
+              (object ["ok" .= ok, "applied" .= applied, "error" .= err])
           )
 
 doFsGrep :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
@@ -472,6 +495,40 @@ parseEditArgs args = do
   old <- expectStringOrPos (Ident "old") 1 args
   new <- expectStringOrPos (Ident "new") 2 args
   pure (path, old, new)
+
+parsePatchArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, [(Text, Text)])
+parsePatchArgs args = do
+  path <- case lookupNamed (Ident "path") args of
+    Just v -> fileRefValue v
+    Nothing -> case lookupPositional 0 args of
+      Just v -> fileRefValue v
+      Nothing -> Left (HostErr "fs.patch expects path: FileRef")
+  hunksVal <- case lookupNamed (Ident "hunks") args of
+    Just v -> Right v
+    Nothing -> case lookupPositional 1 args of
+      Just v -> Right v
+      Nothing -> Left (HostErr "fs.patch expects hunks: List<{ old, new }>")
+  hunks <- parsePatchHunks hunksVal
+  pure (path, hunks)
+
+parsePatchHunks :: Value -> Either RuntimeError [(Text, Text)]
+parsePatchHunks = \case
+  VList xs -> traverse parsePatchHunk xs
+  _ -> Left (HostErr "fs.patch hunks must be a List<{ old, new }>")
+
+parsePatchHunk :: Value -> Either RuntimeError (Text, Text)
+parsePatchHunk = \case
+  VRecord fs -> do
+    old <- case lookup (Ident "old") fs of
+      Just (VString t) -> Right t
+      Just _ -> Left (HostErr "fs.patch hunk.old must be a String")
+      Nothing -> Left (HostErr "fs.patch hunk missing old")
+    new <- case lookup (Ident "new") fs of
+      Just (VString t) -> Right t
+      Just _ -> Left (HostErr "fs.patch hunk.new must be a String")
+      Nothing -> Left (HostErr "fs.patch hunk missing new")
+    pure (old, new)
+  _ -> Left (HostErr "fs.patch hunk must be a record { old, new }")
 
 parseGrepArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text)
 parseGrepArgs args = do

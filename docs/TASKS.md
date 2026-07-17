@@ -41,8 +41,8 @@ listed above — not repeated here.
 
 ### Tier A — credible autonomous coding agent (backend)
 
-- [ ] `fs.patch` (or structured multi-hunk edit) — reliable edits beyond
-      literal `fs.edit` string replace
+- [x] `fs.patch` (structured multi-hunk edit) — unique matches, atomic;
+      agent-tool eligible; coding-agent prefers over replace-all `fs.edit`
 - [ ] Git host ops (read-heavy first): status / diff / log with sandbox
       policy; avoid brittle shell parsing
 - [ ] Persistent terminal sessions (`term.*` or MCP terminal) — long test

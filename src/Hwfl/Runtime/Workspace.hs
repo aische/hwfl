@@ -12,6 +12,7 @@ module Hwfl.Runtime.Workspace
     findFiles,
     listDir,
     editFile,
+    patchFile,
     grepFiles,
     removePath,
   )
@@ -287,6 +288,52 @@ editFile ws rel old new
               pure $ case w of
                 Left e -> Left e
                 Right () -> Right (True, n)
+
+-- | Apply ordered unique search/replace hunks atomically.
+-- Each @old@ must occur exactly once in the buffer after previous hunks;
+-- on any failure the file is left unchanged. Returns @(ok, applied, error)@.
+patchFile ::
+  Workspace ->
+  Text ->
+  [(Text, Text)] ->
+  IO (Either RuntimeError (Bool, Int, Text))
+patchFile ws rel hunks
+  | null hunks = pure (Left (HostErr "fs.patch 'hunks' must be a non-empty list"))
+  | otherwise = do
+      r <- readTextFile ws rel
+      case r of
+        Left e -> pure (Left e)
+        Right text0 -> case applyPatchHunks hunks text0 of
+          Left err -> pure (Right (False, 0, err))
+          Right text' -> do
+            w <- writeTextFile ws rel text'
+            pure $ case w of
+              Left e -> Left e
+              Right () -> Right (True, length hunks, "")
+
+-- | Pure sequential unique replace. Hunk indices in errors are 1-based.
+applyPatchHunks :: [(Text, Text)] -> Text -> Either Text Text
+applyPatchHunks hunks text0 = go (1 :: Int) text0 hunks
+  where
+    go _ text [] = Right text
+    go i _ ((old, _) : _)
+      | T.null old =
+          Left ("hunk " <> T.pack (show i) <> ": old must be a non-empty string")
+    go i text ((old, new) : rest) =
+      let n = T.count old text
+       in if n == 0
+            then Left ("hunk " <> T.pack (show i) <> ": old text not found")
+            else
+              if n > 1
+                then
+                  Left
+                    ( "hunk "
+                        <> T.pack (show i)
+                        <> ": old text matches "
+                        <> T.pack (show n)
+                        <> " times (must be unique)"
+                    )
+                else go (i + 1) (T.replace old new text) rest
 
 maxGrepFileBytes :: Integer
 maxGrepFileBytes = 1024 * 1024

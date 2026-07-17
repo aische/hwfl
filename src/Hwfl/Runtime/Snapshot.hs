@@ -806,6 +806,7 @@ parseHostOp = \case
   "fs.find" -> pure HostFsFind
   "fs.list" -> pure HostFsList
   "fs.edit" -> pure HostFsEdit
+  "fs.patch" -> pure HostFsPatch
   "fs.grep" -> pure HostFsGrep
   "fs.read_slice" -> pure HostFsReadSlice
   "fs.remove" -> pure HostFsRemove
