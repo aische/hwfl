@@ -4,7 +4,12 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now (P1)
 
-- [ ] Streaming LLM spans (progressive span / token events)
+- [ ] Streaming LLM spans — progressive events on open `llm.chat` /
+      `agent_round` spans (`events.jsonl` + coalesced `--debug`); extend
+      `LlmProvider` with optional chunk hook; mock coverage. Spec:
+      [07 §9](spec/07-observability.md), [08 §2.2](spec/08-llm-provider.md).
+      **Not:** in-language streams, mid-token snapshots, `llm.object`
+      streaming, or `par` host overlap.
 
 ## Next (P1–P2)
 

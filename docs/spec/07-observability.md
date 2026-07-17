@@ -78,3 +78,38 @@ snapshot (`path` + `current` + `status`).
 - Append-only span/event writes; O(1) per transition
 - Do not rebuild the entire history into RAM each step
 - Optional ring buffer of recent spans in memory for ambient queries
+
+## 9. Streaming LLM spans (progressive events)
+
+**Goal:** while an LLM host call / agent model round is in flight, emit
+progressive token / text partials so `--debug` and run-store readers can
+see progress — without changing language return types or snapshot grain.
+
+### In scope
+
+- `llm.chat` and agent model rounds (`agent_round` spans)
+- Provider streaming callbacks → coalesced **events** on the **open** span
+  (`events.jsonl`, `span_id` = current LLM / round span)
+- Optional live echo under `--debug` (coalesced deltas or compact progress;
+  not one stderr line per provider token)
+- Redact / truncate partial fields the same way as other event payloads
+- Mock provider emits fake chunks so tests need no network
+
+### Out of scope (this feature)
+
+- Author-facing stream types or `llm.chat` yielding chunks in-language
+- Mutating `spans.jsonl` mid-call, or mid-token machine snapshots
+- Structured `llm.object` / object-mode streaming (non-stream path OK)
+- Fragment-level tool-call arg streaming (complete tool-call events only)
+- Overlapping host IO in `par` (separate backlog; §06 §10)
+
+### Semantics
+
+- Host transition stays atomic: open span → provider call (with on-chunk
+  hook) → close span with final attrs (`token_*`, `cost_usd`, …)
+- Partials are **not** control-flow truth; crash mid-stream re-runs the
+  whole transition (existing at-least-once rule)
+- Usage / cost attribution stays on **close** attrs (providers often send
+  usage only at stream end)
+- Coalesce by time and/or character budget before append to avoid flooding
+  `events.jsonl` and `--debug`

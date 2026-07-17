@@ -20,6 +20,7 @@ chat ;
   model        : ModelId
   tools?       : [ToolSpec]      -- for agent rounds
   response_fmt?: JsonSchema      -- for structured object mode
+  on_chunk?    : StreamDelta → IO ()   -- optional progressive hook
   → IO (Either ProviderError ProviderResult)
 
 embed ;                          -- optional / [defer]
@@ -39,6 +40,24 @@ invalid request, other).
 
 Engine-owned ADTs in `Hwfl.Llm.Types` — **not** re-exported llm-simple
 types into Eval. Adapters convert both ways.
+
+### 2.2 Streaming callback
+
+Progressive deltas are a **provider → host obs** hook, not a second
+return path:
+
+- Prefer extending `chat` with an optional `on_chunk` (or a sibling
+  `chatStream` that still returns the final `ProviderResult`).
+- Host opens the LLM / `agent_round` span, passes a callback that
+  coalesces + `appendEvent`s, then closes the span with final attrs.
+- Default `llm-simple` adapter uses `streamTextWithFallbacks` for text /
+  tool rounds; structured object mode may stay on the non-stream
+  generate path.
+- Mock adapter must fake chunked delivery for tests.
+- Adapters without stream support may ignore `on_chunk` and complete in
+  one shot (no progressive events).
+
+See [07-observability.md](07-observability.md) §9 for event channel rules.
 
 ## 3. Wiring
 
@@ -98,3 +117,5 @@ is what v0 guarantees.
 - Supporting every vendor surface area in v0
 - Exposing raw SDK types to hwfl authors
 - Hot-swapping provider mid-run (forbidden; config at start)
+- Author-facing streaming return types in the workflow language
+- Requiring every adapter to support progressive deltas

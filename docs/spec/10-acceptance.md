@@ -76,6 +76,9 @@
 - [x] Skills catalog + `skill.discover` / `skill.load` + agent mid-loop
       load / resume fields (plan: [skills-plan.md](../skills-plan.md);
       dogfood: `examples/coding-agent`)
+- [ ] Streaming LLM spans — progressive events on open `llm.chat` /
+      `agent_round` spans ([07-observability.md](07-observability.md) §9);
+      mock-proven; host return types / snapshot grain unchanged
 
 ## 3. v0 release gate
 

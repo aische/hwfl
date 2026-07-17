@@ -41,7 +41,11 @@ Notes:
 - `model` resolves through `model-catalog.json`.
 - Token usage recorded on the span.
 - Failures are catchable (rate limit, provider error) unless marked trap.
-- Streaming: **[defer]** for v0, or emit progressive span events if cheap.
+- Streaming (locked): host ops stay **atomic** (one transition, full
+  return value). Progressive token / partial text is an **observability
+  side channel** only — see [07-observability.md](07-observability.md) §9
+  and [08-llm-provider.md](08-llm-provider.md) §2.2. No author-facing
+  stream combinator; structured `llm.object` path need not stream.
 - `llm.agent_object` injects a synthetic terminating `submit` tool from `schema`
   (hwfi §6.1.3): plain-text finish is fatal; mixed `submit`+other rounds are
   recoverable (no tools run). Surface spelling is `agent_object` (idents have

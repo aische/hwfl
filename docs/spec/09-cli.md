@@ -19,7 +19,11 @@ Executable name provisional: **`hwfl`**.
 - `--llm-provider <name>`
 - `--json` machine-readable diagnostics on check/run errors
 - `-v` / `--verbose` (on `run`): print span tree to stderr after the run
-- `--debug` (on `run`): stream span open/close to stderr; implies `--verbose`
+- `--debug` (on `run`): stream span open/close to stderr; implies `--verbose`.
+  When LLM streaming spans ship: also show **coalesced** progressive
+  deltas (or compact progress) for in-flight `llm.chat` / `agent_round`
+  spans — not one line per provider token. See
+  [07-observability.md](07-observability.md) §9.
 
 ## 2. Inputs
 
