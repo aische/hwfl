@@ -76,7 +76,7 @@ usage = do
     "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
-    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step --debug"
+    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug"
   exitWith (ExitFailure 2)
 
 cmdParse :: FilePath -> IO ()
@@ -119,6 +119,9 @@ data RunFlags = RunFlags
     rfNoCheck :: Bool,
     rfCatalog :: FilePath,
     rfStep :: Bool,
+    -- | Print span tree after the run.
+    rfVerbose :: Bool,
+    -- | Live span open/close on stderr (implies verbose tree dump).
     rfDebug :: Bool
   }
 
@@ -182,7 +185,7 @@ runProject flags ws inputs provider = do
                     roExec = lp.lpConfig.pcExec,
                     roDebug = flags.rfDebug
                   }
-          handleOutcome flags.rfDebug =<< runLoadedModule opts loaded
+          handleOutcome (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
 
 runSingleModule :: RunFlags -> FilePath -> [(Ident, Value)] -> LlmProvider -> IO ()
 runSingleModule flags ws inputs provider = do
@@ -211,7 +214,7 @@ runSingleModule flags ws inputs provider = do
                 roExec = Nothing,
                 roDebug = flags.rfDebug
               }
-      handleOutcome flags.rfDebug =<< runLoadedModule opts loaded
+      handleOutcome (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
 
 cmdStep :: [String] -> IO ()
 cmdStep args = case parseWsRun args of
@@ -246,29 +249,29 @@ cmdShow args = case parseShow args of
       Right txt -> TIO.putStrLn txt
 
 handleOutcome :: Bool -> RunOutcome -> IO ()
-handleOutcome debug = \case
+handleOutcome showTrace = \case
   OutcomeCompleted val store _ -> do
     case renderValue val of
       Left msg -> do
         hPutStrLn stderr ("result render failed: " <> T.unpack msg)
         print val
       Right t -> TIO.putStrLn t
-    dumpDebugTrace debug store
+    dumpTrace showTrace store
   OutcomePaused status msg store _ -> do
     TIO.hPutStrLn stderr msg
-    dumpDebugTrace debug store
+    dumpTrace showTrace store
     case status of
       MsPaused _ -> exitWith (ExitFailure 3)
       _ -> exitWith (ExitFailure 3)
   OutcomeFailed err store _ -> do
     TIO.hPutStrLn stderr (renderRuntimeError err)
-    dumpDebugTrace debug store
+    dumpTrace showTrace store
     exitWith (exitFor err)
 
-dumpDebugTrace :: Bool -> RunStore -> IO ()
-dumpDebugTrace False _ = pure ()
-dumpDebugTrace True store = do
-  hPutStrLn stderr "hwfl --debug: span tree"
+dumpTrace :: Bool -> RunStore -> IO ()
+dumpTrace False _ = pure ()
+dumpTrace True store = do
+  hPutStrLn stderr "hwfl: span tree"
   shown <- showStore store ShowTree Nothing
   case shown of
     Left err -> TIO.hPutStrLn stderr err
@@ -316,6 +319,7 @@ parseRunFlags args = do
           rfNoCheck = False,
           rfCatalog = "model-catalog.json",
           rfStep = False,
+          rfVerbose = False,
           rfDebug = False
         }
     takeModule [] _ = Left "hwfl run: missing <module.md>"
@@ -334,8 +338,9 @@ parseRunFlags args = do
           [] -> Left "--model-catalog needs a path"
       | x == "--no-check" = takeModule xs f {rfNoCheck = True}
       | x == "--step" = takeModule xs f {rfStep = True}
-      | x == "--debug" = takeModule xs f {rfDebug = True}
-      | "--" `T.isPrefixOf` T.pack x = Left ("unknown flag: " <> x)
+      | x == "-v" || x == "--verbose" = takeModule xs f {rfVerbose = True}
+      | x == "--debug" = takeModule xs f {rfDebug = True, rfVerbose = True}
+      | "-" `T.isPrefixOf` T.pack x = Left ("unknown flag: " <> x)
       | otherwise = consumeOpts xs f {rfModule = x}
     consumeOpts [] f = Right (f.rfModule, f)
     consumeOpts (x : xs) f
@@ -353,7 +358,8 @@ parseRunFlags args = do
           [] -> Left "--model-catalog needs a path"
       | x == "--no-check" = consumeOpts xs f {rfNoCheck = True}
       | x == "--step" = consumeOpts xs f {rfStep = True}
-      | x == "--debug" = consumeOpts xs f {rfDebug = True}
+      | x == "-v" || x == "--verbose" = consumeOpts xs f {rfVerbose = True}
+      | x == "--debug" = consumeOpts xs f {rfDebug = True, rfVerbose = True}
       | otherwise = Left ("unexpected argument: " <> x)
 
 parseWsRun :: [String] -> Either String (FilePath, T.Text, String, FilePath)

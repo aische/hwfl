@@ -30,7 +30,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
       `fs.write` already creates parent dirs)
 - [ ] `try` / `catch` runtime (AST exists; eval/check unsupported)
 - [ ] `hwfl init` / shell completions
-- [ ] Complete thin `-v` / `--json` CLI flags where still stubs
+- [ ] Complete thin `--json` CLI flag where still a stub
 
 ## Done
 

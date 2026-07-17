@@ -18,8 +18,8 @@ Executable name provisional: **`hwfl`**.
 
 - `--llm-provider <name>`
 - `--json` machine-readable diagnostics on check/run errors
-- `-v` / `--verbose`
-- `--debug` (on `run`): stream span open/close to stderr; print span tree at end
+- `-v` / `--verbose` (on `run`): print span tree to stderr after the run
+- `--debug` (on `run`): stream span open/close to stderr; implies `--verbose`
 
 ## 2. Inputs
 
