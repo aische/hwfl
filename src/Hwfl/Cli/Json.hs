@@ -4,6 +4,7 @@ module Hwfl.Cli.Json
     jsonCheckError,
     jsonCheckErrorAtPath,
     jsonProjectCheckError,
+    jsonDriverError,
     jsonRuntimeError,
     jsonDiagnostics,
     jsonUsageError,
@@ -20,6 +21,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hwfl.Check.Error qualified as CE
 import Hwfl.Check.Project (ProjectCheckError (..))
+import Hwfl.Driver (DriverError (..))
 import Hwfl.Eval.Error qualified as EE
 import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Hwfl.Source (Diagnostic (..), Pos (..))
@@ -101,6 +103,12 @@ jsonProjectCheckError = \case
       "SkillError"
       (T.pack path <> ": " <> msg)
       [pathField path]
+
+jsonDriverError :: DriverError -> Value
+jsonDriverError = \case
+  DeProject err -> jsonProjectCheckError err
+  DeParse path diags -> jsonDiagnostics path diags
+  DeModule path err -> jsonCheckErrorAtPath (Just path) err
 
 jsonRuntimeError :: Int -> RuntimeError -> Value
 jsonRuntimeError exitCode err =

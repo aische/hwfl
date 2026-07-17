@@ -1,57 +1,46 @@
 module Main where
 
 import Control.Monad (unless)
-import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Hwfl.Ast.Module (LoadedModule (lmBody))
-import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Ast.Pretty (prettyModuleBody)
-import Hwfl.Check.Error (CheckError (..), renderCheckError)
-import Hwfl.Check.Module (checkLoadedModule)
-import Hwfl.Check.Project (CheckProjectResult (..), ProjectCheckError (..), checkProject, checkProjectLoaded, renderProjectCheckError)
+import Hwfl.Ast.Module (LoadedModule (lmBody))
 import Hwfl.Cli.Json
-  ( jsonCheckErrorAtPath,
-    jsonDiagnostics,
+  ( jsonDriverError,
     jsonPlainError,
-    jsonProjectCheckError,
     jsonRuntimeError,
     jsonUsageError,
     renderCliError,
   )
+import Hwfl.Driver
+  ( DriverError (..),
+    DriverRunRequest (..),
+    RunOutcome (..),
+    ShowMode (..),
+    ShowOptions (..),
+    defaultDriverRunRequest,
+    driverApprove,
+    driverCheck,
+    driverResume,
+    driverRun,
+    driverShow,
+    driverStep,
+    renderDriverError,
+  )
 import Hwfl.Env (loadDotenv)
-import Hwfl.Eval.Value (Value, renderValue)
+import Hwfl.Eval.Value (renderValue)
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Simple (mkSimpleProvider)
-import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun, showStore)
+import Hwfl.Obs.Show (showStore)
 import Hwfl.Parse.Load (loadModule)
-import Hwfl.Project
-  ( LoadedProject (..),
-    ProjectConfig (..),
-    isProjectDir,
-    loadProject,
-    modulePathForQname,
-    projectHashForModules,
-  )
 import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Hwfl.Runtime.Eval (StepMode (..))
-import Hwfl.Runtime.Run
-  ( RunOptions (..),
-    RunOutcome (..),
-    approveRun,
-    emptySkillRuntime,
-    parseCliInputs,
-    resumeRun,
-    runLoadedModule,
-    stepRun,
-  )
-import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
-import Hwfl.SkillCatalog (isSkillQName, skillMetaForModule)
+import Hwfl.Runtime.Run (parseCliInputs)
 import Hwfl.Runtime.Snapshot (RunStore)
-import Hwfl.Source (Diagnostic, renderDiagnostics)
+import Hwfl.Source (renderDiagnostics)
 import System.Directory (getCurrentDirectory)
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (ExitCode (..), exitWith)
@@ -113,26 +102,12 @@ cmdCheck rest = case parseCheckFlags rest of
     reportUsage ("--json" `elem` rest) msg
     exitWith (ExitFailure 2)
   Right (path, json) -> do
-    isProj <- isProjectDir path
-    if isProj
-      then do
-        result <- checkProject path
-        case result of
-          Left err -> do
-            reportCheckFailure json err
-            exitWith (ExitFailure 1)
-          Right _ -> pure ()
-      else do
-        result <- loadModule path
-        case result of
-          Left diags -> do
-            reportParseFailure json path diags
-            exitWith (ExitFailure 1)
-          Right loaded -> case checkLoadedModule loaded of
-            Left err -> do
-              reportModuleCheckFailure json path err
-              exitWith (ExitFailure 1)
-            Right _ -> pure ()
+    result <- driverCheck path
+    case result of
+      Left err -> do
+        reportDriverFailure json err
+        exitWith (ExitFailure 1)
+      Right _ -> pure ()
 
 parseCheckFlags :: [String] -> Either String (FilePath, Bool)
 parseCheckFlags = go False Nothing
@@ -148,23 +123,11 @@ parseCheckFlags = go False Nothing
             Nothing -> go json (Just x) rest
             Just _ -> Left ("unexpected argument: " <> x)
 
-reportCheckFailure :: Bool -> ProjectCheckError -> IO ()
-reportCheckFailure json err =
+reportDriverFailure :: Bool -> DriverError -> IO ()
+reportDriverFailure json err =
   if json
-    then TIO.hPutStrLn stderr (renderCliError (jsonProjectCheckError err))
-    else TIO.hPutStrLn stderr (renderProjectCheckError err)
-
-reportParseFailure :: Bool -> FilePath -> [Diagnostic] -> IO ()
-reportParseFailure json path diags =
-  if json
-    then TIO.hPutStrLn stderr (renderCliError (jsonDiagnostics path diags))
-    else TIO.hPutStrLn stderr (renderDiagnostics diags)
-
-reportModuleCheckFailure :: Bool -> FilePath -> CheckError -> IO ()
-reportModuleCheckFailure json path err =
-  if json
-    then TIO.hPutStrLn stderr (renderCliError (jsonCheckErrorAtPath (Just path) err))
-    else TIO.hPutStrLn stderr (renderCheckError err)
+    then TIO.hPutStrLn stderr (renderCliError (jsonDriverError err))
+    else TIO.hPutStrLn stderr (renderDriverError err)
 
 reportPlainFailure :: Bool -> Int -> Text -> Text -> Text -> IO ()
 reportPlainFailure json exitCode category kind msg =
@@ -217,125 +180,51 @@ cmdRun rest = case parseRunFlags rest of
         exitWith (ExitFailure 2)
       Right is -> pure is
     provider <- resolveProvider json flags.rfProvider flags.rfCatalog
-    isProj <- isProjectDir flags.rfModule
-    if isProj
-      then runProject flags ws inputs provider
-      else runSingleModule flags ws inputs provider
-
-runProject :: RunFlags -> FilePath -> [(Ident, Value)] -> LlmProvider -> IO ()
-runProject flags ws inputs provider = do
-  let json = flags.rfJson
-  lpE <- loadProject flags.rfModule
-  case lpE of
-    Left err -> do
-      reportPlainFailure json 1 "project" "LoadError" err
-      exitWith (ExitFailure 1)
-    Right lp -> do
-      catalog <- case (flags.rfNoCheck, checkProjectLoaded lp) of
-        (True, _) ->
-          let (c, _) = emptySkillRuntime
-           in pure c
-        (False, Left err) -> do
-          unless json $ hPutStrLn stderr "hwfl run: checking project…"
-          reportCheckFailure json err
-          exitWith (ExitFailure 1)
-        (False, Right cpr) -> do
-          unless json $ hPutStrLn stderr "hwfl run: checking project…"
-          pure cpr.cprSkillCatalog
-      let entry = lp.lpConfig.pcEntrypoint
-          entryPath = modulePathForQname flags.rfModule entry
-          skillMods =
-            Map.filterWithKey
-              ( \q m ->
-                  isSkillQName q
-                    && smKind (skillMetaForModule m) == SkillCallable
-              )
-              lp.lpModules
-      case Map.lookup entry lp.lpModules of
-        Nothing -> do
-          reportPlainFailure json 1 "project" "EntryMissing" "entrypoint module missing after load"
-          exitWith (ExitFailure 1)
-        Just loaded -> do
-          let hash = Just (projectHashForModules lp.lpModules)
-              opts =
-                RunOptions
-                  { roWorkspace = ws,
-                    roProvider = provider,
-                    roInputs = inputs,
-                    roRunId = Nothing,
-                    roEntry = entryPath,
-                    roMode = if flags.rfStep then StepOnce else StepRun,
-                    roProjectHash = hash,
-                    roExec = lp.lpConfig.pcExec,
-                    roDebug = flags.rfDebug,
-                    roCost = flags.rfCost,
-                    roModelCatalog = flags.rfCatalog,
-                    roSkillCatalog = catalog,
-                    roSkillModules = skillMods
-                  }
-          handleOutcome json (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
-
-runSingleModule :: RunFlags -> FilePath -> [(Ident, Value)] -> LlmProvider -> IO ()
-runSingleModule flags ws inputs provider = do
-  let json = flags.rfJson
-  result <- loadModule flags.rfModule
-  case result of
-    Left diags -> do
-      reportParseFailure json flags.rfModule diags
-      exitWith (ExitFailure 1)
-    Right loaded -> do
-      unless (flags.rfNoCheck || json) $ hPutStrLn stderr "hwfl run: checking module…"
-      unless flags.rfNoCheck $
-        case checkLoadedModule loaded of
-          Left err -> do
-            reportModuleCheckFailure json flags.rfModule err
-            exitWith (ExitFailure 1)
-          Right _ -> pure ()
-      let (catalog, skillMods) = emptySkillRuntime
-          opts =
-            RunOptions
-              { roWorkspace = ws,
-                roProvider = provider,
-                roInputs = inputs,
-                roRunId = Nothing,
-                roEntry = flags.rfModule,
-                roMode = if flags.rfStep then StepOnce else StepRun,
-                roProjectHash = Nothing,
-                roExec = Nothing,
-                roDebug = flags.rfDebug,
-                roCost = flags.rfCost,
-                roModelCatalog = flags.rfCatalog,
-                roSkillCatalog = catalog,
-                roSkillModules = skillMods
-              }
-      handleOutcome json (flags.rfVerbose || flags.rfDebug) =<< runLoadedModule opts loaded
+    unless (flags.rfNoCheck || json) $
+      hPutStrLn stderr "hwfl run: checking…"
+    let req =
+          (defaultDriverRunRequest flags.rfModule ws provider)
+            { drrInputs = inputs,
+              drrSkipCheck = flags.rfNoCheck,
+              drrModelCatalog = flags.rfCatalog,
+              drrMode = if flags.rfStep then StepOnce else StepRun,
+              drrDebug = flags.rfDebug,
+              drrCost = flags.rfCost
+            }
+    result <- driverRun req
+    case result of
+      Left err -> do
+        reportDriverFailure json err
+        exitWith (ExitFailure 1)
+      Right outcome ->
+        handleOutcome json (flags.rfVerbose || flags.rfDebug) outcome
 
 cmdStep :: [String] -> IO ()
 cmdStep args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
     provider <- resolveProvider False provName catalog
-    handleOutcome False False =<< stepRun ws runId provider catalog
+    handleOutcome False False =<< driverStep ws runId provider catalog
 
 cmdResume :: [String] -> IO ()
 cmdResume args = case parseWsRun args of
   Left msg -> dieUsage msg
   Right (ws, runId, provName, catalog) -> do
     provider <- resolveProvider False provName catalog
-    handleOutcome False False =<< resumeRun ws runId provider catalog
+    handleOutcome False False =<< driverResume ws runId provider catalog
 
 cmdApprove :: [String] -> IO ()
 cmdApprove args = case parseApprove args of
   Left msg -> dieUsage msg
   Right (ws, runId, yes, provName, catalog) -> do
     provider <- resolveProvider False provName catalog
-    handleOutcome False False =<< approveRun ws runId yes provider catalog
+    handleOutcome False False =<< driverApprove ws runId yes provider catalog
 
 cmdShow :: [String] -> IO ()
 cmdShow args = case parseShow args of
   Left msg -> dieUsage msg
   Right opts -> do
-    result <- showRun opts
+    result <- driverShow opts
     case result of
       Left err -> do
         TIO.hPutStrLn stderr err

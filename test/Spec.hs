@@ -5,6 +5,7 @@ import Hwfl.Check.ModuleSpec
 import Hwfl.Check.ProjectSpec
 import Hwfl.Cli.JsonSpec
 import Hwfl.Check.SchemaSpec
+import Hwfl.DriverSpec
 import Hwfl.Eval.PureSpec
 import Hwfl.Llm.PricingSpec
 import Hwfl.Llm.ProviderSpec
@@ -43,6 +44,7 @@ main = hspec $ do
   Hwfl.Check.ProjectSpec.spec
   Hwfl.Cli.JsonSpec.spec
   Hwfl.Check.SchemaSpec.spec
+  Hwfl.DriverSpec.spec
   Hwfl.SkillCatalogSpec.spec
   Hwfl.Llm.PricingSpec.spec
   Hwfl.Llm.ProviderSpec.spec

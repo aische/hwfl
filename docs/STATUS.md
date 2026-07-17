@@ -4,7 +4,8 @@ Last updated: 2026-07-17
 
 ## Current focus
 
-Library driver + run-store interface (lab spine). CLI stays one frontend.
+Run-store interface over `.hwfl/runs` (lab spine). Library driver exists;
+CLI wraps it.
 
 ## North star
 
@@ -15,6 +16,8 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **Library driver façade** (`Hwfl.Driver`: check / run / step / resume /
+  approve / show); CLI thinned to flags + presentation
 - North-star docs: lab + library façade; Servant out of this repo
 - **`--cost`**; semantic-check S1–S3 + S5; `fs.patch`; streaming spans;
   skills A–C; coding-agent; P0; M0–M9
@@ -25,13 +28,11 @@ None.
 
 ## Next up
 
-1. Library driver façade (check / run / step / resume / approve / show)
-   shared by CLI — stable enough for a future control-plane app
-2. Run-store **interface** over `.hwfl/runs` (FS backend first; no
-   Postgres required yet)
-3. Meta for nested lab runs: `meta.invoke`, `meta.list_runs`,
+1. Run-store **interface** over `.hwfl/runs` (list / read meta / spans /
+   snapshot); FS backend first; no Postgres required yet
+2. Meta for nested lab runs: `meta.invoke`, `meta.list_runs`,
    `meta.read_spans` (+ careful snapshot)
-4. Local genetic prototype — N temp projects × workspace fixture ×
+3. Local genetic prototype — N temp projects × workspace fixture ×
    score (CLI or parent workflow)
 
 ## Deferred

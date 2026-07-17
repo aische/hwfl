@@ -4,7 +4,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now (P1) — lab spine
 
-- [ ] Library driver façade — check / run / step / resume / approve / show
+- [x] Library driver façade — check / run / step / resume / approve / show
       as one API the CLI wraps (control plane will call the same)
 - [ ] Run-store interface over `.hwfl/runs` (list / read meta / spans /
       snapshot); FS backend first
