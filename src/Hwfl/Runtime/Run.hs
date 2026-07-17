@@ -67,6 +67,7 @@ import Hwfl.SkillCatalog
   )
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
+import Data.Maybe (fromMaybe)
 
 data RunOptions = RunOptions
   { roWorkspace :: FilePath,
@@ -121,8 +122,7 @@ mkCtxValue runId started =
     ]
 
 withRunCtx :: Text -> Text -> Env -> Env
-withRunCtx runId started env =
-  extendEnv (Ident "ctx") (mkCtxValue runId started) env
+withRunCtx runId started = extendEnv (Ident "ctx") (mkCtxValue runId started)
 
 sectionMap :: LoadedModule -> Map Slug Text
 sectionMap loaded =
@@ -133,7 +133,7 @@ runLoadedModule :: RunOptions -> LoadedModule -> IO RunOutcome
 runLoadedModule opts loaded = do
   ws <- newWorkspace opts.roWorkspace
   runId <- maybe newRunId pure opts.roRunId
-  let hash = maybe (projectHashOf loaded) id opts.roProjectHash
+  let hash = fromMaybe (projectHashOf loaded) opts.roProjectHash
   store <- openRunStore (workspaceRoot ws) runId
   now <- getCurrentTime
   let started = T.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now)
@@ -149,7 +149,7 @@ runLoadedModule opts loaded = do
   seqRef <- newIORef (0 :: Int)
   let debugLog =
         if opts.roDebug
-          then Just (\msg -> hPutStrLn stderr (T.unpack msg))
+          then Just (hPutStrLn stderr . T.unpack)
           else Nothing
   spans <- newSpanStateDebug debugLog
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
@@ -162,7 +162,7 @@ runLoadedModule opts loaded = do
             heProvider = opts.roProvider,
             heExec = opts.roExec,
             heSkillCatalog = opts.roSkillCatalog,
-            heLog = \msg -> hPutStrLn stderr (T.unpack msg)
+            heLog = hPutStrLn stderr . T.unpack
           }
       ctx =
         RunCtx
@@ -216,11 +216,11 @@ startMain funs env inputs = case Map.lookup (Ident "main") funs of
 finalizeOutcome :: RunStore -> Int -> Machine -> IO RunOutcome
 finalizeOutcome store seqNo m = case m.mStatus of
   MsCompleted ->
-    pure (OutcomeCompleted (maybe VUnit id m.mLastResult) store seqNo)
+    pure (OutcomeCompleted (fromMaybe VUnit m.mLastResult) store seqNo)
   MsFailed ->
     pure
       ( OutcomeFailed
-          (maybe (EvalErr (Trap "failed")) id m.mError)
+          (fromMaybe (EvalErr (Trap "failed")) m.mError)
           store
           seqNo
       )
@@ -272,7 +272,7 @@ mkCtx provider wsRoot loaded store hash runId started seqRef spans catalog skill
             heProvider = provider,
             heExec = execPol,
             heSkillCatalog = catalog,
-            heLog = \msg -> hPutStrLn stderr (T.unpack msg)
+            heLog = hPutStrLn stderr . T.unpack
           }
   pure
     RunCtx
