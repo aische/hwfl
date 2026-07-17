@@ -13,6 +13,9 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Later (P2–P3)
 
+- [ ] Semantic-check research phases (S1–S6) — see
+      [semantic-check-plan.md](semantic-check-plan.md); prefer S2
+      obligation graph next when resumed
 - [ ] Run-store interface over `.hwfl/runs`, then optional DB-backed store
 - [ ] Servant HTTP API on the same run/check APIs as the CLI
 - [ ] MCP client (tool provider behind existing `tool(f)` / host-op story)

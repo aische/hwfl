@@ -43,6 +43,8 @@ None.
   IDE / product shell (Tier C) remains out of scope.
 - Split `semantic-pragmatic` / summary packaging / CLI sugar (same-run
   layer 3 is enough for now).
+- Semantic-check research (roles, obligation graph, prose↔code,
+  dynamic) — [semantic-check-plan.md](semantic-check-plan.md).
 
 ## Open naming
 
