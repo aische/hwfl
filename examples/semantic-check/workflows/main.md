@@ -14,10 +14,11 @@ effects: [Read, Write, Meta, Net]
 ## overview
 
 Semantic review written in hwfl (layers 0–2b deterministic; optional same-run
-layer 3 pragmatic via `llm.object`). Workspace is the target project. Always
-emits body-bearing `review_gate` items. Set `mode=pragmatic` (and a catalog
-`model`) to run gated LLM review in the same run; `mode=deterministic` skips
-LLM calls. No micro-tool fan-out.
+layer 3 pragmatic via `llm.object`). Workspace is the target project. Scans
+module trees only (`workflows/`, `skills/`, `lib/`, `types/`) — not README or
+other docs. Always emits body-bearing `review_gate` items. Set
+`mode=pragmatic` (and a catalog `model`) to run gated LLM review in the same
+run; `mode=deterministic` skips LLM calls. No micro-tool fan-out.
 
 ## reviewer
 
@@ -134,12 +135,12 @@ fun entry_findings(entry: String, names: List<String>): List<Finding> =
     }]
 
 fun looks_like_qname(tok: String): Bool =
-  text.contains(tok, "/") && not(text.contains(tok, "http"))
+  text.is_qname(tok)
 
 fun prose_tokens(body: String, names: List<String>, file: String, i: Int, words: List<String>, n: Int): List<Finding> =
   if i >= n then []
   else
-    let tok = words[i]
+    let tok = text.normalize_token(words[i])
     let rest = prose_tokens(body, names, file, i + 1, words, n)
     if not(looks_like_qname(tok)) then rest
     else if has_string(names, tok, 0, list.length(names)) then rest
@@ -264,15 +265,30 @@ fun is_directive(sentence: String): Bool =
     || text.contains(sentence, "should ")
     || text.contains(sentence, "Should ")
     || text.contains(sentence, "always ")
+    || text.contains(sentence, "Always ")
+    || text.contains(sentence, "never ")
+    || text.contains(sentence, "Never ")
+    || text.contains(sentence, "do not ")
+    || text.contains(sentence, "Do not ")
+    || text.contains(sentence, "don't ")
+    || text.contains(sentence, "Don't ")
 
 fun speech_in_slice(s: Slice): List<Finding> =
   let sents = text.split_sentences(s.body)
   speech_sents(sents, s, 0, list.length(sents), false)
 
+fun is_agent_section(title: String): Bool =
+  text.contains(title, "agent")
+    || text.contains(title, "Agent")
+    || text.contains(title, "system")
+    || text.contains(title, "System")
+    || text.contains(title, "reviewer")
+    || text.contains(title, "Reviewer")
+
 fun speech_sents(sents: List<String>, s: Slice, i: Int, n: Int, saw: Bool): List<Finding> =
   if i >= n then
     if saw then []
-    else if text.contains(s.title, "agent") || text.contains(s.title, "Agent") then
+    else if is_agent_section(s.title) then
       [{
         severity = "warning",
         category = "speech_act",
@@ -495,8 +511,23 @@ fun review_all(gate: List<GateItem>, model: String, i: Int, n: Int): List<Findin
   if i >= n then []
   else list.concat(review_one(gate[i], model), review_all(gate, model, i + 1, n))
 
+fun is_module_path(p: String): Bool =
+  text.starts_with(p, "workflows/")
+    || text.starts_with(p, "skills/")
+    || text.starts_with(p, "lib/")
+    || text.starts_with(p, "types/")
+
+fun filter_module_paths(paths: List<FileRef>, i: Int, n: Int): List<FileRef> =
+  if i >= n then []
+  else
+    let p = paths[i]
+    let rest = filter_module_paths(paths, i + 1, n)
+    if is_module_path($"{p}") then list.concat([p], rest)
+    else rest
+
 fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
-  let paths = fs.find(glob = "**/*.md")
+  let all_md = fs.find(glob = "**/*.md")
+  let paths = filter_module_paths(all_md, 0, list.length(all_md))
   let npaths = list.length(paths)
   let rows = check_paths(paths, 0, npaths)
   let names = catalog_names(rows, 0, list.length(rows))

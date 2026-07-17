@@ -5,9 +5,14 @@ module Hwfl.Text.Corpus
     textSimilarity,
     splitSentences,
     textContains,
+    textTrim,
+    textStartsWith,
+    textNormalizeToken,
+    textIsQname,
   )
 where
 
+import Data.Char (isAlphaNum, isAscii)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -38,6 +43,54 @@ textSimilarity left right = jaccardSet (wordUnigrams left) (wordUnigrams right)
 
 textContains :: Text -> Text -> Bool
 textContains hay needle = needle `T.isInfixOf` hay
+
+textTrim :: Text -> Text
+textTrim = T.strip
+
+textStartsWith :: Text -> Text -> Bool
+textStartsWith s prefix = prefix `T.isPrefixOf` s
+
+-- | Strip whitespace and wrapping punctuation / backticks (stable fixed point).
+textNormalizeToken :: Text -> Text
+textNormalizeToken = go . T.strip
+  where
+    wrap = "`\"'.,;:!?()[]{}" :: [Char]
+    go t =
+      let t' = T.dropWhileEnd (`elem` wrap) (T.dropWhile (`elem` wrap) t)
+       in if t' == t then t else go t'
+
+-- | Conservative module qname shape: @root/seg(/seg)*@ with known roots.
+-- Rejects paths (@/tmp/…@), URLs, globs, and English slash-compounds
+-- (@stdout/stderr@, @language/toolchain@).
+textIsQname :: Text -> Bool
+textIsQname raw =
+  let t = textNormalizeToken raw
+      roots =
+        Set.fromList
+          [ "workflows",
+            "lib",
+            "skills",
+            "tools",
+            "types",
+            "builtin"
+          ]
+   in case T.splitOn "/" t of
+        parts@(root : _ : _) ->
+          not (T.null t)
+            && not ("*" `T.isInfixOf` t)
+            && not ("http" `T.isInfixOf` T.toLower t)
+            && Set.member root roots
+            && all isQnameSegment parts
+        _ -> False
+
+isQnameSegment :: Text -> Bool
+isQnameSegment s =
+  case T.uncons s of
+    Just (c, rest) ->
+      isAscii c
+        && (isAlphaNum c || c == '_')
+        && T.all (\x -> isAscii x && (isAlphaNum x || x == '_' || x == '-')) rest
+    Nothing -> False
 
 splitSentences :: Text -> [Text]
 splitSentences text =

@@ -27,6 +27,7 @@ import Hwfl.Runtime.SkillSpec
 import Hwfl.Runtime.SemanticCheckSpec
 import Hwfl.Runtime.WorkspaceSpec
 import Hwfl.SkillCatalogSpec
+import Hwfl.Text.CorpusSpec
 import Test.Hspec
 
 main :: IO ()
@@ -57,4 +58,5 @@ main = hspec $ do
   Hwfl.Obs.StreamSpec.spec
   Hwfl.Runtime.SkillSpec.spec
   Hwfl.Runtime.SemanticCheckSpec.spec
+  Hwfl.Text.CorpusSpec.spec
   Hwfl.Runtime.CodingAgentSpec.spec

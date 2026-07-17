@@ -26,8 +26,12 @@ import Hwfl.Text.Corpus
   ( TextMetrics (..),
     splitSentences,
     textContains,
+    textIsQname,
     textMetrics,
+    textNormalizeToken,
     textSimilarity,
+    textStartsWith,
+    textTrim,
   )
 import Hwfl.Text.Markdown (MdSection (..), extractSections)
 
@@ -61,7 +65,11 @@ preludeEnv =
             (Ident "contains", VBuiltin BTextContains),
             (Ident "split_sentences", VBuiltin BTextSplitSentences),
             (Ident "words", VBuiltin BTextWords),
-            (Ident "strip_suffix", VBuiltin BTextStripSuffix)
+            (Ident "strip_suffix", VBuiltin BTextStripSuffix),
+            (Ident "trim", VBuiltin BTextTrim),
+            (Ident "starts_with", VBuiltin BTextStartsWith),
+            (Ident "normalize_token", VBuiltin BTextNormalizeToken),
+            (Ident "is_qname", VBuiltin BTextIsQname)
           ]
       ),
       ( Ident "md",
@@ -102,6 +110,12 @@ applyBuiltin b args = case (b, args) of
     Right (VList (map VString (splitSentences s)))
   (BTextWords, [VString s]) ->
     Right (VList (map VString (T.words s)))
+  (BTextTrim, [VString s]) -> Right (VString (textTrim s))
+  (BTextStartsWith, [VString s, VString prefix]) ->
+    Right (VBool (textStartsWith s prefix))
+  (BTextNormalizeToken, [VString s]) ->
+    Right (VString (textNormalizeToken s))
+  (BTextIsQname, [VString s]) -> Right (VBool (textIsQname s))
   (BTextStripSuffix, [VString s, VString suf]) ->
     Right (VString (fromMaybe s (T.stripSuffix suf s)))
   (BMdSections, [VString s]) -> case extractSections s of
@@ -118,6 +132,10 @@ applyBuiltin b args = case (b, args) of
   (BTextContains, _) -> arityOrType "text.contains" 2 args
   (BTextSplitSentences, _) -> arityOrType "text.split_sentences" 1 args
   (BTextWords, _) -> arityOrType "text.words" 1 args
+  (BTextTrim, _) -> arityOrType "text.trim" 1 args
+  (BTextStartsWith, _) -> arityOrType "text.starts_with" 2 args
+  (BTextNormalizeToken, _) -> arityOrType "text.normalize_token" 1 args
+  (BTextIsQname, _) -> arityOrType "text.is_qname" 1 args
   (BTextStripSuffix, _) -> arityOrType "text.strip_suffix" 2 args
   (BMdSections, _) -> arityOrType "md.sections" 1 args
   (BJsonEncode, _) -> arityOrType "json.encode" 1 args

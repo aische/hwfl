@@ -62,6 +62,10 @@ data Builtin
   | BTextSplitSentences
   | BTextWords
   | BTextStripSuffix
+  | BTextTrim
+  | BTextStartsWith
+  | BTextNormalizeToken
+  | BTextIsQname
   | BMdSections
   | BJsonEncode
   deriving stock (Eq, Show, Read)

@@ -9,14 +9,16 @@ directory and is executed with `--workspace` pointed at the project to scan.
 
 | Layer | What |
 | ----- | ---- |
-| 0 | `fs.find` + `meta.check_module` → structural findings |
-| 1 | Catalog from checked qnames; prose qname scan via `md.sections` + `text.words` |
+| 0 | Module-tree `fs.find` + `meta.check_module` → structural findings |
+| 1 | Catalog from checked qnames; prose qname scan via `text.is_qname` |
 | 2 | `text.metrics` / `text.similarity` → entropy outliers + redundancy pairs |
 | 2b | `text.split_sentences` + directive heuristics → speech-act hints |
 | 3 | Optional same-run `llm.object` on body-bearing `review_gate` items |
 
-Always writes `.hwfl/runs/<run-id>/semantic-report.json` in the workspace
-(valid JSON via `json.encode`) and returns `{ report_path, ok, finding_count }`.
+Scans `workflows/`, `skills/`, `lib/`, and `types/` only (skips README and
+other docs). Always writes `.hwfl/runs/<run-id>/semantic-report.json` in the
+workspace (valid JSON via `json.encode`) and returns
+`{ report_path, ok, finding_count }`.
 
 Deterministic mode (`mode=deterministic`) needs no API keys. Pragmatic mode
 (`mode=pragmatic`) runs gated LLM review in the **same run** and fills
@@ -24,7 +26,9 @@ Deterministic mode (`mode=deterministic`) needs no API keys. Pragmatic mode
 
 `review_gate` is always emitted (max 8): redundancy / contradiction pairs,
 speech-act coverage gaps, and dead-reference prose — with slice bodies for
-layer 3. Entropy outliers stay layer-2 info only (not gated).
+layer 3. Entropy outliers stay layer-2 info only (not gated). Prose qnames
+must match `root/seg…` with roots `workflows|lib|skills|tools|types|builtin`
+(after `text.normalize_token`).
 
 ## Run
 

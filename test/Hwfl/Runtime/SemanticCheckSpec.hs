@@ -78,11 +78,16 @@ spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
           report <- TIO.readFile (tmp </> ".hwfl/runs/e20/semantic-report.json")
           report `shouldSatisfy` T.isInfixOf "\"schema\""
           report `shouldSatisfy` T.isInfixOf "workflows/missing"
+          report `shouldSatisfy` T.isInfixOf "tools/helper"
           report `shouldSatisfy` T.isInfixOf "\"review_gate\""
           report `shouldSatisfy` T.isInfixOf "\"slice_id\""
           report `shouldSatisfy` T.isInfixOf "check_dead_reference"
           report `shouldSatisfy` T.isInfixOf "\"mode\":\"deterministic\""
           report `shouldSatisfy` T.isInfixOf "\"pragmatic_findings\":[]"
+          -- Noise regressions from coding-agent dogfood.
+          report `shouldSatisfy` (not . T.isInfixOf "\"evidence\":\"/\"")
+          report `shouldSatisfy` (not . T.isInfixOf "stdout/stderr")
+          report `shouldSatisfy` (not . T.isInfixOf "README.md")
         other -> expectationFailure ("expected completed run, got: " <> show other)
 
   it "pragmatic mode runs gated llm.object and records pragmatic_findings" $

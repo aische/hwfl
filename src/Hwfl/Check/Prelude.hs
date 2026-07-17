@@ -372,7 +372,11 @@ textType =
       (Ident "words", TFun (t "String") (TList (t "String"))),
       ( Ident "strip_suffix",
         TFun (t "String") (TFun (t "String") (t "String"))
-      )
+      ),
+      (Ident "trim", TFun (t "String") (t "String")),
+      (Ident "starts_with", TFun (t "String") (TFun (t "String") (t "Bool"))),
+      (Ident "normalize_token", TFun (t "String") (t "String")),
+      (Ident "is_qname", TFun (t "String") (t "Bool"))
     ]
 
 mdType :: TypeExpr

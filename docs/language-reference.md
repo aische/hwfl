@@ -45,6 +45,10 @@ No snapshot boundary.
 | `text.split_sentences` | `String -> List<String>` |
 | `text.words` | `String -> List<String>` |
 | `text.strip_suffix` | `String -> String -> String` |
+| `text.trim` | `String -> String` |
+| `text.starts_with` | `String -> String -> Bool` |
+| `text.normalize_token` | strip wrap punct / backticks |
+| `text.is_qname` | conservative `root/seg…` module qname |
 | `md.sections` | `String -> List<{ slug, title, body }>` |
 | `json.encode` | encodable value → `String` |
 | `tool` | function / host op → `ToolSpec` |

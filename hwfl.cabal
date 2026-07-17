@@ -161,6 +161,7 @@ test-suite hwfl-test
         Hwfl.Runtime.SkillSpec
         Hwfl.Runtime.WorkspaceSpec
         Hwfl.SkillCatalogSpec
+        Hwfl.Text.CorpusSpec
     build-depends:
         base,
         hwfl,

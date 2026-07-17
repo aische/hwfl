@@ -149,6 +149,10 @@ Prefer migrating to `lib/*` modules once the import graph exists.
 | `text` | `split_sentences` | `String -> List<String>` |
 | `text` | `words` | `String -> List<String>` |
 | `text` | `strip_suffix` | `String -> String -> String` |
+| `text` | `trim` | `String -> String` |
+| `text` | `starts_with` | `String -> String -> Bool` |
+| `text` | `normalize_token` | strip wrapping punct / backticks |
+| `text` | `is_qname` | conservative module qname (`workflows|lib|skills|tools|types|builtin` / …) |
 | `md` | `sections` | `String -> List<{ slug, title, body }>` |
 | `json` | `encode` | encodable value → JSON `String` (pure; M8 reports) |
 
