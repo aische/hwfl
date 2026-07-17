@@ -4,25 +4,20 @@ Last updated: 2026-07-17
 
 ## Current focus
 
-Skills phase D (optional), then run-store interface.
+Library driver + run-store interface (lab spine). CLI stays one frontend.
+
+## North star
+
+hwfl = durable workflow **runtime library**. Toward a **workflow research
+lab** (compare / mutate / re-run candidates) and a **separate** remote
+control plane. Coding-agent and semantic-check are benchmarks / research,
+not the product. See [idea.md](idea.md).
 
 ## Done recently
 
-- **`--cost`** — prefix host progress lines with running LLM spend
-- **Semantic-check S3** — proposition algebra (`must`/`must_not`/`prefer`/
-  `prefer_not`); Must∧MustNot + Must vs Prefer(~a); `category: proposition`;
-  gate cap 10
-- **Semantic-check S5** — prose↔code contracts (dead `@section`, effect/tool
-  gaps, schema vs `outputs:`, skill `exec.run` vs caller; `category: contract`)
-- **Semantic-check S1** — illocutionary role typing on gated slices
-  (`role` + quoted mismatches; Policy/Example felicity; `category: role`)
-- **Semantic-check S2** — obligation graph + crunch-budget fix (≤12 graph
-  rows; host pure crunch 500k; chatty-extract regression)
-- **`fs.patch`** — unique multi-hunk atomic edit; agent-tool eligible;
-  coding-agent prefers it over replace-all `fs.edit`
-- **Semantic-check A+B** — policy gate (`check_internal_conflict`);
-  within-slice quoted redundancy; H1-only synthetic slices; gate cap 8
-- Streaming LLM spans; `--json` CLI; skills A–C; coding-agent; P0; M0–M9
+- North-star docs: lab + library façade; Servant out of this repo
+- **`--cost`**; semantic-check S1–S3 + S5; `fs.patch`; streaming spans;
+  skills A–C; coding-agent; P0; M0–M9
 
 ## Blockers
 
@@ -30,25 +25,25 @@ None.
 
 ## Next up
 
-1. Skills phase D (optional) — writer workflow; no hidden `skill.extract`
-2. Run-store interface → optional DB; later Servant API; later MCP client
-3. Semantic-check S4 / S6 when resumed — see
-   [semantic-check-plan.md](semantic-check-plan.md)
+1. Library driver façade (check / run / step / resume / approve / show)
+   shared by CLI — stable enough for a future control-plane app
+2. Run-store **interface** over `.hwfl/runs` (FS backend first; no
+   Postgres required yet)
+3. Meta for nested lab runs: `meta.invoke`, `meta.list_runs`,
+   `meta.read_spans` (+ careful snapshot)
+4. Local genetic prototype — N temp projects × workspace fixture ×
+   score (CLI or parent workflow)
 
-## Deferred (nice-to-have)
+## Deferred
 
-- **`par` concurrent host IO** — M5 pool is cooperative (one branch
-  transition at a time; blocking host ops stall the whole driver). Future:
-  async at host boundaries without changing `par` language semantics.
-  See [spec/06-runtime.md](spec/06-runtime.md) §10.
-- **Coding-agent capability (Tier A/B)** — git host ops, persistent
-  terminals, context pre-pass; then codebase index, LSP bridge,
-  rules/hooks skills, auto context assembly, multi-model routing. See
-  [TASKS.md](TASKS.md) “Future / nice-to-have”. Prefer MCP over host growth.
-  IDE / product shell (Tier C) remains out of scope.
-- Split `semantic-pragmatic` / summary packaging / CLI sugar (same-run
-  layer 3 is enough for now).
-- Semantic-check S4 / S6 — [semantic-check-plan.md](semantic-check-plan.md).
+- Skills phase D (optional writer example)
+- Semantic-check S4 / S6 — research only; optional static fitness later
+- Coding-agent Tier A/B (git, terminals, context pre-pass; then RAG /
+  MCP / LSP) — when needed as a lab benchmark
+- Concurrent `par` host IO; MCP client host
+- Control-plane repo (HTTP/WS, Postgres metadata, tenants) — **not** in
+  hwfl; depends on the library driver above
+- Optional DB-backed run-store backend (only after the interface exists)
 
 ## Open naming
 

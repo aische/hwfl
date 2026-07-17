@@ -2,6 +2,10 @@
 
 Provisional working name: **hwfl** (Haskell workflow language - although it looks more like ML, but implemented in Haskell)
 
+**North star:** durable workflow **runtime library** (+ CLI), aimed at a
+**workflow research lab** (check / run / compare / mutate) and a
+**separate** remote control plane. Details in [idea.md](idea.md).
+
 This folder is **`docs/`** in the hwfl repository. Keep the **hwfi** repo
 nearby as a behavioural / design reference (see [hwfi-reference.md](hwfi-reference.md)).
 Start sessions from [STATUS.md](STATUS.md) and [TASKS.md](TASKS.md).
@@ -16,7 +20,7 @@ Start sessions from [STATUS.md](STATUS.md) and [TASKS.md](TASKS.md).
 | [architecture.md](architecture.md)     | Layers, components, boundaries   |
 | [hwfi-reference.md](hwfi-reference.md) | What to reuse / avoid from hwfi  |
 | [skills-plan.md](skills-plan.md)       | Skills catalog + agent load (A–C shipped) |
-| [semantic-check-plan.md](semantic-check-plan.md) | Semantic-check research (S1–S3 + S5 shipped; S4/S6 later) |
+| [semantic-check-plan.md](semantic-check-plan.md) | Semantic-check research (parked; S1–S3 + S5 shipped) |
 | [log/](log/)                           | Decision / milestone log         |
 | [spec/](spec/)                         | Normative specification          |
 | [examples/](examples/)                 | Design examples (contracts)      |
@@ -55,5 +59,5 @@ Same discipline as hwfi (see `cursor-scaffold/rules/project-docs.mdc`):
 - Implemented in **Haskell** (GHC2021)
 - Default LLM backend: **`llm-simple`** (`^>=0.1.0.1`), behind a replaceable
   provider interface ([spec/08-llm-provider.md](spec/08-llm-provider.md))
-- No GUI in v0
+- No GUI in v0; no Servant/multi-tenant runtime **in this repo**
 - hwfi remains the reference implementation for resume / confirm / sandbox ideas

@@ -8,6 +8,19 @@ human confirmation, and durable resume.
 
 Working name: **hwfl** (originally plm, Prose ML). Rename at leisure.
 
+## North star
+
+**hwfl is the durable workflow runtime (Haskell library + CLI).** Longer
+term it powers a **workflow research lab**: author → check → run → inspect
+→ compare → mutate workflow programs, with coding-agent tasks and
+semantic-check as hard benchmarks — not as the product itself.
+
+A **remote control plane** (separate repo) may depend on hwfl as a library:
+Postgres for experiment / run metadata, materialized project + workspace
+sandboxes to execute, HTTP + WebSocket/SSE mapping the existing
+check / run / step / resume / approve / show machine — not a remote
+terminal. Multi-tenant auth, queuing, and chat UX stay in that app.
+
 ## Problem
 
 Agentic systems today split work awkwardly:
@@ -41,17 +54,28 @@ We want language-level ergonomics **and** document-shaped authoring.
    “what happened / where are we” than a flat event soup.
 7. **Static check before run** — project graph, signatures, effects, and
    types fail closed before the first billed token.
-8. **Dogfood semantic analysis** — use the language to analyse its own
-   projects (prompts, refs, coherence) without inventing a second DSL.
+8. **Callable as a library** — one driver façade (check / run / step /
+   resume / approve / show + run-store queries) shared by the CLI and any
+   future HTTP frontends; FS run-store first, optional DB backend later.
+9. **Genetic / comparative workflows** — materialize candidate projects
+   (and separate workspaces), invoke nested runs, score outcomes + spans,
+   iterate; evolution logic prefers hwfl modules over host growth.
+10. **Dogfood semantic analysis** — use the language to analyse its own
+    projects (prompts, refs, coherence) without inventing a second DSL.
+    Research track; not on the critical path (see
+    [semantic-check-plan.md](semantic-check-plan.md)).
 
-## Non-goals (v0)
+## Non-goals (this repo)
 
-- GUI
-- Distributed / multi-tenant runtime
+- GUI / IDE product shell (Tier C)
+- Distributed / multi-tenant runtime, auth, job queues, chat UX
+- Servant (or any HTTP API) **in this repository** — belongs in a separate
+  control-plane app that depends on the hwfl library
 - Package registry
 - Embedding a full existing language (JS / Python / Lua runtimes)
 - User-defined algebraic effect handlers
 - Perfect parity with hwfi’s step DSL on day one
+- Cursor-class RAG / LSP / embeddings until a measured coding-agent gap
 
 ## Constraints
 
@@ -60,6 +84,9 @@ We want language-level ergonomics **and** document-shaped authoring.
   behind an internal `LlmProvider` interface so production backends can
   replace it without rewriting workflows
 - Security defaults: workspace sandbox, opt-in `exec`, secret redaction
+- Prefer MCP / in-language modules over growing the host-op set
+- **Project** (workflow modules / genome) ≠ **workspace** (sandbox data +
+  `.hwfl/runs`); lab and control plane materialize both as directories
 
 ## Relationship to hwfi
 
@@ -81,3 +108,9 @@ inspect a span tree of what ran. **M8 showed this:** hwfi’s
 `semantic-check` (~74 tool files) collapsed to **one** hwfl module
 (`examples/semantic-check`) with the same layered review policy — proof
 the GP language replaces micro-tool fan-out.
+
+**Lab intuition:** a parent workflow (or thin driver) can spawn N candidate
+projects in temp dirs, check/run each against a shared task fixture,
+read spans + cost + outcome, and select/mutate for the next generation —
+locally via the library/CLI first; on a server via the separate control
+plane later.

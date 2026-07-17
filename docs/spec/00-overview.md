@@ -6,7 +6,7 @@ specs are updated.
 
 ## 1. Product summary
 
-A command-line engine, written in Haskell (GHC2021), that:
+A **Haskell library** (GHC2021) with a CLI frontend that:
 
 1. Loads a **project** of markdown modules (+ small JSON config).
 2. **Checks** the project (parse, types, effects, reference graph) before
@@ -17,8 +17,14 @@ A command-line engine, written in Haskell (GHC2021), that:
 5. **Persists** machine snapshots so runs are resumable after crash/abort.
 6. Exposes richer **observability** than a flat event list (span trees).
 
-Non-goals for v0: GUI, distributed execution, package registry,
-multi-tenant isolation, embedding JS/Python/Lua VMs.
+The CLI is one frontend over a driver façade (check / run / step /
+resume / approve / show + run-store). A remote control plane and
+genetic/comparative lab are **consumers** of that library — the HTTP
+surface and multi-tenant product live in a **separate repository**.
+See [idea.md](../idea.md).
+
+Non-goals for this repo: GUI/IDE shell, Servant/HTTP in-tree, distributed
+multi-tenant runtime, package registry, embedding JS/Python/Lua VMs.
 
 ## 2. Design principles
 

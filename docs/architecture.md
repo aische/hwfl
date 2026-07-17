@@ -123,6 +123,46 @@ hwfl run   <project> …   # check (or reuse) then evaluate
 hwfl step / resume / show / approve
 ```
 
+These commands are **one frontend** over a library driver. The same
+operations (plus run-store queries and an observer hook for live spans /
+pause) are what a future control-plane HTTP/WS app should call — without
+Servant living in this repo. See [idea.md](idea.md) north star.
+
+## Library vs control plane
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  Frontends (this repo: CLI; other repo: HTTP/WS/chat)       │
+└────────────────────────────┬────────────────────────────────┘
+                             │ driver façade
+┌────────────────────────────▼────────────────────────────────┐
+│  hwfl library — check / run / step / resume / approve / show │
+│  run-store interface (FS today; optional DB backend later)   │
+│  project root + workspace sandbox + LlmProvider              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Control plane (separate project):** auth, tenants, Postgres experiment /
+run metadata, queue, materialize project + workspace temp dirs, map
+pause/approve over WebSocket or SSE. It must not reimplement the machine;
+it persists metadata and schedules sandboxed `hwfl` library runs.
+
+**Genetic lab (example / later workflow):** treat project trees as
+candidates (genome), workspaces as task fixtures + run sandboxes, invoke
+nested runs (`meta.invoke` when shipped), score from spans / outcome /
+cost. Prefer in-language evolution over a host “evolution engine.”
+
+## Project vs workspace
+
+| Root | Role |
+| ---- | ---- |
+| **Project** | Markdown modules, `project.json`, skills — the program (lab: genome) |
+| **Workspace** | Sandboxed FS + `.hwfl/runs` — data and durable run state |
+
+CLI already accepts `--workspace`. Lab and control plane should materialize
+both as directories (often temp); do not collapse them into one tree unless
+the task truly is “edit the project in place.”
+
 ## Stdlib policy
 
 - Prefer **hwfl modules** under `lib/` for list/string/json helpers.

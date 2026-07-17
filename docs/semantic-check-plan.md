@@ -1,12 +1,14 @@
 # Semantic-check — research plan (“semantic type system”)
 
-**Status:** exploratory backlog. **S2** (obligation graph), **S1** (role
+**Status:** **parked research.** **S2** (obligation graph), **S1** (role
 typing), **S5** (prose↔code contracts), and **S3** (proposition algebra)
-shipped. Remaining phases S4 / S6 not scheduled in [TASKS.md](TASKS.md) Now.
-Ship increments inside `examples/semantic-check/` (same-run layers; policy in
+shipped. S4 / S6 not on the critical path — resume when a lab or
+coding-agent gap needs a new judgment. Optional later use: static
+**fitness filter** before burning tokens on a candidate run. Ship
+increments inside `examples/semantic-check/` (same-run layers; policy in
 workflow; no semantic host-op fan-out).
 
-**Related:** [idea.md](idea.md) goal 8 (dogfood semantic analysis),
+**Related:** [idea.md](idea.md) goal 10 (dogfood semantic analysis),
 `examples/semantic-check/`, [spec/12-example-suite.md](spec/12-example-suite.md)
 E20, log entries 2026-07-17 (deepen / noise fix / A+B / S2 / S1 / S5 / S3).
 
