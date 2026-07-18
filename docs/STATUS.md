@@ -1,10 +1,11 @@
 # Status
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 ## Current focus
 
-Optional mutate / next-generation loop on the compare spine.
+Deterministic FS tree ops (`mkdir` / `copy` / `move` / `exists`·`stat`)
+for lab materialize; then optional mutate loop on the compare spine.
 Resume/approve project-hash fix shipped (hwfl-server Phase 1).
 
 ## North star
@@ -37,8 +38,10 @@ None.
 
 ## Next up
 
-1. Optional: mutate / next-generation loop on the compare spine
-2. Optional DB-backed run-store backend (same interface)
+1. FS tree ops: `fs.mkdir`, `fs.copy` (recursive), `fs.move`,
+   `fs.exists` / `fs.stat` — workflow materialize under sandbox
+2. Optional: mutate / next-generation loop on the compare spine
+3. Optional DB-backed run-store backend (same interface)
 
 ## Deferred
 

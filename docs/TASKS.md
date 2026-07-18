@@ -22,6 +22,13 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] Resume/approve recomputes `projectHashForModules` when entry is
       under a project root (skills from that root) — required for
       hwfl-server sync approve after confirm
+- [ ] Deterministic FS tree ops (lab materialize; not agent-first) —
+      finish [spec/05-host-ops.md](spec/05-host-ops.md) Write set:
+      - [ ] `fs.mkdir` — create dir (and parents)
+      - [ ] `fs.copy` — file or recursive directory tree (`src` → `dst`);
+            optional overwrite / exclude globs (e.g. skip `.hwfl/runs`)
+      - [ ] `fs.move` — rename / relocate within sandbox
+      - [ ] `fs.exists` / `fs.stat` — branch without list+catch
 - [ ] Optional: mutate / next-generation loop on the compare spine
 
 ## Later (P2–P3)
@@ -52,8 +59,7 @@ Active work only. Archive completed sections to `log/archive/` weekly.
       See [spec/06-runtime.md](spec/06-runtime.md) §10.
 - [ ] Alternate `LlmProvider` (OpenAI/Anthropic SDK, etc.)
 - [ ] In-language `lib/` modules per [stdlib.md](stdlib.md)
-- [ ] `llm.chat_messages`; `fs.move` / `copy` / `mkdir`; `hwfl init` /
-      shell completions
+- [ ] `llm.chat_messages`; `hwfl init` / shell completions
 
 ## Future / nice-to-have (coding-agent capability)
 
