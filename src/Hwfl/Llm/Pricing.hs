@@ -20,7 +20,7 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString.Lazy qualified as LBS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Scientific (toRealFloat)
+import Data.Scientific (toBoundedInteger, toRealFloat)
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
@@ -80,9 +80,10 @@ tokenCostMicros (ModelPricing rates) model tin tout =
               / 1_000_000
        in Just (round (cost * 1_000_000 :: Double))
 
+-- | Exact dollars from microdollars (no cent rounding). Round only in
+-- 'formatCostUsd' / 'formatCostDollars' for display.
 microsToDollars :: Int -> Double
-microsToDollars micros =
-  fromIntegral (round (fromIntegral micros / (10000 :: Double) :: Double) :: Integer) / (100 :: Double)
+microsToDollars micros = fromIntegral micros / 1_000_000
 
 dollarsToMicros :: Double -> Int
 dollarsToMicros dollars = round (dollars * 1_000_000 :: Double)
@@ -110,8 +111,11 @@ costPair pricing model tin tout =
   case tokenCostMicros pricing model tin tout of
     Nothing -> []
     Just micros ->
-      let dollars = microsToDollars micros
-       in [Key.fromText "cost_usd" .= dollars]
+      -- Integer micros are the source of truth for aggregation; full-precision
+      -- cost_usd is kept for older readers / human JSON inspection.
+      [ Key.fromText "cost_micros" .= micros,
+        Key.fromText "cost_usd" .= microsToDollars micros
+      ]
 
 providerCloseAttrs :: ModelPricing -> Text -> ProviderResult -> Aeson.Value
 providerCloseAttrs pricing model pr =
@@ -126,12 +130,18 @@ providerRoundCloseAttrs pricing model pr =
     ]
       ++ usageCostAttrs pricing model pr.prUsage
 
-attrsCostUsd :: Value -> Maybe Double
-attrsCostUsd = \case
-  Object km -> case KM.lookup "cost_usd" km of
-    Just (Aeson.Number n) -> Just (toRealFloat n :: Double)
-    _ -> Nothing
+-- | Prefer integer @cost_micros@; fall back to @cost_usd@ (legacy rounded
+-- or full-precision dollars).
+attrsCostMicros :: Value -> Maybe Int
+attrsCostMicros = \case
+  Object km ->
+    case KM.lookup "cost_micros" km of
+      Just (Aeson.Number n)
+        | Just m <- toBoundedInteger n -> Just m
+      _ -> case KM.lookup "cost_usd" km of
+        Just (Aeson.Number n) -> Just (dollarsToMicros (toRealFloat n :: Double))
+        _ -> Nothing
   _ -> Nothing
 
-attrsCostMicros :: Value -> Maybe Int
-attrsCostMicros attrs = dollarsToMicros <$> attrsCostUsd attrs
+attrsCostUsd :: Value -> Maybe Double
+attrsCostUsd attrs = microsToDollars <$> attrsCostMicros attrs

@@ -15,7 +15,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Encoding qualified as TLE
-import Hwfl.Llm.Pricing (attrsCostUsd, formatCostDollars)
+import Hwfl.Llm.Pricing (attrsCostMicros, formatCostUsd)
 import Hwfl.Obs.Redact (redactJson)
 import Hwfl.Obs.Span (compactAttrs, spanKindText, spanStatusText)
 import Hwfl.Obs.Trace
@@ -95,14 +95,11 @@ formatSummary mMeta mSnap forest =
 
 formatForestCost :: [SpanNode] -> Text
 formatForestCost forest =
-  let total = sum (map nodeCostUsd forest)
-   in if total <= 0
-        then "$0.00"
-        else formatCostDollars total
+  formatCostUsd (sum (map nodeCostMicros forest))
 
-nodeCostUsd :: SpanNode -> Double
-nodeCostUsd n =
-  fromMaybe 0 (attrsCostUsd n.snAttrs) + sum (map nodeCostUsd n.snChildren)
+nodeCostMicros :: SpanNode -> Int
+nodeCostMicros n =
+  fromMaybe 0 (attrsCostMicros n.snAttrs) + sum (map nodeCostMicros n.snChildren)
 
 cursorSummary :: Maybe RunSnapshot -> Text
 cursorSummary = \case
@@ -120,7 +117,7 @@ formatSpanTree = concatMap (go 0)
     go depth n =
       let pad = T.replicate depth "  "
           st = maybe "open" spanStatusText n.snStatus
-          attrs = compactAttrs (omitCostUsd n.snAttrs)
+          attrs = compactAttrs (omitCostAttrs n.snAttrs)
           cost = spanCostText n.snAttrs
           attrSuffix =
             T.unwords
@@ -141,13 +138,14 @@ formatSpanTree = concatMap (go 0)
 
 spanCostText :: Aeson.Value -> Text
 spanCostText attrs =
-  case attrsCostUsd attrs of
-    Just c | c > 0 -> formatCostDollars c
+  case attrsCostMicros attrs of
+    Just m | m > 0 -> formatCostUsd m
     _ -> ""
 
-omitCostUsd :: Aeson.Value -> Aeson.Value
-omitCostUsd = \case
-  Aeson.Object km -> Aeson.Object (KM.delete "cost_usd" km)
+omitCostAttrs :: Aeson.Value -> Aeson.Value
+omitCostAttrs = \case
+  Aeson.Object km ->
+    Aeson.Object (KM.delete "cost_micros" (KM.delete "cost_usd" km))
   v -> v
 
 formatSpanLines :: [SpanRecord] -> Text

@@ -16,6 +16,9 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **Sub-cent LLM cost aggregation** — store `cost_micros` on span close;
+  sum in micros; round only in `formatCostUsd`. Fixes cheap-model runs
+  (e.g. DeepSeek) showing `cost: $0.00` after many sub-cent rounds
 - **Resume/approve project hash** — `loadExisting` walks from `rmEntry`
   for `project.json`; project runs recompute `projectHashForModules` +
   skills from that root (not entry-only `projectHashOf`). Fixes approve

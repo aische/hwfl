@@ -16,18 +16,28 @@ import Hwfl.Eval.Value (HostOpId (..), Value (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Obs.Redact (hostOpenAttrs, redactJson, redactMarker, redactValue)
+import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
-import Hwfl.Obs.Trace (SpanNode (..), buildSpanForest, newSpanState, readSpanRecords, runCostPrefix)
+import Hwfl.Obs.Trace
+  ( SpanNode (..),
+    buildSpanForest,
+    closeSpan,
+    newSpanState,
+    openSpan,
+    readSpanRecords,
+    runCostPrefix,
+  )
 import Hwfl.Parse.Expr (parseExprText)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
+    emptySkillRuntime,
     runLoadedModule,
-    emptySkillRuntime)
+  )
 import Hwfl.Runtime.Snapshot (valueToJson)
-import Hwfl.Runtime.Store (storeRunId)
+import Hwfl.Runtime.Store (openRunDir, storeRunId)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -126,6 +136,27 @@ spec = describe "observability (M6)" $ do
       st <- newSpanState
       prefix <- runCostPrefix st
       prefix `shouldBe` "$0.00 │ "
+
+    it "accumulates sub-cent cost_micros across closes for the prefix" $
+      withSystemTempDirectory "hwfl-cost-prefix" $ \dir -> do
+        store <- openRunDir dir "cost-prefix"
+        st <- newSpanState
+        let cheapAttrs =
+              object
+                [ "token_in" .= (5000 :: Int),
+                  "token_out" .= (1000 :: Int),
+                  "cost_micros" .= (980 :: Int),
+                  "cost_usd" .= (0.00098 :: Double)
+                ]
+        -- 12 × 980 micros = 11760 → displays as $0.01 (cent-per-span rounding stayed $0.00)
+        mapM_
+          ( \n -> do
+              sid <- openSpan store st ("llm." <> T.pack (show n)) SkHost (object [])
+              closeSpan store st sid SsOk cheapAttrs Nothing
+          )
+          [1 .. 12 :: Int]
+        prefix <- runCostPrefix st
+        prefix `shouldBe` "$0.01 │ "
 
   describe "polymorphic obs.span (E16)" $ do
     it "infers obs.span(name)(fun () => e) as the type of e" $ do

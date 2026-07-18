@@ -112,7 +112,8 @@ see progress — without changing language return types or snapshot grain.
 ### Semantics
 
 - Host transition stays atomic: open span → provider call (with on-chunk
-  hook) → close span with final attrs (`token_*`, `cost_usd`, …)
+  hook) → close span with final attrs (`token_*`, `cost_micros`,
+  `cost_usd`, …)
 - Partials are **not** control-flow truth; crash mid-stream re-runs the
   whole transition (existing at-least-once rule)
 - Usage / cost attribution stays on **close** attrs (providers often send
@@ -129,7 +130,8 @@ full messages in/out — without bloating the always-on span index.
 
 - **Off** unless enabled (`hwfl run --trace`, workspace policy, or
   library run option). Compare / mutate fitness stays span + cost only.
-- Spans remain thin: model, lengths, `token_*`, `cost_usd`, truncated
+- Spans remain thin: model, lengths, `token_*`, `cost_micros` /
+  `cost_usd`, truncated
   tool args. Optional `payload_ref` / join on `span_id` when capture is on.
 - Do **not** store full prompt/reply bodies in `spans.jsonl` attrs.
 
