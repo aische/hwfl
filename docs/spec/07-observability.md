@@ -6,15 +6,16 @@
 - O(n²) “rebuild full trace each step” must not return
 - Authors need **tree-shaped** “where did time/money go?”
 
-## 2. Dual channels
+## 2. Channels
 
-| Channel      | File (illustrative) | Role                             |
-| ------------ | ------------------- | -------------------------------- |
-| **Spans**    | `spans.jsonl`       | Primary UX + agent introspection |
-| **Events**   | `events.jsonl`      | Fine-grained audit / debug       |
-| **Snapshot** | `snapshot.json`     | Control-flow truth               |
+| Channel         | File (illustrative)              | Role                                      |
+| --------------- | -------------------------------- | ----------------------------------------- |
+| **Spans**       | `spans.jsonl`                    | Primary UX + agent introspection + fitness |
+| **Events**      | `events.jsonl`                   | Fine-grained audit / live LLM deltas      |
+| **Snapshot**    | `snapshot.json`                  | Control-flow truth                        |
+| **Transcripts** | `transcripts.jsonl` (planned)    | Opt-in LangSmith-style LLM payloads (§10) |
 
-Spans are nested. Events may hang off a span id.
+Spans are nested. Events and transcripts hang off a span id.
 
 ## 3. Span model
 
@@ -118,3 +119,56 @@ see progress — without changing language return types or snapshot grain.
   usage only at stream end)
 - Coalesce by time and/or character budget before append to avoid flooding
   `events.jsonl` and `--debug`
+
+## 10. Opt-in LLM transcripts (planned)
+
+**Goal:** LangSmith-style forensic traces for lab debugging and eval —
+full messages in/out — without bloating the always-on span index.
+
+### Defaults
+
+- **Off** unless enabled (`hwfl run --trace`, workspace policy, or
+  library run option). Compare / mutate fitness stays span + cost only.
+- Spans remain thin: model, lengths, `token_*`, `cost_usd`, truncated
+  tool args. Optional `payload_ref` / join on `span_id` when capture is on.
+- Do **not** store full prompt/reply bodies in `spans.jsonl` attrs.
+
+### Shape (illustrative)
+
+```text
+.hwfl/runs/<run-id>/
+  spans.jsonl
+  transcripts.jsonl    # or payloads/<span-id>.json
+```
+
+One transcript record per `llm.chat` / `llm.object` / `agent_round`
+(and optionally per `tool:*`):
+
+```text
+Transcript
+  span_id
+  kind              # llm.chat | llm.object | agent_round | tool
+  messages?         # request turns sent to the provider
+  reply?            # final assistant text / structured object
+  tool_calls?       # complete calls (not fragment streaming)
+  usage?            # token_in / token_out (mirror of close attrs)
+```
+
+### Rules
+
+- Same redaction as spans/events (`Secret`, sensitive keys, size caps /
+  truncation with optional content hash when truncated).
+- Agent rounds: prefer **request messages + model result per round**, not
+  a duplicated full history blob every round (avoid N² growth). Mid-run
+  `snapshot` history remains resume truth; transcripts are the durable
+  post-run archive.
+- Normalize on host/span **close** — do not treat streaming `events.jsonl`
+  deltas as the product archive.
+- Read path later: `meta.read_transcripts` / `hwfl show --trace`; control
+  plane joins the same records. Spans stay the tree.
+
+### Out of scope until needed
+
+- Always-on capture for every lab trial
+- Export adapters to external LangSmith/OTel SaaS (optional later)
+- Author-facing in-language stream of transcript records

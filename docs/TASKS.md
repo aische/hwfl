@@ -25,6 +25,10 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 - [ ] Optional DB-backed run-store backend (same interface; not required
       for local lab)
+- [ ] Opt-in LangSmith-style LLM transcripts — durable messages in/out
+      keyed by `span_id` (`transcripts.jsonl` or `payloads/`); spans stay
+      the thin index. CLI `--trace` / run option; redact + size caps.
+      See [spec/07-observability.md](spec/07-observability.md) §10.
 - [ ] MCP client (tool provider behind `tool(f)` / host-op story)
 - [ ] Skills phase D (optional) — `examples/skills/` writer; no hidden
       `skill.extract` host

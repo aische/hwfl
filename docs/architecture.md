@@ -96,11 +96,13 @@ Per workspace (names illustrative):
   runs/<run-id>/
     meta.json           # project hash, entry, started_at, status
     snapshot.json       # latest machine (or sequenced snapshots)
-    spans.jsonl         # structured span open/close
-    events.jsonl        # append-only audit (compat / debug)
+    spans.jsonl         # structured span open/close (thin index)
+    events.jsonl        # append-only audit / live LLM deltas
+    transcripts.jsonl   # planned: opt-in LangSmith-style payloads (§07 §10)
 ```
 
 Progress is defined by **snapshot**, not by replaying the event log.
+Spans answer topology and cost; full LLM messages are opt-in transcripts.
 
 ## Project layout (author)
 

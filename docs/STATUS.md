@@ -46,6 +46,7 @@ None.
 
 ## Deferred
 
+- Opt-in LangSmith-style LLM transcripts (span-linked payloads; §07 §10)
 - Skills phase D (optional writer example)
 - Semantic-check S4 / S6 — research only; optional static fitness later
 - Coding-agent Tier A/B (git, terminals, context pre-pass; then RAG /
