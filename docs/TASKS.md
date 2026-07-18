@@ -19,6 +19,9 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Next (P1–P2)
 
+- [x] Resume/approve recomputes `projectHashForModules` when entry is
+      under a project root (skills from that root) — required for
+      hwfl-server sync approve after confirm
 - [ ] Optional: mutate / next-generation loop on the compare spine
 
 ## Later (P2–P3)

@@ -110,7 +110,7 @@ import Hwfl.SkillCatalog
   )
 import Hwfl.Source (Diagnostic, Pos (..), mkDiagnostic, renderDiagnostics)
 import System.Directory (doesFileExist)
-import System.FilePath ((</>))
+import System.FilePath (takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
 
 data RunOptions = RunOptions
@@ -764,7 +764,9 @@ loadExisting workspace runId provider catalogPath observer = do
           Left diags ->
             pure (Left (ConfigErr ("cannot reload entry: " <> T.pack (show diags))))
           Right loaded -> do
-            let hash = projectHashOf loaded
+            -- Project runs store projectHashForModules; lone modules store
+            -- projectHashOf. Resolve the same way on resume/approve.
+            (hash, catalog, skillMods) <- resolveResumeProject meta.rmEntry loaded root
             if hash /= snap.rsProjectHash
               then pure (Left (ConfigErr "stale project: hash mismatch"))
               else do
@@ -772,7 +774,6 @@ loadExisting workspace runId provider catalogPath observer = do
                 spans <- newSpanStateWith observer
                 writeIORef spans.ssCounter snap.rsSpanCounter
                 setSpanStack spans snap.rsSpanStack
-                (catalog, skillMods) <- loadSkillRuntime root
                 pricing <- loadModelPricing catalogPath
                 ctx <-
                   mkCtx
@@ -791,6 +792,40 @@ loadExisting workspace runId provider catalogPath observer = do
                     catalogPath
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
+
+-- | Match the hash / skill tables used at start for project vs lone-module runs.
+resolveResumeProject ::
+  FilePath ->
+  LoadedModule ->
+  FilePath ->
+  IO (Text, SkillCatalog, Map QName LoadedModule)
+resolveResumeProject entryPath loaded workspaceRoot = do
+  mProjectRoot <- findProjectRoot entryPath
+  case mProjectRoot of
+    Just projectRoot -> do
+      lpE <- loadProject projectRoot
+      (catalog, skillMods) <- loadSkillRuntime projectRoot
+      let hash = case lpE of
+            Right lp -> projectHashForModules lp.lpModules
+            Left _ -> projectHashOf loaded
+      pure (hash, catalog, skillMods)
+    Nothing -> do
+      (catalog, skillMods) <- loadSkillRuntime workspaceRoot
+      pure (projectHashOf loaded, catalog, skillMods)
+
+findProjectRoot :: FilePath -> IO (Maybe FilePath)
+findProjectRoot start = go start (32 :: Int)
+  where
+    go _ 0 = pure Nothing
+    go path n = do
+      isProj <- isProjectDir path
+      if isProj
+        then pure (Just path)
+        else
+          let parent = takeDirectory path
+           in if parent == path
+                then pure Nothing
+                else go parent (n - 1)
 
 stepRun :: FilePath -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
 stepRun workspace runId provider catalogPath observer = do

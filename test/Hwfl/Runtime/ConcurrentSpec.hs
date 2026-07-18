@@ -4,6 +4,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
+import Hwfl.Driver
+  ( DriverRunRequest (..),
+    defaultDriverRunRequest,
+    driverApprove,
+    driverRun,
+  )
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Observer (noopObserver)
@@ -18,6 +24,7 @@ import Hwfl.Runtime.Run
     resumeRun,
     runLoadedModule,
     emptySkillRuntime)
+import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -282,6 +289,85 @@ spec = describe "runtime par/confirm/step (M5)" $ do
             OutcomeFailed (ConfigErr msg) _ _ ->
               T.isInfixOf "stale project" msg `shouldBe` True
             other -> expectationFailure (show other)
+
+  it "project confirm → approve (separate project vs workspace)" $
+    withSystemTempDirectory "hwfl-proj-confirm" $ \root -> do
+      let projectDir = root </> "project"
+          workspaceDir = root </> "workspace"
+          entryPath = projectDir </> "workflows" </> "confirm.md"
+      createDirectoryIfMissing True (projectDir </> "workflows")
+      createDirectoryIfMissing True workspaceDir
+      writeFile
+        (projectDir </> "project.json")
+        ( T.unpack $
+            T.unlines
+              [ "{",
+                "  \"name\": \"confirm-proj\",",
+                "  \"version\": \"0.1.0\",",
+                "  \"entrypoint\": \"workflows/confirm\"",
+                "}"
+              ]
+        )
+      writeFile entryPath (T.unpack confirmSrc)
+      let req =
+            (defaultDriverRunRequest projectDir workspaceDir mockProvider)
+              { drrRunId = Just "proj-confirm",
+                drrModelCatalog = "model-catalog.json"
+              }
+      result <- driverRun req
+      case result of
+        Right (OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _) -> do
+          approved <-
+            driverApprove
+              workspaceDir
+              "proj-confirm"
+              True
+              mockProvider
+              "model-catalog.json"
+              noopObserver
+          case approved of
+            OutcomeCompleted (VRecord [(Ident "ok", VBool True)]) _ _ -> pure ()
+            other -> expectationFailure (show other)
+        other -> expectationFailure ("expected awaiting confirm, got " <> show other)
+
+  it "project stale hash refuses approve" $
+    withSystemTempDirectory "hwfl-proj-stale" $ \root -> do
+      let projectDir = root </> "project"
+          workspaceDir = root </> "workspace"
+          entryPath = projectDir </> "workflows" </> "confirm.md"
+      createDirectoryIfMissing True (projectDir </> "workflows")
+      createDirectoryIfMissing True workspaceDir
+      writeFile
+        (projectDir </> "project.json")
+        ( T.unpack $
+            T.unlines
+              [ "{",
+                "  \"name\": \"stale-proj\",",
+                "  \"version\": \"0.1.0\",",
+                "  \"entrypoint\": \"workflows/confirm\"",
+                "}"
+              ]
+        )
+      writeFile entryPath (T.unpack confirmSrc)
+      let req =
+            (defaultDriverRunRequest projectDir workspaceDir mockProvider)
+              { drrRunId = Just "proj-stale",
+                drrModelCatalog = "model-catalog.json"
+              }
+      _ <- driverRun req
+      writeFile entryPath (T.unpack (T.replace "Proceed?" "Changed?" confirmSrc))
+      approved <-
+        driverApprove
+          workspaceDir
+          "proj-stale"
+          True
+          mockProvider
+          "model-catalog.json"
+          noopObserver
+      case approved of
+        OutcomeFailed (ConfigErr msg) _ _ ->
+          T.isInfixOf "stale project" msg `shouldBe` True
+        other -> expectationFailure (show other)
 
 isRight :: Either a b -> Bool
 isRight = \case

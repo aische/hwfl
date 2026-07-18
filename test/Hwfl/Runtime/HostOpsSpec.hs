@@ -4,6 +4,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
+import Hwfl.Driver
+  ( DriverRunRequest (..),
+    defaultDriverRunRequest,
+    driverApprove,
+    driverRun,
+  )
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Observer (noopObserver)
@@ -14,7 +20,6 @@ import Hwfl.Runtime.Machine (MachineStatus (..), PauseReason (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
-    approveRun,
     runLoadedModule,
     emptySkillRuntime)
 import Hwfl.Runtime.Workspace
@@ -97,17 +102,6 @@ allowEcho =
         execTimeoutMs = Just 5000,
         execMaxOutputBytes = Just 65536,
         execConfirm = False
-      }
-
-confirmEcho :: Maybe ExecPolicy
-confirmEcho =
-  Just
-    ExecPolicy
-      { execAllow = ["echo"],
-        execEnv = ["PATH"],
-        execTimeoutMs = Just 5000,
-        execMaxOutputBytes = Just 65536,
-        execConfirm = True
       }
 
 fsSliceRemoveSrc :: Text
@@ -338,36 +332,25 @@ spec = describe "host ops P0 (exec + fs)" $ do
           )
         createDirectoryIfMissing True (dir </> "workflows")
         writeFile (dir </> "workflows" </> "echo.md") (T.unpack echoSrc)
-        case loadModuleText (dir </> "workflows" </> "echo.md") echoSrc of
-          Left diags -> expectationFailure (show diags)
-          Right loaded -> do
-            let opts =
-                  RunOptions
-                    { roWorkspace = dir,
-                      roProvider = mockProvider,
-                      roInputs = [],
-                      roRunId = Just "exec-confirm",
-                      roEntry = dir </> "workflows" </> "echo.md",
-                      roMode = StepRun,
-                      roProjectHash = Nothing,
-                      roExec = confirmEcho,
-                    roObserver = noopObserver,
-                    roCost = False,
-                    roModelCatalog = "model-catalog.json",
-                    roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
-                    }
-            outcome <- runLoadedModule opts loaded
-            case outcome of
-              OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _ -> do
-                approved <- approveRun dir "exec-confirm" True mockProvider "model-catalog.json" noopObserver
-                case approved of
-                  OutcomeCompleted val _ _ ->
-                    case val of
-                      VRecord fs -> lookup (Ident "code") fs `shouldBe` Just (VInt 0)
-                      other -> expectationFailure (show other)
+        -- Must start as a project run (projectHashForModules); approve
+        -- re-resolves the project root from the entry path.
+        let req =
+              (defaultDriverRunRequest dir dir mockProvider)
+                { drrRunId = Just "exec-confirm",
+                  drrModelCatalog = "model-catalog.json"
+                }
+        result <- driverRun req
+        case result of
+          Right (OutcomePaused (MsPaused (PauseAwaitingConfirm _)) _ _ _) -> do
+            approved <-
+              driverApprove dir "exec-confirm" True mockProvider "model-catalog.json" noopObserver
+            case approved of
+              OutcomeCompleted val _ _ ->
+                case val of
+                  VRecord fs -> lookup (Ident "code") fs `shouldBe` Just (VInt 0)
                   other -> expectationFailure (show other)
               other -> expectationFailure (show other)
+          other -> expectationFailure (show other)
 
   describe "fs.list / fs.edit / fs.grep" $ do
     it "runs through the machine" $

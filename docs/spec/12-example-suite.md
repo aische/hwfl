@@ -135,6 +135,12 @@ obs.span("cluster", fun () => e)   -- two-arg / named name+body
 
 Change module source; resume refuses with exit code 4.
 
+Lone-module runs pin `projectHashOf`; project runs pin
+`projectHashForModules`. Resume walks from `rmEntry` for `project.json`
+and recomputes the matching hash (skills from project root when found).
+Covered by ConcurrentSpec (lone + project confirm/approve + project
+stale).
+
 ## E19 — Lib-only list helpers **P**
 
 `lib/list.unique_by` written in hwfl replaces hwfi `builtin/list-unique-by`.

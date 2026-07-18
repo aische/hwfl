@@ -67,14 +67,25 @@ snapshot_format: 1
 run_id, seq, machine_json, at
 ```
 
-On `continue` / `resume`:
+On `continue` / `resume` / `approve`:
 
-1. Load project; verify `project_hash`
-2. Load snapshot
-3. Schedule next transition
+1. Reload entry module from `meta.rmEntry`
+2. Recompute `project_hash` the same way as start:
+   - **Project run:** walk parents of the entry path for `project.json`
+     (max 32); hash = `projectHashForModules` over `loadProject`; skill
+     catalog from that project root (so control-plane layouts with a
+     separate project dir vs workspace tip still resolve).
+   - **Lone module** (no project root): hash = `projectHashOf` entry;
+     skills from the workspace root.
+3. Refuse if hash ≠ snapshot `rsProjectHash` (stale project)
+4. Restore machine from snapshot; schedule next transition
 
 Stale project hash ⇒ refuse (or require new run). No silent Merkle
 auto-skip of work (hwfi abandoned cache-as-resume).
+
+**Pinning rule:** `runTargetProject` stores `projectHashForModules`;
+`runTargetModule` stores `projectHashOf`. Resume must not recompute the
+entry-only hash for a project-shaped run — that always mismatches.
 
 ## 5. `par` policy
 

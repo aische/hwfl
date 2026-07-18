@@ -5,7 +5,7 @@ Last updated: 2026-07-18
 ## Current focus
 
 Optional mutate / next-generation loop on the compare spine.
-Observer hook shipped.
+Resume/approve project-hash fix shipped (hwfl-server Phase 1).
 
 ## North star
 
@@ -16,23 +16,16 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
-- **Observer hook** — `Hwfl.Obs.Observer`: live `ObsSpanOpen` /
-  `ObsSpanClose` / `ObsPaused` / `ObsFinished` / `ObsProgress`; driver
-  `drrObserver`; CLI `--debug` = `stderrDebugObserver`; meta status
-  updated on pause/finish; `ObserverSpec`
-- **Local compare lab** — `examples/compare`: materialize lean/rich genomes
-  + per-trial workspaces, rank by feasibility then fewer `llm.*` spans;
-  `CompareSpec` (mock; winner = lean)
-- **`meta.read_snapshot`** — redacted run snapshot Json via Store +
-  `redactJson` (never raw cleartext `snapshot.json`)
-- **`meta.list_runs` / `meta.read_spans`** — workspace-relative run-store
-  reads; recoverable `{ ok, …, error }`; optional span filters
-- **`meta.invoke`** — nested `runTarget` / driverRun; workspace-relative
-  `project` + `workspace` (+ optional `inputs`)
-- Shared **`runTarget`** in `Hwfl.Runtime.Run` (Driver thinned to wrap it)
-- Run-store interface + library driver façade
-- North-star docs: lab + library façade; Servant out of this repo
-- **`--cost`**; semantic-check S1–S3 + S5; `fs.patch`; streaming spans;
+- **Resume/approve project hash** — `loadExisting` walks from `rmEntry`
+  for `project.json`; project runs recompute `projectHashForModules` +
+  skills from that root (not entry-only `projectHashOf`). Fixes approve
+  after `awaiting_confirm` for control-plane project vs workspace layout
+- **Observer hook** — `Hwfl.Obs.Observer`: live span / pause / finish;
+  driver `drrObserver`; CLI `--debug` = `stderrDebugObserver`
+- **Local compare lab** — `examples/compare`; `CompareSpec`
+- **`meta.read_snapshot` / `meta.list_runs` / `meta.read_spans` /
+  `meta.invoke`**; shared `runTarget`; run-store interface
+- North-star docs; `--cost`; semantic-check S1–S3 + S5; `fs.patch`;
   skills A–C; coding-agent; P0; M0–M9
 
 ## Blockers
