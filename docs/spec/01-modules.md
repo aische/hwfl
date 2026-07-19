@@ -77,6 +77,7 @@ Common fields:
 | `outputs` | for entry | Record of `name: Type`                    |
 | `effects` | no        | Allowed effect set (subset of lattice)    |
 | `imports` | no        | List of qnames or `hwfl/...` stdlib paths |
+| `examples`| no        | Documented sample run inputs (tooling / UI; not a runtime binding) |
 
 Under `skills/`, missing `skill:` defaults to **callable**. Nested fields:
 
@@ -90,6 +91,20 @@ Under `skills/`, missing `skill:` defaults to **callable**. Nested fields:
 typed `inputs`/`outputs`. **Callable** skills are ordinary typed modules
 (same check path as `tools/`). Full behaviour: [skills-plan.md](../skills-plan.md).
 
+`examples` is **authoring / tooling metadata** (control-plane Inputs box,
+docs). Omit, `null`, or `[]` means none. Each item:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `name` | no | Non-empty string label for UI / `--example` later |
+| `inputs` | yes | YAML mapping → JSON object; keys must match frontmatter `inputs` |
+
+At `hwfl check`, when `examples` is non-empty, each entry’s `inputs` keys
+must match frontmatter `inputs` exactly (missing or unknown keys are
+errors). Values are not type-checked against `TypeExpr` yet. Keep samples
+small and free of secrets. Do **not** put example JSON in a prose `##`
+section (those are `@section` prompt bindings).
+
 Example:
 
 ```yaml
@@ -102,6 +117,10 @@ outputs:
 effects: [Read, Net]
 imports:
     - lib/text
+examples:
+  - name: readme
+    inputs:
+      path: README.md
 ---
 ```
 

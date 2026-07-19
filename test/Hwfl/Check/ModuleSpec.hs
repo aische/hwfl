@@ -5,7 +5,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Decl (ModuleBody)
 import Hwfl.Ast.Expr (Expr)
-import Hwfl.Ast.Name (TypeName (..))
+import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
 import Hwfl.Check.Error (CheckError (..))
 import Hwfl.Check.Infer (infer)
@@ -171,6 +171,128 @@ spec = describe "type checker" $ do
                                 Left TypeMismatch {} -> True
                                 _ -> False
                             )
+
+    it "accepts examples whose keys match inputs" $ do
+      let src =
+            T.unlines
+              [ "---",
+                "name: workflows/summarise",
+                "inputs:",
+                "  path: FileRef",
+                "outputs:",
+                "  summary: String",
+                "effects: [Read, Net]",
+                "examples:",
+                "  - name: readme",
+                "    inputs:",
+                "      path: README.md",
+                "---",
+                "",
+                "## system",
+                "",
+                "You are a concise summariser.",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun main(inputs): { summary: String } =",
+                "  let contents = fs.read(inputs.path)",
+                "  let summary = llm.chat(",
+                "    system = @system,",
+                "    prompt = $\"Summarise:\\n\\n{contents.text}\",",
+                "    model = \"gpt-5\"",
+                "  )",
+                "  { summary }",
+                "```"
+              ]
+      case loadModuleText "summarise.md" src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> checkLoadedModule loaded `shouldSatisfy` isRight
+
+    it "rejects examples with missing or unknown input keys" $ do
+      let src =
+            T.unlines
+              [ "---",
+                "name: workflows/summarise",
+                "inputs:",
+                "  path: FileRef",
+                "outputs:",
+                "  summary: String",
+                "effects: [Read, Net]",
+                "examples:",
+                "  - name: bad",
+                "    inputs:",
+                "      other: x",
+                "---",
+                "",
+                "## system",
+                "",
+                "Hi.",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun main(inputs): { summary: String } =",
+                "  let contents = fs.read(inputs.path)",
+                "  let summary = llm.chat(",
+                "    system = @system,",
+                "    prompt = $\"x {contents.text}\",",
+                "    model = \"gpt-5\"",
+                "  )",
+                "  { summary }",
+                "```"
+              ]
+      case loadModuleText "summarise.md" src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded ->
+          checkLoadedModule loaded
+            `shouldBe` Left
+              ( ExampleInputsMismatch
+                  (Just "bad")
+                  [Ident "path"]
+                  [Ident "other"]
+              )
+
+    it "rejects duplicate example names" $ do
+      let src =
+            T.unlines
+              [ "---",
+                "name: workflows/summarise",
+                "inputs:",
+                "  path: FileRef",
+                "outputs:",
+                "  summary: String",
+                "effects: [Read, Net]",
+                "examples:",
+                "  - name: dup",
+                "    inputs:",
+                "      path: a.md",
+                "  - name: dup",
+                "    inputs:",
+                "      path: b.md",
+                "---",
+                "",
+                "## system",
+                "",
+                "Hi.",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun main(inputs): { summary: String } =",
+                "  let contents = fs.read(inputs.path)",
+                "  let summary = llm.chat(",
+                "    system = @system,",
+                "    prompt = $\"x {contents.text}\",",
+                "    model = \"gpt-5\"",
+                "  )",
+                "  { summary }",
+                "```"
+              ]
+      case loadModuleText "summarise.md" src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded ->
+          checkLoadedModule loaded `shouldBe` Left (ExampleDuplicateName "dup")
 
   describe "effects (M3)" $ do
     it "E12 rejects effects: [Read] with llm.chat" $ do

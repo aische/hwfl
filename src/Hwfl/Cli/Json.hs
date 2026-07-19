@@ -191,6 +191,8 @@ checkErrorKind = \case
   CE.ImportNotFound {} -> "ImportNotFound"
   CE.QNameMismatch {} -> "QNameMismatch"
   CE.ExecNotConfigured -> "ExecNotConfigured"
+  CE.ExampleInputsMismatch {} -> "ExampleInputsMismatch"
+  CE.ExampleDuplicateName {} -> "ExampleDuplicateName"
   CE.Unsupported {} -> "Unsupported"
 
 runtimeErrorKind :: RuntimeError -> Text

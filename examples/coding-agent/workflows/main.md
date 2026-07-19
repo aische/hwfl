@@ -11,6 +11,11 @@ outputs:
     verify_exit: Int
     rounds: Int
 effects: [Read, Write, Net, Exec, Meta]
+examples:
+  - name: todo-vite
+    inputs:
+      model: deepseek4flash
+      prompt: write a typescript/vite/react project with a todo app
 ---
 
 ## system

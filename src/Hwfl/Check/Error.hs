@@ -5,6 +5,7 @@ module Hwfl.Check.Error
   )
 where
 
+import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -42,6 +43,9 @@ data CheckError
   | ImportNotFound Text
   | QNameMismatch Text Text
   | ExecNotConfigured
+  | -- | Frontmatter @examples@ entry keys do not match @inputs@ (missing / unknown).
+    ExampleInputsMismatch (Maybe Text) [Ident] [Ident]
+  | ExampleDuplicateName Text
   | Unsupported Text
   deriving stock (Eq, Show)
 
@@ -96,6 +100,23 @@ renderCheckError = \case
       <> path
   ExecNotConfigured ->
     "Exec effect used but project.json exec.allow is absent or empty"
+  ExampleInputsMismatch mName missing unknown ->
+    let label = maybe "examples[]" (\n -> "examples[" <> n <> "]") mName
+        parts =
+          catMaybes
+            [ if null missing
+                then Nothing
+                else Just ("missing keys: " <> T.intercalate ", " (map unIdent missing)),
+              if null unknown
+                then Nothing
+                else Just ("unknown keys: " <> T.intercalate ", " (map unIdent unknown))
+            ]
+     in label
+          <> " inputs do not match frontmatter inputs ("
+          <> T.intercalate "; " parts
+          <> ")"
+  ExampleDuplicateName n ->
+    "duplicate examples name: " <> n
   Unsupported msg -> "unsupported in type checker: " <> msg
 
 renderEffSet :: Set Effect -> Text

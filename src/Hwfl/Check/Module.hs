@@ -11,15 +11,18 @@ module Hwfl.Check.Module
 where
 
 import Control.Applicative ((<|>))
+import Data.Aeson.Key qualified as K
+import Data.Aeson.KeyMap qualified as KM
+import Data.List (nub, (\\))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Expr (Param (..))
-import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..))
+import Hwfl.Ast.Module (ExampleInputs (..), Frontmatter (..), LoadedModule (..))
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
 import Hwfl.Check.Effects (EffSet, analyzeModuleEffects, checkEffectsCeiling)
@@ -98,6 +101,7 @@ checkLoadedModule loaded = do
   body <- elaborateMainIO fm body0
   result <- checkModuleBodyInContext ctx body
   checkMainIO fm body result.crEnv
+  checkExamples fm
   let ceiling_ = Set.fromList (fromMaybe [] fm.fmEffects)
   checkEffectsCeiling ceiling_ True result.crEffects
   pure result
@@ -115,9 +119,39 @@ checkLoadedModuleInContext cfg execAllowed importExports loaded = do
   body <- elaborateMainIO fm body0
   result <- checkModuleBodyInContext ctx body
   checkMainIO fm body result.crEnv
+  checkExamples fm
   let ceiling_ = effectiveEffects cfg fm
   checkEffectsCeiling ceiling_ execAllowed result.crEffects
   pure result
+
+-- | When @examples@ is present, each entry's input keys must match frontmatter
+-- @inputs@ exactly (values remain untyped for now).
+checkExamples :: Frontmatter -> Either CheckError ()
+checkExamples fm = do
+  checkDuplicateExampleNames fm.fmExamples
+  mapM_ (checkExampleKeys (map fst fm.fmInputs)) fm.fmExamples
+
+checkDuplicateExampleNames :: [ExampleInputs] -> Either CheckError ()
+checkDuplicateExampleNames exs =
+  case names \\ nub names of
+    n : _ -> Left (ExampleDuplicateName n)
+    [] -> pure ()
+  where
+    names = mapMaybe eiName exs
+
+checkExampleKeys :: [Ident] -> ExampleInputs -> Either CheckError ()
+checkExampleKeys declared ex =
+  let declaredSet = Set.fromList declared
+      exampleSet =
+        Set.fromList
+          [ Ident (K.toText k)
+            | k <- KM.keys ex.eiInputs
+          ]
+      missing = Set.toAscList (declaredSet Set.\\ exampleSet)
+      unknown = Set.toAscList (exampleSet Set.\\ declaredSet)
+   in if null missing && null unknown
+        then pure ()
+        else Left (ExampleInputsMismatch ex.eiName missing unknown)
 
 effectiveEffects :: ProjectConfig -> Frontmatter -> Set Effect
 effectiveEffects cfg fm =

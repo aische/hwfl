@@ -11,6 +11,10 @@ inputs:
 outputs:
     summary: String
 effects: [Read, Net]
+examples:
+  - name: note
+    inputs:
+      path: note.md
 ---
 
 ## system

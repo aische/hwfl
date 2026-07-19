@@ -9,11 +9,12 @@ import Data.Aeson (Object, Value (..))
 import Data.Aeson.Key qualified as K
 import Data.Aeson.KeyMap qualified as KM
 import Data.Foldable (toList)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)
 import Data.Yaml qualified as Yaml
-import Hwfl.Ast.Module (Frontmatter (..))
+import Hwfl.Ast.Module (ExampleInputs (..), Frontmatter (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), qnameFromParts)
 import Hwfl.Ast.Skill
   ( SkillKind (..),
@@ -37,6 +38,7 @@ parseFrontmatter path yamlText = do
   fmEffects <- parseEffects path obj
   fmImports <- parseImports path obj
   fmSkill <- parseOptionalSkillBlock path obj
+  fmExamples <- parseExamples path obj
   pure
     Frontmatter
       { fmName,
@@ -45,7 +47,8 @@ parseFrontmatter path yamlText = do
         fmOutputs,
         fmEffects,
         fmImports,
-        fmSkill
+        fmSkill,
+        fmExamples
       }
 
 -- | Parse nested @skill:@ when present; missing key → 'Nothing'.
@@ -154,6 +157,54 @@ parseImport :: FilePath -> Value -> Either [Diagnostic] QName
 parseImport path = \case
   String s -> Right (qnameFromText s)
   _ -> Left [mkDiagnostic path (Pos 1 1) "import entries must be strings"]
+
+-- | Optional @examples@ list: authoring samples for run inputs (tooling / UI).
+parseExamples :: FilePath -> Object -> Either [Diagnostic] [ExampleInputs]
+parseExamples path o = case KM.lookup (K.fromText "examples") o of
+  Nothing -> Right []
+  Just Null -> Right []
+  Just (Array arr) -> traverse (parseExample path) (toList arr)
+  Just _ -> Left [mkDiagnostic path (Pos 1 1) "examples must be a list"]
+
+parseExample :: FilePath -> Value -> Either [Diagnostic] ExampleInputs
+parseExample path = \case
+  Object obj -> do
+    let allowed = Set.fromList ["name", "inputs"]
+        unknown =
+          [ K.toText k
+            | k <- KM.keys obj,
+              K.toText k `Set.notMember` allowed
+          ]
+    case unknown of
+      [] -> pure ()
+      ks ->
+        Left
+          [ mkDiagnostic
+              path
+              (Pos 1 1)
+              ("examples item has unknown fields: " <> T.intercalate ", " ks)
+          ]
+    eiName <- parseExampleName path obj
+    eiInputs <- parseExampleInputs path obj
+    pure ExampleInputs {eiName, eiInputs}
+  _ -> Left [mkDiagnostic path (Pos 1 1) "examples items must be mappings"]
+
+parseExampleName :: FilePath -> Object -> Either [Diagnostic] (Maybe Text)
+parseExampleName path o = case KM.lookup (K.fromText "name") o of
+  Nothing -> Right Nothing
+  Just Null -> Right Nothing
+  Just (String s)
+    | T.null (T.strip s) ->
+        Left [mkDiagnostic path (Pos 1 1) "examples[].name must be a non-empty string"]
+    | otherwise -> Right (Just s)
+  Just _ -> Left [mkDiagnostic path (Pos 1 1) "examples[].name must be a string"]
+
+parseExampleInputs :: FilePath -> Object -> Either [Diagnostic] Object
+parseExampleInputs path o = case KM.lookup (K.fromText "inputs") o of
+  Nothing -> Left [mkDiagnostic path (Pos 1 1) "examples[].inputs is required"]
+  Just Null -> Left [mkDiagnostic path (Pos 1 1) "examples[].inputs must be a mapping"]
+  Just (Object fields) -> Right fields
+  Just _ -> Left [mkDiagnostic path (Pos 1 1) "examples[].inputs must be a mapping"]
 
 qnameFromText :: Text -> QName
 qnameFromText t = qnameFromParts (T.splitOn "/" t)

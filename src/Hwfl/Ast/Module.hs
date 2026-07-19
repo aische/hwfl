@@ -1,17 +1,27 @@
 -- | Loaded markdown module surface (L1), before/with kernel AST.
 module Hwfl.Ast.Module
   ( Frontmatter (..),
+    ExampleInputs (..),
     Section (..),
     SchemaDoc (..),
     LoadedModule (..),
   )
 where
 
+import Data.Aeson (Object)
 import Data.Text (Text)
 import Hwfl.Ast.Decl (ModuleBody)
 import Hwfl.Ast.Name (Ident, QName, Slug, TypeName)
 import Hwfl.Ast.Skill (SkillMeta)
 import Hwfl.Ast.Type (Effect, TypeExpr)
+
+-- | Authoring / tooling sample run inputs (frontmatter @examples@).
+-- Not a runtime binding; values are JSON-shaped (untyped vs TypeExpr for now).
+data ExampleInputs = ExampleInputs
+  { eiName :: Maybe Text,
+    eiInputs :: Object
+  }
+  deriving stock (Eq, Show)
 
 data Frontmatter = Frontmatter
   { fmName :: QName,
@@ -21,7 +31,9 @@ data Frontmatter = Frontmatter
     fmEffects :: Maybe [Effect],
     fmImports :: [QName],
     -- | Nested @skill:@ block when present (skills-plan §4.1).
-    fmSkill :: Maybe SkillMeta
+    fmSkill :: Maybe SkillMeta,
+    -- | Optional documented example run inputs for tooling / UI.
+    fmExamples :: [ExampleInputs]
   }
   deriving stock (Eq, Show)
 

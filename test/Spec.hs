@@ -13,6 +13,7 @@ import Hwfl.Obs.SpanSpec
 import Hwfl.Obs.StreamSpec
 import Hwfl.Obs.ObserverSpec
 import Hwfl.Parse.ExprSpec
+import Hwfl.Parse.FrontmatterSpec
 import Hwfl.Parse.LoadSpec
 import Hwfl.Parse.ModuleSpec
 import Hwfl.Parse.SectionSpec
@@ -42,6 +43,7 @@ main = hspec $ do
   Hwfl.Parse.ExprSpec.spec
   Hwfl.Parse.ModuleSpec.spec
   Hwfl.Parse.SectionSpec.spec
+  Hwfl.Parse.FrontmatterSpec.spec
   Hwfl.Parse.LoadSpec.spec
   Hwfl.Ast.PrettySpec.spec
   Hwfl.Eval.PureSpec.spec

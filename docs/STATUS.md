@@ -5,7 +5,7 @@ Last updated: 2026-07-19
 ## Current focus
 
 Optional mutate / next-generation loop on the compare spine.
-Deterministic FS tree ops shipped.
+Frontmatter `examples` for tooling / control-plane UI shipped.
 
 ## North star
 
@@ -16,6 +16,8 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **Frontmatter `examples`** — optional sample run inputs on modules;
+  parse + key-set check; summarise dogfood; tooling metadata only
 - **Deterministic FS tree ops** — `fs.mkdir`, `fs.copy` (recursive +
   optional `overwrite` / `exclude` prefixes), `fs.move`, `fs.exists`,
   `fs.stat`; compare lab materialize uses `fs.copy`
@@ -50,6 +52,7 @@ None.
 - Optional DB-backed run-store backend (same interface; not required yet)
 - Same-project module invoke sugar (`FrInvoke` / E11) — separate from
   lab `meta.invoke`
+- Typed validation of example values vs `TypeExpr`; CLI `--example`
 
 ## Open naming
 
