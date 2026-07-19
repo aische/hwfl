@@ -15,6 +15,7 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **`examples/promote.md`** — confirm gate demo (approve/deny → Bool branch)
 - **Type/parse error locations** — located `Expr`/`Decl`; fence-absolute
   `line:col` on check errors; JSON `line`/`column`; `meta.check_module`
   messages include positions
