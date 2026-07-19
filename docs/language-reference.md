@@ -1,7 +1,6 @@
 # Language reference
 
-One-card overview of the hwfl kernel surface. Behaviour lives in code +
-`docs/spec/`; this card is for quick lookup.
+One-card overview of the hwfl kernel surface.
 
 ## Keywords
 
@@ -150,7 +149,7 @@ secrets. Missing run / snapshot → `ok = false`.
 `tags`, `checked`, `agent_eligible`). Inside an agent, `load` injects
 instruction context or expands tools; outside, instruction returns `content`.
 List both ops in `tools = […]` when needed — no auto-injection. Budgets:
-optional `project.json` `skills` stanza. See [skills-plan.md](skills-plan.md).
+optional `project.json` `skills` stanza.
 
 ## Control sugar
 
@@ -163,9 +162,9 @@ confirm { title = …, detail = … }
 `confirm` / `human.confirm` inside `par` freezes the pool.
 
 **Runtime note:** `par(max = N)` caps active branches; result order
-matches input order. The M5 driver runs one branch transition at a time
-(cooperative). Overlapping blocking host IO across branches is a future
-nice-to-have ([spec/06-runtime.md](spec/06-runtime.md) §10).
+matches input order. The runtime steps one branch transition at a time
+(cooperative). Overlapping blocking host IO across branches is not yet
+supported.
 
 ## Effects
 

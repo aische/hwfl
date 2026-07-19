@@ -15,7 +15,7 @@ CLI).
 | `lib/string`                | split, trim, contains, replace                                                    |
 | `lib/json`                  | parse/print helpers over `Json`                                                   |
 | `lib/option` / `lib/result` | combinators                                                                       |
-| `lib/text`                  | metrics, similarity — **v0**: pure prelude `text.*` (M8); later migrate to module |
+| `lib/text`                  | metrics, similarity — today: pure prelude `text.*`; later migrate to module |
 
 Pure prelude also exposes `list.length` / `list.concat` and `md.sections` so
 authors can write recursive list helpers before cons patterns land.

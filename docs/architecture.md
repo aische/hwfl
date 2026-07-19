@@ -67,7 +67,7 @@ All side effects go through **host ops** registered in the runtime:
 | Process     | `exec.run`                                            |
 | Human       | `human.confirm`                                       |
 | Meta        | `meta.eval_module`, `meta.list_runs`, `obs.log`       |
-| Concurrency | `par` / `join` (runtime constructs, not user threads; M5 pool is cooperative — see [spec/06-runtime.md](spec/06-runtime.md) §10) |
+| Concurrency | `par` / `join` (runtime constructs, not user threads; cooperative pool today) |
 
 Host ops:
 
@@ -98,7 +98,7 @@ Per workspace (names illustrative):
     snapshot.json       # latest machine (or sequenced snapshots)
     spans.jsonl         # structured span open/close (thin index)
     events.jsonl        # append-only audit / live LLM deltas
-    transcripts.jsonl   # planned: opt-in LangSmith-style payloads (§07 §10)
+    transcripts.jsonl   # planned: opt-in LangSmith-style payloads
 ```
 
 Progress is defined by **snapshot**, not by replaying the event log.
@@ -112,7 +112,7 @@ model-catalog.json      # models ↔ providers (provider-agnostic config)
 .env                    # API keys (host only; never in ctx)
 workflows/*.md
 tools/*.md              # optional libraries / callable modules
-skills/*.md             # agent skills (callable / instruction; see skills-plan.md)
+skills/*.md             # agent skills (callable / instruction)
 types/*.md              # shared type aliases (optional; or in-language types)
 lib/*.md                # pure/effectful libraries
 ```
@@ -181,4 +181,4 @@ the task truly is “edit the project in place.”
 | `confirm`                      | L3 host / Human effect | Freezes `par` pool        |
 | `try` / `catch` or `Result`    | L2 (+ catch frames)    | Catchable host errors     |
 | Agent tool loop                | L3 state machine       | Like hwfi agent `Current` |
-| Skills discover / load         | L3 host + agent state  | [skills-plan.md](skills-plan.md) |
+| Skills discover / load         | L3 host + agent state  | Progressive disclosure via `skill.*` |

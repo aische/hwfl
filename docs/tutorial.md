@@ -234,8 +234,6 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | `examples/skills` | Minimal `skill.discover` / `skill.load` demo |
 | `examples/compare` | Lab: materialize candidates, invoke, rank by spans |
 | `examples/semantic-check` | Multi-layer review workflow |
-| [skills-plan.md](skills-plan.md) | Skills design, acceptance, phase D |
-| `docs/spec/09-cli.md` | Normative CLI surface |
 
 The coding-agent lists `skill.discover` / `skill.load` explicitly and loads
 stack instruction skills (python / react / haskell / rust) mid-loop.

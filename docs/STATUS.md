@@ -16,21 +16,16 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
-- **Root README** — overview + coding-agent quick start; links into
-  `docs/` and `examples/coding-agent`
-- **Frontmatter `examples`** — optional sample run inputs on modules;
-  parse + key-set check; summarise dogfood; tooling metadata only
-- **Deterministic FS tree ops** — `fs.mkdir`, `fs.copy` (recursive +
-  optional `overwrite` / `exclude` prefixes), `fs.move`, `fs.exists`,
-  `fs.stat`; compare lab materialize uses `fs.copy`
-- **Sub-cent LLM cost aggregation** — store `cost_micros` on span close;
-  sum in micros; round only in `formatCostUsd`
-- **Resume/approve project hash** — project runs recompute
-  `projectHashForModules` + skills from project root
-- **Observer hook** — `Hwfl.Obs.Observer`; CLI `--debug` =
-  `stderrDebugObserver`
-- Local compare lab; `meta.*` run-store ops; north-star docs; `--cost`;
-  semantic-check S1–S3 + S5; `fs.patch`; skills A–C; coding-agent; P0
+- **Author-doc hygiene** — strip milestone / plan / task-ID noise from
+  language-reference, tutorial, idea, architecture, stdlib; leave
+  STATUS / TASKS / plans / specs as the scaffolding layer
+- **Root README** — overview + coding-agent quick start
+- **Frontmatter `examples`** — sample run inputs; tooling metadata only
+- **Deterministic FS tree ops** — `fs.mkdir` / `copy` / `move` / `exists`
+  / `stat`; compare lab materialize uses `fs.copy`
+- **Sub-cent LLM cost** · resume project hash · Observer `--debug`
+- Local compare lab; `meta.*`; `--cost`; semantic-check / skills /
+  coding-agent host gaps
 
 ## Blockers
 

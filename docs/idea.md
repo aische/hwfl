@@ -47,9 +47,8 @@ We want language-level ergonomics **and** document-shaped authoring.
 4. **Durable execution** — stack/frame interpreter; checkpoints at host-op
    boundaries; crash/abort resume; `--step` / confirm gates.
 5. **Structured concurrency** — bounded `par` with cooperative freeze on
-   human confirm (policy proven useful in hwfi). M5 ships a cooperative
-   pool; overlapping host IO across branches is deferred
-   ([spec/06-runtime.md](spec/06-runtime.md) §10).
+   human confirm (policy proven useful in hwfi). The pool is cooperative
+   today; overlapping host IO across branches is deferred.
 6. **Observability** — span trees + append-only audit events; better
    “what happened / where are we” than a flat event soup.
 7. **Static check before run** — project graph, signatures, effects, and
@@ -62,12 +61,11 @@ We want language-level ergonomics **and** document-shaped authoring.
    iterate; evolution logic prefers hwfl modules over host growth.
 10. **Dogfood semantic analysis** — use the language to analyse its own
     projects (prompts, refs, coherence) without inventing a second DSL.
-    Research track; not on the critical path (see
-    [semantic-check-plan.md](semantic-check-plan.md)).
+    Research track; not on the critical path.
 
 ## Non-goals (this repo)
 
-- GUI / IDE product shell (Tier C)
+- GUI / IDE product shell
 - Distributed / multi-tenant runtime, auth, job queues, chat UX
 - Servant (or any HTTP API) **in this repository** — belongs in a separate
   control-plane app that depends on the hwfl library
@@ -95,19 +93,18 @@ confirm, tools/skills/trace introspection. It failed as a _general_
 language (expression sub-language too weak; logic → micro-tools).
 
 **Reuse ideas and machine shape from hwfi; do not reuse the step DSL as
-the computation substrate.** See [hwfi-reference.md](hwfi-reference.md).
-Skills (progressive disclosure) ship as `skills/` + `skill.discover` /
-`skill.load` — see [skills-plan.md](skills-plan.md).
+the computation substrate.** Skills (progressive disclosure) ship as
+`skills/` + `skill.discover` / `skill.load`.
 
 ## Success intuition
 
 An author (human or agent) can write a non-trivial multi-step agent
 pipeline — including parallelism, human gates, and structured LLM JSON —
 in a handful of markdown modules, resume after crash mid-LLM-call, and
-inspect a span tree of what ran. **M8 showed this:** hwfi’s
-`semantic-check` (~74 tool files) collapsed to **one** hwfl module
-(`examples/semantic-check`) with the same layered review policy — proof
-the GP language replaces micro-tool fan-out.
+inspect a span tree of what ran. Proof point: hwfi’s `semantic-check`
+(~74 tool files) collapsed to **one** hwfl module
+(`examples/semantic-check`) with the same layered review policy — the GP
+language replaces micro-tool fan-out.
 
 **Lab intuition:** a parent workflow (or thin driver) can spawn N candidate
 projects in temp dirs, check/run each against a shared task fixture,
