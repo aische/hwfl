@@ -16,11 +16,12 @@ import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Eval (StepMode (..))
-import Hwfl.Runtime.Machine (MachineStatus (..), PauseReason (..))
+import Hwfl.Runtime.Machine (ChoiceRequest (..), MachineStatus (..), PauseReason (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     approveRun,
+    chooseRun,
     resumeRun,
     runLoadedModule,
     emptySkillRuntime)
@@ -75,6 +76,30 @@ confirmSrc =
       "fun main(_): { ok: Bool } =",
       "  let ok = confirm { title = \"Proceed?\", detail = \"demo\" }",
       "  { ok }",
+      "```"
+    ]
+
+choiceSrc :: Text
+choiceSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/choose",
+      "inputs: {}",
+      "outputs:",
+      "  env: String",
+      "effects: [Human]",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { env: String } =",
+      "  let env = choice {",
+      "    title = \"Deploy?\",",
+      "    detail = \"pick\",",
+      "    options = [\"staging\", \"prod\", \"abort\"]",
+      "  }",
+      "  { env }",
       "```"
     ]
 
@@ -171,6 +196,40 @@ spec = describe "runtime par/confirm/step (M5)" $ do
           approved <- approveRun dir "c1" True mockProvider "model-catalog.json" noopObserver
           case approved of
             OutcomeCompleted (VRecord [(Ident "ok", VBool True)]) _ _ -> pure ()
+            other -> expectationFailure (show other)
+
+  it "choice + choose --select" $
+    withSystemTempDirectory "hwfl-choice" $ \dir -> do
+      path <- writeMod dir choiceSrc
+      case loadModuleText path choiceSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = mockProvider,
+                  roInputs = [],
+                  roRunId = Just "ch1",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime
+                }
+              loaded
+          case outcome of
+            OutcomePaused (MsPaused (PauseAwaitingChoice c)) _ _ _ ->
+              chOptions c `shouldBe` ["staging", "prod", "abort"]
+            other -> expectationFailure ("expected awaiting choice, got " <> show other)
+          chosen <- chooseRun dir "ch1" "staging" mockProvider "model-catalog.json" noopObserver
+          case chosen of
+            OutcomeCompleted (VRecord [(Ident "env", VString "staging")]) _ _ -> pure ()
             other -> expectationFailure (show other)
 
   it "par + confirm freezes pool; approve continues" $

@@ -15,18 +15,15 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **`human.choice`** — parallel N-way gate (`awaiting_choice`); sugar
+  `choice { … }`; CLI `hwfl choose --select`; par freeze + agent tool nest
+- **`examples/choose.md`**, **`examples/agent-choice.md`**
 - **`examples/promote.md`** — confirm gate demo (approve/deny → Bool branch)
 - **Type/parse error locations** — located `Expr`/`Decl`; fence-absolute
-  `line:col` on check errors; JSON `line`/`column`; `meta.check_module`
-  messages include positions
-- **CLI `--dump`** — opt-in llm-simple request/response JSON under
-  `./dumps` (was always on); distinct from `--debug` spans
-- **Author-doc noise pass** — architecture / idea / stdlib / langref
-- **Root README** — overview + coding-agent quick start
-- **Frontmatter `examples`** — sample run inputs; tooling metadata only
-- **Deterministic FS tree ops** — `fs.mkdir` / `copy` / `move` / `exists`
-  / `stat`; compare lab materialize uses `fs.copy`
-- Local compare lab; `meta.*`; `--cost`; Observer `--debug`
+  `line:col` on check errors; JSON `line`/`column`
+- **CLI `--dump`** — opt-in llm-simple request/response JSON under `./dumps`
+- Author-doc noise pass; root README; frontmatter `examples`; FS tree ops;
+  local compare lab; `meta.*`; `--cost`; Observer `--debug`
 
 ## Blockers
 

@@ -7,6 +7,7 @@ module Hwfl.Parse.Lexer
     reservedWords,
     isReserved,
     pIdent,
+    pFieldIdent,
     pTypeName,
     pKeyword,
     getPos,
@@ -70,6 +71,7 @@ reservedWords =
       "try",
       "catch",
       "confirm",
+      "choice",
       "true",
       "false"
     ]
@@ -91,6 +93,14 @@ pIdent = lexeme $ try $ do
   when (isReserved name) $
     fail ("reserved keyword: " <> T.unpack name)
   pure (Ident name)
+
+-- | Field / projection name: same shape as 'pIdent' but allows reserved words
+-- so @human.confirm@ / @human.choice@ parse.
+pFieldIdent :: Parser Ident
+pFieldIdent = lexeme $ try $ do
+  c <- satisfy isIdentStart <?> "field name"
+  cs <- takeWhileP (Just "ident char") isIdentCont
+  pure (Ident (T.cons c cs))
 
 pTypeName :: Parser TypeName
 pTypeName = lexeme $ do

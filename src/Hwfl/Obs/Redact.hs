@@ -286,6 +286,12 @@ hostOpenAttrs op args = case op of
       [ "op" .= hostOpName op,
         "title" .= stringAttr (Ident "title") args
       ]
+  HostHumanChoice ->
+    object
+      [ "op" .= hostOpName op,
+        "title" .= stringAttr (Ident "title") args,
+        "options" .= listLenAttr (Ident "options") args
+      ]
   HostObsLog ->
     object
       [ "op" .= hostOpName op,

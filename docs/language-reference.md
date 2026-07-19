@@ -5,8 +5,8 @@ One-card overview of the hwfl kernel surface.
 ## Keywords
 
 `let` · `in` · `fun` · `type` · `match` · `with` · `if` · `then` · `else` ·
-`par` · `for` · `join` · `task` · `try` · `catch` · `confirm` · `true` ·
-`false`
+`par` · `for` · `join` · `task` · `try` · `catch` · `confirm` · `choice` ·
+`true` · `false`
 
 (`null` is JSON interop only; prefer `Option` / `Result` in surface code.)
 
@@ -117,6 +117,7 @@ basename on the allowlist. Child env = keys in `exec.env` only.
 | Op | Effects | Signature |
 |----|---------|-----------|
 | `human.confirm` | Human | `{ title, detail } -> Bool` |
+| `human.choice` | Human | `{ title, detail, options: List<String> } -> String` |
 | `obs.log` | — | `{ level, message, fields } -> ()` |
 | `obs.span` | — | `(name, fun () -> a) -> a` |
 | `meta.check_module` | Meta, Read | `(path: FileRef) -> { ok, error, name }` |
@@ -157,9 +158,12 @@ optional `project.json` `skills` stanza.
 par(max = N) for x in xs { e }
 join { task { e1 }; task { e2 } }
 confirm { title = …, detail = … }
+choice { title = …, detail = …, options = […] }
 ```
 
-`confirm` / `human.confirm` inside `par` freezes the pool.
+`confirm` / `human.confirm` / `choice` / `human.choice` inside `par` freezes
+the pool. Resolve with `hwfl approve --yes|--no` or
+`hwfl choose --select <option>` respectively.
 
 **Runtime note:** `par(max = N)` caps active branches; result order
 matches input order. The runtime steps one branch transition at a time

@@ -188,6 +188,9 @@ infer' env = \case
   EConfirm e -> do
     _ <- infer env e
     pure tBool
+  EChoice e -> do
+    _ <- infer env e
+    pure tString
   ETry body errVar handler -> do
     tBody <- infer env body
     check (extendVar errVar tString env) handler tBody
@@ -249,6 +252,10 @@ check' env e want = do
         unify want' got
     EConfirm arg -> do
       unify want' tBool
+      _ <- infer env arg
+      pure ()
+    EChoice arg -> do
+      unify want' tString
       _ <- infer env arg
       pure ()
     EJoin es -> case want' of

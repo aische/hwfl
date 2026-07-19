@@ -22,10 +22,11 @@ import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Agent (buildToolSpec)
 import Hwfl.Runtime.Eval (StepMode (..))
-import Hwfl.Runtime.Machine (MachineStatus (..), PauseReason (..))
+import Hwfl.Runtime.Machine (ChoiceRequest (..), MachineStatus (..), PauseReason (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
+    chooseRun,
     resumeRun,
     runLoadedModule,
     emptySkillRuntime)
@@ -247,3 +248,103 @@ spec = describe "runtime agent (M7)" $ do
                       OutcomePaused {} -> go (n + 1)
                       other -> expectationFailure (show other)
           go (0 :: Int)
+
+  it "agent tool ask_user pauses for choice; choose continues" $
+    withSystemTempDirectory "hwfl-agent-choice" $ \dir -> do
+      let path = dir </> "agent-choice.md"
+          src =
+            T.unlines
+              [ "---",
+                "name: workflows/agent-choice",
+                "inputs: {}",
+                "outputs:",
+                "  text: String",
+                "  rounds: Int",
+                "effects: [Human, Net]",
+                "---",
+                "",
+                "## system",
+                "",
+                "Ask the user when needed.",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun ask_user(question: String, options: List<String>): String =",
+                "  human.choice({",
+                "    title = question,",
+                "    detail = \"agent\",",
+                "    options = options",
+                "  })",
+                "",
+                "fun main(_): { text: String, rounds: Int } =",
+                "  let result = llm.agent(",
+                "    system = @system,",
+                "    prompt = \"pick env\",",
+                "    tools = [tool(ask_user)],",
+                "    model = \"gpt-5\",",
+                "    max_rounds = 4",
+                "  )",
+                "  { text = result.text, rounds = result.rounds }",
+                "```"
+              ]
+          mock =
+            mockProviderWith $ \req ->
+              if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
+                then
+                  Right
+                    ProviderResult
+                      { prContent = "selected via tool",
+                        prToolCalls = [],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishStop
+                      }
+                else
+                  Right
+                    ProviderResult
+                      { prContent = "need human",
+                        prToolCalls =
+                          [ ToolCall
+                              "c1"
+                              "ask_user"
+                              ( object
+                                  [ "question" .= ("Deploy where?" :: Text),
+                                    "options" .= (["staging", "prod"] :: [Text])
+                                  ]
+                              )
+                          ],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishToolCalls
+                      }
+      writeFile path (T.unpack src)
+      case loadModuleText path src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = mock,
+                  roInputs = [],
+                  roRunId = Just "ac1",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime
+                }
+              loaded
+          case outcome of
+            OutcomePaused (MsPaused (PauseAwaitingChoice c)) _ _ _ ->
+              chOptions c `shouldBe` ["staging", "prod"]
+            other -> expectationFailure ("expected awaiting choice, got " <> show other)
+          chosen <- chooseRun dir "ac1" "prod" mock "model-catalog.json" noopObserver
+          case chosen of
+            OutcomeCompleted (VRecord fs) _ _ ->
+              lookup (Ident "text") fs `shouldBe` Just (VString "selected via tool")
+            other -> expectationFailure (show other)

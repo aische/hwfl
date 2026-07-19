@@ -142,7 +142,8 @@ hostOpsEnv =
       ),
       ( Ident "human",
         VRecord
-          [ (Ident "confirm", VHostOp HostHumanConfirm)
+          [ (Ident "confirm", VHostOp HostHumanConfirm),
+            (Ident "choice", VHostOp HostHumanChoice)
           ]
       ),
       ( Ident "obs",
@@ -170,8 +171,8 @@ hostOpsEnv =
     ]
 
 -- | Execute one host op (one transition / snapshot boundary).
--- @human.confirm@ / @obs.span@ / @obs.log@ / @llm.agent@ / @llm.agent_object@
--- / confirm-gated @exec.run@ are handled by the machine driver.
+-- @human.confirm@ / @human.choice@ / @obs.span@ / @obs.log@ / @llm.agent@ /
+-- @llm.agent_object@ / confirm-gated @exec.run@ are handled by the machine driver.
 runHostOp ::
   HostEnv ->
   HostOpId ->
@@ -211,6 +212,8 @@ runHostOp env op args = case op of
     pure (Left (HostErr "obs.log must be driven by the machine (span state)"))
   HostHumanConfirm ->
     pure (Left (HostErr "human.confirm must be driven by the machine (approve gate)"))
+  HostHumanChoice ->
+    pure (Left (HostErr "human.choice must be driven by the machine (choose gate)"))
   HostObsSpan ->
     pure (Left (HostErr "obs.span must be driven by the machine (region frame)"))
 

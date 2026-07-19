@@ -59,6 +59,7 @@ eval env = \case
   EPar {} -> Left (Unsupported "par is not pure")
   EJoin {} -> Left (Unsupported "join is not pure")
   EConfirm {} -> Left (Unsupported "confirm is not pure")
+  EChoice {} -> Left (Unsupported "choice is not pure")
   ETry {} -> Left (Unsupported "try/catch is not pure")
   ESchema {} -> Left (Unsupported "schema(T) is check-time only")
 

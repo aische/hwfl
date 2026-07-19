@@ -11,6 +11,7 @@ module Hwfl.Runtime.Run
     stepRun,
     resumeRun,
     approveRun,
+    chooseRun,
     loadRunEnv,
     parseCliInputs,
     projectHashOf,
@@ -84,6 +85,7 @@ import Hwfl.Runtime.Eval
   ( RunCtx (..),
     StepMode (..),
     approveMachine,
+    chooseMachine,
     runUntilPause,
   )
 import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), hostOpsEnv)
@@ -437,20 +439,22 @@ finalizeOutcome store seqNo m obs = case m.mStatus of
     pure (OutcomeFailed err store seqNo)
   MsPaused reason -> do
     let msg = pauseMessage reason
-        (st, title, detail) = pauseFields reason
-    notifyPaused store obs st msg title detail
+        (st, title, detail, options) = pauseFields reason
+    notifyPaused store obs st msg title detail options
     pure (OutcomePaused m.mStatus msg store seqNo)
   other -> do
     let err = EvalErr (Trap ("unexpected status: " <> T.pack (show other)))
     notifyFinished store obs "failed" (Just (renderRuntimeError err))
     pure (OutcomeFailed err store seqNo)
 
-pauseFields :: PauseReason -> (Text, Maybe Text, Maybe Text)
+pauseFields :: PauseReason -> (Text, Maybe Text, Maybe Text, Maybe [Text])
 pauseFields = \case
-  PauseExplicit -> ("paused", Nothing, Nothing)
+  PauseExplicit -> ("paused", Nothing, Nothing, Nothing)
   PauseAwaitingConfirm c ->
-    ("awaiting_confirm", Just c.crTitle, Just c.crDetail)
-  PauseCrashRecovery -> ("paused", Nothing, Nothing)
+    ("awaiting_confirm", Just c.crTitle, Just c.crDetail, Nothing)
+  PauseAwaitingChoice c ->
+    ("awaiting_choice", Just c.chTitle, Just c.chDetail, Just c.chOptions)
+  PauseCrashRecovery -> ("paused", Nothing, Nothing, Nothing)
 
 notifyPaused ::
   RunStore ->
@@ -459,8 +463,9 @@ notifyPaused ::
   Text ->
   Maybe Text ->
   Maybe Text ->
+  Maybe [Text] ->
   IO ()
-notifyPaused store obs status msg title detail = do
+notifyPaused store obs status msg title detail options = do
   updateMetaStatus store status
   obs
     ( ObsPaused
@@ -469,7 +474,8 @@ notifyPaused store obs status msg title detail = do
             piStatus = status,
             piMessage = msg,
             piConfirmTitle = title,
-            piConfirmDetail = detail
+            piConfirmDetail = detail,
+            piChoiceOptions = options
           }
     )
 
@@ -496,6 +502,12 @@ pauseMessage :: PauseReason -> Text
 pauseMessage = \case
   PauseExplicit -> "paused after step"
   PauseAwaitingConfirm c -> "awaiting confirm: " <> c.crTitle
+  PauseAwaitingChoice c ->
+    "awaiting choice: "
+      <> c.chTitle
+      <> " ["
+      <> T.intercalate " | " c.chOptions
+      <> "]"
   PauseCrashRecovery -> "paused (crash recovery)"
 
 -- | Host progress logger; optional running-cost prefix for @--cost@.
@@ -837,6 +849,9 @@ stepRun workspace runId provider catalogPath observer = do
         MsPaused (PauseAwaitingConfirm _) -> do
           seqNo <- readIORef seqRef
           finalizeOutcome store seqNo machine0 observer
+        MsPaused (PauseAwaitingChoice _) -> do
+          seqNo <- readIORef seqRef
+          finalizeOutcome store seqNo machine0 observer
         _ -> do
           let machine = unpauseExplicit machine0
           m1 <- runUntilPause ctx StepOnce machine
@@ -858,6 +873,9 @@ resumeRun workspace runId provider catalogPath observer = do
     Right (ctx, machine0, store, seqRef) ->
       case machine0.mStatus of
         MsPaused (PauseAwaitingConfirm _) -> do
+          seqNo <- readIORef seqRef
+          finalizeOutcome store seqNo machine0 observer
+        MsPaused (PauseAwaitingChoice _) -> do
           seqNo <- readIORef seqRef
           finalizeOutcome store seqNo machine0 observer
         MsCompleted -> do
@@ -905,6 +923,47 @@ approveRun workspace runId yes provider catalogPath observer = do
             ctx.rcProjectHash
             (Just HostHumanConfirm)
             (Just (VBool yes))
+            machine1.mStatus
+            (Just machine1)
+            stack
+            counter
+          m2 <- runUntilPause ctx StepRun machine1
+          seqNo <- readIORef seqRef
+          closeModuleIfTerminal ctx store m2.mStatus
+          finalizeOutcome store seqNo m2 observer
+
+chooseRun :: FilePath -> Text -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
+chooseRun workspace runId selected provider catalogPath observer = do
+  ws <- newWorkspace workspace
+  let root = workspaceRoot ws
+  loaded <- loadExisting root runId provider catalogPath observer
+  case loaded of
+    Left e -> do
+      store <- openRunDir (root </> ".hwfl" </> "runs" </> T.unpack runId) runId
+      pure (OutcomeFailed e store 0)
+    Right (ctx, machine0, store, seqRef) ->
+      case chooseMachine selected machine0 of
+        Left e -> pure (OutcomeFailed e store 0)
+        Right machine1 -> do
+          mSid <- currentSpanId ctx.rcSpans
+          case mSid of
+            Just sid ->
+              closeSpan
+                store
+                ctx.rcSpans
+                sid
+                SsOk
+                (object ["selected" .= selected])
+                Nothing
+            Nothing -> pure ()
+          stack <- getSpanStack ctx.rcSpans
+          counter <- readIORef ctx.rcSpans.ssCounter
+          persistTransition
+            store
+            seqRef
+            ctx.rcProjectHash
+            (Just HostHumanChoice)
+            (Just (VString selected))
             machine1.mStatus
             (Just machine1)
             stack

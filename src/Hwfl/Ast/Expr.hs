@@ -7,7 +7,7 @@
 -- stable. Bidirectional pattern synonyms keep the historical @ELit@ / @EVar@
 -- surface; parsers should stamp positions via 'atPos' / 'located'.
 module Hwfl.Ast.Expr
-  ( Expr (.., ELit, EVar, EQName, ESection, EList, ERecord, EInterp, EApp, EProj, EIndex, ELet, EFun, EIf, EMatch, EPar, EJoin, EConfirm, ETry, ESchema),
+  ( Expr (.., ELit, EVar, EQName, ESection, EList, ERecord, EInterp, EApp, EProj, EIndex, ELet, EFun, EIf, EMatch, EPar, EJoin, EConfirm, EChoice, ETry, ESchema),
     ExprF (..),
     Arg (..),
     MatchArm (..),
@@ -78,6 +78,7 @@ data ExprF
   | FPar [ParOpt] Ident Expr Expr
   | FJoin [Expr]
   | FConfirm Expr
+  | FChoice Expr
   | FTry Expr Ident Expr
   | -- | Check-time schema reflection: @schema(T)@ (types §4).
     FSchema TypeExpr
@@ -188,6 +189,11 @@ pattern EConfirm e <- Expr _ (FConfirm e)
   where
     EConfirm e = Expr noPos (FConfirm e)
 
+pattern EChoice :: Expr -> Expr
+pattern EChoice e <- Expr _ (FChoice e)
+  where
+    EChoice e = Expr noPos (FChoice e)
+
 pattern ETry :: Expr -> Ident -> Expr -> Expr
 pattern ETry e n h <- Expr _ (FTry e n h)
   where
@@ -216,6 +222,7 @@ pattern ESchema t <- Expr _ (FSchema t)
   EPar,
   EJoin,
   EConfirm,
+  EChoice,
   ETry,
   ESchema
   #-}

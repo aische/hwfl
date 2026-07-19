@@ -19,7 +19,7 @@ Grammar sketch: [11-grammar.ebnf](11-grammar.ebnf).
 - Keywords (reserved):  
   `let`, `in`, `fun`, `type`, `match`, `with`, `if`, `then`, `else`,  
   `par`, `for`, `in` (reuse), `join`, `task`, `try`, `catch`,  
-  `confirm`, `true`, `false`, `null` (or prefer `None` — pick one in M0)
+  `confirm`, `choice`, `true`, `false`, `null` (or prefer `None` — pick one in M0)
 
 **Decision for v0:** use `null` only as JSON interop; prefer `Option` /
 `Result` in surface code. Literal `true`/`false` stay.
@@ -61,6 +61,7 @@ Grammar sketch: [11-grammar.ebnf](11-grammar.ebnf).
 par(max = N) for x in xs { e }     -- structured parallel map
 join { task { e1 }; task { e2 } }  -- fixed arity join
 confirm { title = …; detail = … } -- Human effect
+choice { title = …; detail = …; options = […] } -- Human effect → String
 try e catch (err) => e2            -- catchable failures
 ```
 

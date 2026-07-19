@@ -93,6 +93,7 @@ data HostOpId
   | HostLlmAgent
   | HostLlmAgentObject
   | HostHumanConfirm
+  | HostHumanChoice
   | HostObsLog
   | HostObsSpan
   | HostMetaCheckModule
@@ -193,6 +194,7 @@ hostOpName = \case
   HostLlmAgent -> "llm.agent"
   HostLlmAgentObject -> "llm.agent_object"
   HostHumanConfirm -> "human.confirm"
+  HostHumanChoice -> "human.choice"
   HostObsLog -> "obs.log"
   HostObsSpan -> "obs.span"
   HostMetaCheckModule -> "meta.check_module"

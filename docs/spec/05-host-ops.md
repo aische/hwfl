@@ -86,9 +86,15 @@ anything interactive; CI projects may set `exec.confirm = false`.
 | Op | Notes |
 |----|-------|
 | `human.confirm` | `{ title, detail }` → `Bool` (or `Approved`/`Denied`) |
+| `human.choice` | `{ title, detail, options: List<String> }` → selected `String` |
 
-Pauses the run (`awaiting_confirm`). In `par`, triggers cooperative
-pool freeze ([06-runtime.md](06-runtime.md)).
+`human.confirm` pauses the run (`awaiting_confirm`); resolve with
+`hwfl approve --yes|--no`. `human.choice` pauses (`awaiting_choice`);
+resolve with `hwfl choose --select <option>` (must be one of `options`).
+Sugar: `confirm { … }` / `choice { … }`. In `par`, either gate triggers
+cooperative pool freeze ([06-runtime.md](06-runtime.md)). Agent tools may
+wrap `human.choice` (nested machine bubbles the pause; choose resumes the
+tool result into the agent loop).
 
 ## 5. Observability (`Read` or pure-ish)
 

@@ -69,7 +69,7 @@ All side effects go through **host ops** registered in the runtime:
 | FS          | `fs.read`, `fs.write`, `fs.copy`, `fs.mkdir`, …       |
 | LLM         | `llm.chat`, `llm.object`, `llm.agent`                 |
 | Process     | `exec.run`                                            |
-| Human       | `human.confirm`                                       |
+| Human       | `human.confirm`, `human.choice`                       |
 | Meta        | `meta.invoke`, `meta.list_runs`, `obs.log`            |
 | Concurrency | `par` / `join` (runtime constructs, not user threads; cooperative pool) |
 
@@ -182,7 +182,7 @@ task truly is “edit the project in place.”
 | ------------------------------ | ---------------------- | ------------------------- |
 | `let` / `fun` / `match` / `if` | L2 pure                | No snapshot mid-reduction |
 | `par` / `join`                 | L3 sugar + frames      | Structured concurrency (cooperative pool) |
-| `confirm`                      | L3 host / Human effect | Freezes `par` pool        |
+| `confirm` / `choice`           | L3 host / Human effect | Freezes `par` pool        |
 | `try` / `catch` or `Result`    | L2 (+ catch frames)    | Catchable host errors     |
 | Agent tool loop                | L3 state machine       | Like hwfi agent `Current` |
 | Skills discover / load         | L3 host + agent state  | Progressive disclosure via `skill.*` |

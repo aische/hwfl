@@ -66,11 +66,13 @@ data SpanCloseInfo = SpanCloseInfo
 
 data PauseInfo = PauseInfo
   { piRunId :: Text,
-    -- | @paused@ | @awaiting_confirm@
+    -- | @paused@ | @awaiting_confirm@ | @awaiting_choice@
     piStatus :: Text,
     piMessage :: Text,
     piConfirmTitle :: Maybe Text,
-    piConfirmDetail :: Maybe Text
+    piConfirmDetail :: Maybe Text,
+    -- | Present when status is @awaiting_choice@.
+    piChoiceOptions :: Maybe [Text]
   }
   deriving stock (Eq, Show)
 

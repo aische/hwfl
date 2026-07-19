@@ -79,6 +79,19 @@ spec = describe "expression parser" $ do
             (EConfirm (ERecord [Field (Ident "title") (EVar (Ident "name"))]))
         )
 
+  it "parses choice" $
+    parseE "choice { title = \"t\", options = [\"a\", \"b\"] }"
+      `shouldBe` Right
+        ( EChoice
+            ( ERecord
+                [ Field (Ident "title") (ELit (LString "t")),
+                  Field
+                    (Ident "options")
+                    (EList [ELit (LString "a"), ELit (LString "b")])
+                ]
+            )
+        )
+
   it "parses typed fun expression" $
     parseE "fun (x: Int): Int => x"
       `shouldBe` Right

@@ -23,6 +23,7 @@ import Hwfl.Driver
     defaultDriverRunRequest,
     driverApprove,
     driverCheck,
+    driverChoose,
     driverResume,
     driverRun,
     driverShow,
@@ -60,6 +61,7 @@ main = do
     ("step" : rest) -> cmdStep rest
     ("resume" : rest) -> cmdResume rest
     ("approve" : rest) -> cmdApprove rest
+    ("choose" : rest) -> cmdChoose rest
     ("show" : rest) -> cmdShow rest
     _ -> usage
 
@@ -74,6 +76,9 @@ usage = do
   hPutStrLn
     stderr
     "       hwfl approve <workspace> <run-id> --yes|--no [--llm-provider mock|simple] [--dump]"
+  hPutStrLn
+    stderr
+    "       hwfl choose <workspace> <run-id> --select <option> [--llm-provider mock|simple] [--dump]"
   hPutStrLn
     stderr
     "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
@@ -224,6 +229,13 @@ cmdApprove args = case parseApprove args of
   Right (ws, runId, yes, provName, catalog, dump) -> do
     provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverApprove ws runId yes provider catalog noopObserver
+
+cmdChoose :: [String] -> IO ()
+cmdChoose args = case parseChoose args of
+  Left msg -> dieUsage msg
+  Right (ws, runId, selected, provName, catalog, dump) -> do
+    provider <- resolveProvider False provName catalog dump
+    handleOutcome False False =<< driverChoose ws runId selected provider catalog noopObserver
 
 cmdShow :: [String] -> IO ()
 cmdShow args = case parseShow args of
@@ -395,6 +407,25 @@ parseApprove = go Nothing Nothing Nothing "simple" "model-catalog.json" False
         | otherwise -> case (mWs, mId) of
             (Nothing, _) -> go (Just x) mId mYes prov catalog dump rest
             (Just _, Nothing) -> go mWs (Just (T.pack x)) mYes prov catalog dump rest
+            _ -> Left ("unexpected argument: " <> x)
+
+parseChoose :: [String] -> Either String (FilePath, T.Text, T.Text, String, FilePath, Bool)
+parseChoose = go Nothing Nothing Nothing "simple" "model-catalog.json" False
+  where
+    go mWs mId mSel prov catalog dump = \case
+      [] -> case (mWs, mId, mSel) of
+        (Just ws, Just rid, Just sel) -> Right (ws, rid, sel, prov, catalog, dump)
+        (_, _, Nothing) -> Left "hwfl choose needs --select <option>"
+        _ -> Left "usage: hwfl choose <workspace> <run-id> --select <option>"
+      ("--select" : s : rest) -> go mWs mId (Just (T.pack s)) prov catalog dump rest
+      ("--llm-provider" : p : rest) -> go mWs mId mSel p catalog dump rest
+      ("--model-catalog" : c : rest) -> go mWs mId mSel prov c dump rest
+      ("--dump" : rest) -> go mWs mId mSel prov catalog True rest
+      (x : rest)
+        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
+        | otherwise -> case (mWs, mId) of
+            (Nothing, _) -> go (Just x) mId mSel prov catalog dump rest
+            (Just _, Nothing) -> go mWs (Just (T.pack x)) mSel prov catalog dump rest
             _ -> Left ("unexpected argument: " <> x)
 
 parseShow :: [String] -> Either String ShowOptions

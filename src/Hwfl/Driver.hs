@@ -21,6 +21,7 @@ module Hwfl.Driver
     driverStep,
     driverResume,
     driverApprove,
+    driverChoose,
 
     -- * Inspect
     driverShow,
@@ -95,6 +96,7 @@ import Hwfl.Runtime.Run
     RunTargetError (..),
     RunTargetRequest (..),
     approveRun,
+    chooseRun,
     defaultRunTargetRequest,
     resumeRun,
     runTarget,
@@ -222,6 +224,9 @@ driverResume = resumeRun
 
 driverApprove :: FilePath -> Text -> Bool -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
 driverApprove = approveRun
+
+driverChoose :: FilePath -> Text -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
+driverChoose = chooseRun
 
 driverShow :: ShowOptions -> IO (Either Text Text)
 driverShow = showRun

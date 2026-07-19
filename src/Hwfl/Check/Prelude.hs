@@ -294,6 +294,17 @@ humanType =
           )
           [EffHuman]
           (t "Bool")
+      ),
+      ( Ident "choice",
+        TEffFun
+          ( TRecord
+              [ (Ident "title", t "String"),
+                (Ident "detail", t "String"),
+                (Ident "options", TList (t "String"))
+              ]
+          )
+          [EffHuman]
+          (t "String")
       )
     ]
 

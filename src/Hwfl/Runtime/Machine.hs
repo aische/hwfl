@@ -4,6 +4,7 @@ module Hwfl.Runtime.Machine
   ( MachineStatus (..),
     PauseReason (..),
     ConfirmRequest (..),
+    ChoiceRequest (..),
     Current (..),
     Frame (..),
     ParJoinState (..),
@@ -45,6 +46,7 @@ data MachineStatus
 data PauseReason
   = PauseExplicit
   | PauseAwaitingConfirm ConfirmRequest
+  | PauseAwaitingChoice ChoiceRequest
   | PauseCrashRecovery
   deriving stock (Eq, Show)
 
@@ -52,6 +54,15 @@ data ConfirmRequest = ConfirmRequest
   { crTitle :: Text,
     crDetail :: Text,
     crBranchIndex :: Maybe Int
+  }
+  deriving stock (Eq, Show)
+
+-- | N-way human gate (parallel to 'ConfirmRequest' / Bool approve).
+data ChoiceRequest = ChoiceRequest
+  { chTitle :: Text,
+    chDetail :: Text,
+    chOptions :: [Text],
+    chBranchIndex :: Maybe Int
   }
   deriving stock (Eq, Show)
 
@@ -65,6 +76,8 @@ data Current
     CurHost HostOpId [(Maybe Ident, Value)]
   | -- | Blocked on human confirmation.
     CurAwaitConfirm ConfirmRequest
+  | -- | Blocked on human multiple-choice.
+    CurAwaitChoice ChoiceRequest
   | -- | Driving an active @par@ pool ('FrPar' on the frame stack).
     CurParPool
   | -- | Close an @obs.span@ region then return @Value@ into the kont.
@@ -130,6 +143,8 @@ data Frame
     FrTry Ident Env Expr
   | -- | After approve, continue with Bool into prior kont.
     FrConfirm ConfirmRequest
+  | -- | After choose, continue with selected String into prior kont.
+    FrChoice ChoiceRequest
   | -- | After approve of @exec.run@ confirm gate: resume the stored 'Current'
     -- (usually 'CurHost' 'HostExecRun') or fail if denied.
     FrAfterConfirm Current
@@ -156,6 +171,7 @@ data ParJoinState = ParJoinState
     pjsNextIndex :: Int,
     pjsPhase :: ParPoolPhase,
     pjsConfirmQueue :: [ConfirmRequest],
+    pjsChoiceQueue :: [ChoiceRequest],
     pjsParentEnv :: Env
   }
   deriving stock (Eq, Show)
@@ -166,6 +182,7 @@ data ParSlot
   | ParSlotDone Value
   | ParSlotFailed Text
   | ParSlotAwaitingConfirm ConfirmRequest
+  | ParSlotAwaitingChoice ChoiceRequest
   deriving stock (Eq, Show)
 
 data ParPoolPhase

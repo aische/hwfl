@@ -37,6 +37,7 @@ expr =
       try joinExpr,
       try tryExpr,
       try confirmExpr,
+      try choiceExpr,
       orExpr
     ]
 
@@ -202,6 +203,13 @@ confirmExpr = do
   e <- appExpr
   pure (located pos (FConfirm e))
 
+choiceExpr :: Parser Expr
+choiceExpr = do
+  pos <- getPos
+  pKeyword "choice"
+  e <- appExpr
+  pure (located pos (FChoice e))
+
 tryExpr :: Parser Expr
 tryExpr = do
   pos <- getPos
@@ -230,7 +238,7 @@ appTail :: Parser AppTail
 appTail =
   choice
     [ TApp <$> between (symbol "(") (symbol ")") (arg `sepBy` symbol ","),
-      TProj <$> (symbol "." *> pIdent),
+      TProj <$> (symbol "." *> pFieldIdent),
       TIndex <$> between (symbol "[") (symbol "]") expr
     ]
 

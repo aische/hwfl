@@ -102,6 +102,9 @@ inferExprEffects env effEnv = go
       EConfirm e -> do
         eEff <- go e
         pure (eEff <> Set.singleton EffHuman)
+      EChoice e -> do
+        eEff <- go e
+        pure (eEff <> Set.singleton EffHuman)
       ETry e1 _ e2 -> unions <$> traverse go [e1, e2]
       ESchema _ -> pure emptyEffs
 

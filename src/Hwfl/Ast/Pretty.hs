@@ -129,6 +129,7 @@ prettyExprPrec prec = \case
     parenIf (prec > 0) $
       "join { " <> T.intercalate " " ["task { " <> prettyExpr t <> " }" | t <- tasks] <> " }"
   EConfirm e -> parenIf (prec > 0) ("confirm " <> prettyExprPrec 10 e)
+  EChoice e -> parenIf (prec > 0) ("choice " <> prettyExprPrec 10 e)
   ETry e n h ->
     parenIf (prec > 0) $
       "try " <> prettyExpr e <> " catch (" <> unIdent n <> ") => " <> prettyExpr h
