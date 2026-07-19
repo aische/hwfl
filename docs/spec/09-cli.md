@@ -67,4 +67,10 @@ Exact codes may adjust in M4; stay stable after first release tag.
 
 ## 5. Completions / UX
 
-Nice-to-have **[defer]**: shell completions, `hwfl init` scaffold.
+Nice-to-have **[defer]**:
+
+- Shell completions, `hwfl init` scaffold
+- **`--interactive`** on `run` (TTY): when paused on confirm / choice /
+  ask, prompt on stdin and resolve via the same APIs as
+  `approve` / `choose` / `reply` without exiting between turns
+- Optional omit / `latest` run-id for continue commands

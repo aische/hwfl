@@ -31,10 +31,12 @@ None.
 
 1. Optional: mutate / next-generation loop on the compare spine
 2. Optional DB-backed run-store backend (same interface)
-3. Optional: `latest` run-id + `--interactive` stdin for human gates
 
 ## Deferred
 
+- **CLI `--interactive`** — on human pause, stdin → same resolve path as
+  `approve` / `choose` / `reply` (no exit-3 between turns); TTY-only
+- Optional: `latest` / omit run-id for approve / choose / reply / show
 - Opt-in LangSmith-style LLM transcripts (span-linked payloads; §07 §10)
 - Skills phase D (optional writer example)
 - Semantic-check S4 / S6 — research only; optional static fitness later

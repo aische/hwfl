@@ -205,6 +205,17 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 `show` while paused reports `status: awaiting_confirm` (or `paused`) and
 a cursor hint so you can see where the machine stopped.
 
+Related gates (same exit-`3` pause model):
+
+| Gate | Resolve |
+| ---- | ------- |
+| `choice` / `human.choice` | `hwfl choose <ws> <run-id> --select <option>` |
+| `human.ask` | `hwfl reply <ws> <run-id> --text "…"` |
+
+Workflow-owned chat (history + `/quit`): [examples/chat.md](../examples/chat.md).
+A future `--interactive` flag would prompt on stdin instead of exiting
+between turns (see [TASKS.md](TASKS.md) Later).
+
 ### One transition at a time
 
 ```bash
