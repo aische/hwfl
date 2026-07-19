@@ -19,12 +19,24 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Next (P1–P2)
 
+- [ ] **Coding-agent chat** (soon) — multi-turn `human.ask` + tools with a
+      growing transcript that includes tool calls/results:
+      - [ ] Extend `llm.agent` (and likely `llm.agent_object`): optional
+            prior `history` (turn list) in; return updated `history` with
+            `{ text, rounds }` (seed from prior turns + new `prompt` as
+            `TurnUser`; do not restart from a lone prompt)
+      - [ ] Language/runtime values for turns (user / assistant+tool_calls /
+            tool results) — reuse host `Turn`, not fake `{ role, content }`
+      - [ ] Example: adapt `examples/chat` (or `examples/coding-agent-chat`)
+            — ask loop appends user message, calls agent with tools +
+            history, keeps returned history for the next turn; `/quit`
+      - [ ] Spec/prelude/tests: [spec/05-host-ops.md](spec/05-host-ops.md) §2
 - [x] Resume/approve recomputes `projectHashForModules` when entry is
       under a project root (skills from that root) — required for
       hwfl-server sync approve after confirm
 - [x] Deterministic FS tree ops (lab materialize; not agent-first) —
       finish [spec/05-host-ops.md](spec/05-host-ops.md) Write set:
-      - [x] `fs.mkdir` — create dir (and parents)
+      - [x] `fs.mkdir` — create dir and parents
       - [x] `fs.copy` — file or recursive directory tree (`src` → `dst`);
             optional overwrite / exclude globs (e.g. skip `.hwfl/runs`)
       - [x] `fs.move` — rename / relocate within sandbox

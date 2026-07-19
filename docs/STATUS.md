@@ -4,7 +4,8 @@ Last updated: 2026-07-19
 
 ## Current focus
 
-Optional mutate / next-generation loop on the compare spine.
+**Coding-agent chat** — `llm.agent` history in/out so a `human.ask` loop
+can keep a growing transcript (including tool calls/results).
 
 ## North star
 
@@ -32,8 +33,10 @@ None.
 
 ## Next up
 
-1. Optional: mutate / next-generation loop on the compare spine
-2. Optional DB-backed run-store backend (same interface)
+1. Coding-agent chat: `llm.agent` prior `history` + return `history`;
+   turn values; ask+tools example (see TASKS)
+2. Optional: mutate / next-generation loop on the compare spine
+3. Optional DB-backed run-store backend (same interface)
 
 ## Deferred
 

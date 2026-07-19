@@ -113,6 +113,11 @@ basename on the allowlist. Child env = keys in `exec.env` only.
 | `llm.agent` | Net | `{ system, prompt, tools, model, max_rounds } -> { text, rounds }` |
 | `llm.agent_object` | Net | `{ …, schema } -> { value: T, rounds }` (synthetic `submit` tool) |
 
+`llm.chat_messages` is text-only history. **Planned:** `llm.agent` /
+`llm.agent_object` prior `history` in + updated `history` out (tool turns
+included) for coding-agent chat — see [TASKS.md](TASKS.md) and
+[spec/05-host-ops.md](spec/05-host-ops.md) §2.
+
 ### Human / observability / meta
 
 | Op | Effects | Signature |

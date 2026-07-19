@@ -57,6 +57,15 @@ Notes:
   recoverable (no tools run). Surface spelling is `agent_object` (idents have
   no `-`).
 
+**Planned (coding-agent chat):** `llm.agent` / `llm.agent_object` accept
+optional prior `history` (list of turns: user text, assistant text + tool
+calls, tool results — same algebra as host `Turn` / snapshot agent
+history) and return the updated `history` with the usual result fields.
+New `prompt` appends as `TurnUser`. Workflows can own a multi-turn
+`human.ask` loop that replays tool-inclusive transcripts across calls.
+Do **not** encode tool turns as fake `{ role, content }` strings;
+`llm.chat_messages` stays the thin text-only path.
+
 ### 2.1 Agent tools
 
 A tool is a **typed function** reference plus schema:
