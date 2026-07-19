@@ -15,6 +15,8 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **CLI `--dump`** — opt-in llm-simple request/response JSON under
+  `./dumps` (was always on); distinct from `--debug` spans
 - **Author-doc noise pass** — architecture / idea / stdlib / langref: drop
   “suggested/planned/deferred/later”, fix stale `meta.invoke when shipped`,
   refresh package layout to match `src/`

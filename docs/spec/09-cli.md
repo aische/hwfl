@@ -7,7 +7,7 @@ Executable name provisional: **`hwfl`**.
 | Command                                                 | Purpose                                          |
 | ------------------------------------------------------- | ------------------------------------------------ |
 | `hwfl check <project> [--json]`                                  | Load + type + effects + graph; exit ≠0 on error  |
-| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug] [--cost] [--json]` | Check (unless `--no-check`) + execute entrypoint |
+| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug] [--cost] [--dump] [--json]` | Check (unless `--no-check`) + execute entrypoint |
 | `hwfl step <workspace> <run-id>`                        | One transition, then pause                       |
 | `hwfl resume <workspace> <run-id>`                      | Continue until end / pause / fail                |
 | `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |
@@ -29,6 +29,10 @@ Executable name provisional: **`hwfl`**.
   `llm.object …`, …) with running LLM spend, e.g. `$0.12 │ fs.read …`.
   Uses the same counter as `--debug` span lines; bumps on priced LLM
   span close.
+- `--dump` (on `run` / `step` / `resume` / `approve`): opt-in llm-simple
+  request/response JSON under `./dumps` (stderr debug logs included).
+  Off by default. Distinct from `--debug` (span observer) and from
+  planned span-linked transcripts ([07-observability.md](07-observability.md) §10).
 
 ## 2. Inputs
 

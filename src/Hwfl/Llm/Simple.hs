@@ -34,8 +34,9 @@ import LLM.Load (loadModelOrThrow)
 import System.Directory (doesFileExist)
 
 -- | Build the default adapter. Requires a readable model catalog path.
-mkSimpleProvider :: FilePath -> IO (Either Text LlmProvider)
-mkSimpleProvider catalogPath = do
+-- When @dump@ is true, llm-simple writes request/response JSON under @./dumps@.
+mkSimpleProvider :: Bool -> FilePath -> IO (Either Text LlmProvider)
+mkSimpleProvider dump catalogPath = do
   exists <- doesFileExist catalogPath
   if not exists
     then
@@ -44,32 +45,33 @@ mkSimpleProvider catalogPath = do
           "llm-simple provider: model catalog not found at "
             <> T.pack catalogPath
             <> " (pass a catalog or use --llm-provider=mock)"
-    else pure (Right (mkSimpleProviderWithCatalog catalogPath))
+    else pure (Right (mkSimpleProviderWithCatalog dump catalogPath))
 
 -- | Provider that resolves @model@ names via the catalog on each call.
 -- Retries/timeouts live in llm-simple's generate layer (M4 choice).
-mkSimpleProviderWithCatalog :: FilePath -> LlmProvider
-mkSimpleProviderWithCatalog catalogPath =
+mkSimpleProviderWithCatalog :: Bool -> FilePath -> LlmProvider
+mkSimpleProviderWithCatalog dump catalogPath =
   LlmProvider
-    { llmChat = chatWithCatalog catalogPath,
+    { llmChat = chatWithCatalog dump catalogPath,
       llmProviderName = "simple"
     }
 
-chatWithCatalog :: FilePath -> ChatRequest -> IO (Either ProviderError ProviderResult)
-chatWithCatalog catalogPath req = do
+chatWithCatalog :: Bool -> FilePath -> ChatRequest -> IO (Either ProviderError ProviderResult)
+chatWithCatalog dump catalogPath req = do
   loaded <- try (loadModelOrThrow catalogPath req.chatModel)
   case loaded of
     Left (ex :: SomeException) ->
       pure (Left (OtherProviderError (T.pack (show ex))))
     Right model -> do
-      let (systemMsg, turns) = requestToTurns req
+      let hooks = if dump then defaultDebugHooks else noHooks
+          (systemMsg, turns) = requestToTurns req
           gr =
             GenRequest
               { grSystemPrompt = systemMsg,
                 grMessages = turns,
                 grTools = map toLLMTool req.chatTools,
                 grAbortSignal = Nothing,
-                grLLMHooks = llmHooks defaultDebugHooks,
+                grLLMHooks = llmHooks hooks,
                 grHooks = noHooks
               }
           models = ModelWithFallbacks model []

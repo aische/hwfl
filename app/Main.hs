@@ -70,16 +70,16 @@ usage = do
     "usage: hwfl parse|check <project|module.md> | hwfl run <project|module.md> [options]"
   hPutStrLn
     stderr
-    "       hwfl step|resume <workspace> <run-id> [--llm-provider mock|simple]"
+    "       hwfl step|resume <workspace> <run-id> [--llm-provider mock|simple] [--dump]"
   hPutStrLn
     stderr
-    "       hwfl approve <workspace> <run-id> --yes|--no [--llm-provider mock|simple]"
+    "       hwfl approve <workspace> <run-id> --yes|--no [--llm-provider mock|simple] [--dump]"
   hPutStrLn
     stderr
     "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
-    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug --cost --json"
+    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug --cost --dump --json"
   hPutStrLn stderr "  check options: --json"
   exitWith (ExitFailure 2)
 
@@ -157,6 +157,8 @@ data RunFlags = RunFlags
     rfDebug :: Bool,
     -- | Prefix host progress lines with running LLM cost.
     rfCost :: Bool,
+    -- | Dump llm-simple request/response JSON under ./dumps.
+    rfDump :: Bool,
     -- | Machine-readable diagnostics on stderr for failures.
     rfJson :: Bool
   }
@@ -181,7 +183,7 @@ cmdRun rest = case parseRunFlags rest of
         reportRuntimeFailure json 2 err
         exitWith (ExitFailure 2)
       Right is -> pure is
-    provider <- resolveProvider json flags.rfProvider flags.rfCatalog
+    provider <- resolveProvider json flags.rfProvider flags.rfCatalog flags.rfDump
     unless (flags.rfNoCheck || json) $
       hPutStrLn stderr "hwfl run: checking…"
     let req =
@@ -205,22 +207,22 @@ cmdRun rest = case parseRunFlags rest of
 cmdStep :: [String] -> IO ()
 cmdStep args = case parseWsRun args of
   Left msg -> dieUsage msg
-  Right (ws, runId, provName, catalog) -> do
-    provider <- resolveProvider False provName catalog
+  Right (ws, runId, provName, catalog, dump) -> do
+    provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverStep ws runId provider catalog noopObserver
 
 cmdResume :: [String] -> IO ()
 cmdResume args = case parseWsRun args of
   Left msg -> dieUsage msg
-  Right (ws, runId, provName, catalog) -> do
-    provider <- resolveProvider False provName catalog
+  Right (ws, runId, provName, catalog, dump) -> do
+    provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverResume ws runId provider catalog noopObserver
 
 cmdApprove :: [String] -> IO ()
 cmdApprove args = case parseApprove args of
   Left msg -> dieUsage msg
-  Right (ws, runId, yes, provName, catalog) -> do
-    provider <- resolveProvider False provName catalog
+  Right (ws, runId, yes, provName, catalog, dump) -> do
+    provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverApprove ws runId yes provider catalog noopObserver
 
 cmdShow :: [String] -> IO ()
@@ -275,11 +277,11 @@ dieUsage msg = do
   hPutStrLn stderr msg
   exitWith (ExitFailure 2)
 
-resolveProvider :: Bool -> String -> FilePath -> IO LlmProvider
-resolveProvider json name catalog = case name of
+resolveProvider :: Bool -> String -> FilePath -> Bool -> IO LlmProvider
+resolveProvider json name catalog dump = case name of
   "mock" -> pure mockProvider
   "simple" -> do
-    ep <- mkSimpleProvider catalog
+    ep <- mkSimpleProvider dump catalog
     case ep of
       Left err -> do
         reportPlainFailure json 2 "config" "ProviderError" err
@@ -309,6 +311,7 @@ parseRunFlags args = do
           rfVerbose = False,
           rfDebug = False,
           rfCost = False,
+          rfDump = False,
           rfJson = False
         }
     takeModule [] _ = Left "hwfl run: missing <module.md>"
@@ -330,6 +333,7 @@ parseRunFlags args = do
       | x == "-v" || x == "--verbose" = takeModule xs f {rfVerbose = True}
       | x == "--debug" = takeModule xs f {rfDebug = True, rfVerbose = True}
       | x == "--cost" = takeModule xs f {rfCost = True}
+      | x == "--dump" = takeModule xs f {rfDump = True}
       | x == "--json" = takeModule xs f {rfJson = True}
       | "-" `T.isPrefixOf` T.pack x = Left ("unknown flag: " <> x)
       | otherwise = consumeOpts xs f {rfModule = x}
@@ -352,42 +356,45 @@ parseRunFlags args = do
       | x == "-v" || x == "--verbose" = consumeOpts xs f {rfVerbose = True}
       | x == "--debug" = consumeOpts xs f {rfDebug = True, rfVerbose = True}
       | x == "--cost" = consumeOpts xs f {rfCost = True}
+      | x == "--dump" = consumeOpts xs f {rfDump = True}
       | x == "--json" = consumeOpts xs f {rfJson = True}
       | otherwise = Left ("unexpected argument: " <> x)
 
-parseWsRun :: [String] -> Either String (FilePath, T.Text, String, FilePath)
-parseWsRun = go Nothing Nothing "simple" "model-catalog.json"
+parseWsRun :: [String] -> Either String (FilePath, T.Text, String, FilePath, Bool)
+parseWsRun = go Nothing Nothing "simple" "model-catalog.json" False
   where
-    go mWs mId prov catalog = \case
+    go mWs mId prov catalog dump = \case
       [] -> case (mWs, mId) of
-        (Just ws, Just rid) -> Right (ws, rid, prov, catalog)
+        (Just ws, Just rid) -> Right (ws, rid, prov, catalog, dump)
         _ -> Left "usage: hwfl step|resume <workspace> <run-id> [options]"
-      ("--llm-provider" : p : rest) -> go mWs mId p catalog rest
-      ("--model-catalog" : c : rest) -> go mWs mId prov c rest
+      ("--llm-provider" : p : rest) -> go mWs mId p catalog dump rest
+      ("--model-catalog" : c : rest) -> go mWs mId prov c dump rest
+      ("--dump" : rest) -> go mWs mId prov catalog True rest
       (x : rest)
         | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
         | otherwise -> case (mWs, mId) of
-            (Nothing, _) -> go (Just x) mId prov catalog rest
-            (Just _, Nothing) -> go mWs (Just (T.pack x)) prov catalog rest
+            (Nothing, _) -> go (Just x) mId prov catalog dump rest
+            (Just _, Nothing) -> go mWs (Just (T.pack x)) prov catalog dump rest
             _ -> Left ("unexpected argument: " <> x)
 
-parseApprove :: [String] -> Either String (FilePath, T.Text, Bool, String, FilePath)
-parseApprove = go Nothing Nothing Nothing "simple" "model-catalog.json"
+parseApprove :: [String] -> Either String (FilePath, T.Text, Bool, String, FilePath, Bool)
+parseApprove = go Nothing Nothing Nothing "simple" "model-catalog.json" False
   where
-    go mWs mId mYes prov catalog = \case
+    go mWs mId mYes prov catalog dump = \case
       [] -> case (mWs, mId, mYes) of
-        (Just ws, Just rid, Just yes) -> Right (ws, rid, yes, prov, catalog)
+        (Just ws, Just rid, Just yes) -> Right (ws, rid, yes, prov, catalog, dump)
         (_, _, Nothing) -> Left "hwfl approve needs --yes or --no"
         _ -> Left "usage: hwfl approve <workspace> <run-id> --yes|--no"
-      ("--yes" : rest) -> go mWs mId (Just True) prov catalog rest
-      ("--no" : rest) -> go mWs mId (Just False) prov catalog rest
-      ("--llm-provider" : p : rest) -> go mWs mId mYes p catalog rest
-      ("--model-catalog" : c : rest) -> go mWs mId mYes prov c rest
+      ("--yes" : rest) -> go mWs mId (Just True) prov catalog dump rest
+      ("--no" : rest) -> go mWs mId (Just False) prov catalog dump rest
+      ("--llm-provider" : p : rest) -> go mWs mId mYes p catalog dump rest
+      ("--model-catalog" : c : rest) -> go mWs mId mYes prov c dump rest
+      ("--dump" : rest) -> go mWs mId mYes prov catalog True rest
       (x : rest)
         | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
         | otherwise -> case (mWs, mId) of
-            (Nothing, _) -> go (Just x) mId mYes prov catalog rest
-            (Just _, Nothing) -> go mWs (Just (T.pack x)) mYes prov catalog rest
+            (Nothing, _) -> go (Just x) mId mYes prov catalog dump rest
+            (Just _, Nothing) -> go mWs (Just (T.pack x)) mYes prov catalog dump rest
             _ -> Left ("unexpected argument: " <> x)
 
 parseShow :: [String] -> Either String ShowOptions
