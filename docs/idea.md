@@ -6,16 +6,16 @@ HTML and logic for the web. Inside those modules runs a **small ML-ish
 general-purpose language** with first-class LLM, filesystem, parallelism,
 human confirmation, and durable resume.
 
-Working name: **hwfl** (originally plm, Prose ML). Rename at leisure.
+Working name: **hwfl** (originally plm, Prose ML).
 
 ## North star
 
-**hwfl is the durable workflow runtime (Haskell library + CLI).** Longer
-term it powers a **workflow research lab**: author → check → run → inspect
-→ compare → mutate workflow programs, with coding-agent tasks and
-semantic-check as hard benchmarks — not as the product itself.
+**hwfl is the durable workflow runtime (Haskell library + CLI).** It powers
+a **workflow research lab**: author → check → run → inspect → compare →
+mutate workflow programs, with coding-agent tasks and semantic-check as
+hard benchmarks — not as the product itself.
 
-A **remote control plane** (separate repo) may depend on hwfl as a library:
+A **remote control plane** (separate repo) depends on hwfl as a library:
 Postgres for experiment / run metadata, materialized project + workspace
 sandboxes to execute, HTTP + WebSocket/SSE mapping the existing
 check / run / step / resume / approve / show machine — not a remote
@@ -47,15 +47,15 @@ We want language-level ergonomics **and** document-shaped authoring.
 4. **Durable execution** — stack/frame interpreter; checkpoints at host-op
    boundaries; crash/abort resume; `--step` / confirm gates.
 5. **Structured concurrency** — bounded `par` with cooperative freeze on
-   human confirm (policy proven useful in hwfi). The pool is cooperative
-   today; overlapping host IO across branches is deferred.
+   human confirm (policy proven useful in hwfi). The pool is cooperative;
+   branches do not overlap blocking host IO.
 6. **Observability** — span trees + append-only audit events; better
    “what happened / where are we” than a flat event soup.
 7. **Static check before run** — project graph, signatures, effects, and
    types fail closed before the first billed token.
 8. **Callable as a library** — one driver façade (check / run / step /
-   resume / approve / show + run-store queries) shared by the CLI and any
-   future HTTP frontends; FS run-store first, optional DB backend later.
+   resume / approve / show + run-store queries) shared by the CLI and HTTP
+   frontends; FS run-store today.
 9. **Genetic / comparative workflows** — materialize candidate projects
    (and separate workspaces), invoke nested runs, score outcomes + spans,
    iterate; evolution logic prefers hwfl modules over host growth.
@@ -72,7 +72,7 @@ We want language-level ergonomics **and** document-shaped authoring.
 - Package registry
 - Embedding a full existing language (JS / Python / Lua runtimes)
 - User-defined algebraic effect handlers
-- Perfect parity with hwfi’s step DSL on day one
+- Reintroducing hwfi’s step DSL as the computation substrate
 - Cursor-class RAG / LSP / embeddings until a measured coding-agent gap
 
 ## Constraints
@@ -109,5 +109,4 @@ language replaces micro-tool fan-out.
 **Lab intuition:** a parent workflow (or thin driver) can spawn N candidate
 projects in temp dirs, check/run each against a shared task fixture,
 read spans + cost + outcome, and select/mutate for the next generation —
-locally via the library/CLI first; on a server via the separate control
-plane later.
+locally via the library/CLI; on a server via the separate control plane.

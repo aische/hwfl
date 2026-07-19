@@ -26,30 +26,34 @@
 Do not merge L1 and L2 (markdown is packaging, not the AST).  
 Do not put durability policy into L2 syntax (authors don’t write checkpoint pragmas).
 
-## Haskell package shape (suggested)
+## Package layout
 
 ```text
 hwfl/
-  app/Main.hs                 # CLI
+  app/Main.hs                 # CLI over the driver
   src/Hwfl/
     Ast/                      # Expr, Decl, Type, Pat, Module
     Parse/                    # Kernel + markdown loader
     Check/                    # Types + effects + project graph
     Eval/                     # pure big-step evaluator
+    Driver.hs                 # check / run / step / resume / approve / show
     Runtime/
       Machine.hs              # frames, host/par/confirm transitions
+      Run.hs                  # durable run loop
       Snapshot.hs
       Host.hs                 # dispatch host ops
       Workspace.hs            # sandbox FS
       Exec.hs                 # opt-in process spawn
+      Store.hs                # run-store interface (FS backend)
     Llm/
       Provider.hs             # typeclass / record of ops
       Simple.hs               # llm-simple adapter (default)
     Obs/
       Span.hs
       Trace.hs
+      Observer.hs             # live span / pause hooks
     Project.hs                # load project tree
-    Cli.hs
+    Cli/                      # JSON / CLI helpers
   test/
   examples/
 ```
@@ -66,8 +70,8 @@ All side effects go through **host ops** registered in the runtime:
 | LLM         | `llm.chat`, `llm.object`, `llm.agent`                 |
 | Process     | `exec.run`                                            |
 | Human       | `human.confirm`                                       |
-| Meta        | `meta.eval_module`, `meta.list_runs`, `obs.log`       |
-| Concurrency | `par` / `join` (runtime constructs, not user threads; cooperative pool today) |
+| Meta        | `meta.invoke`, `meta.list_runs`, `obs.log`            |
+| Concurrency | `par` / `join` (runtime constructs, not user threads; cooperative pool) |
 
 Host ops:
 
@@ -81,13 +85,13 @@ Host ops:
 ```text
 Workflow ──► llm.* host ops ──► LlmProvider ──► llm-simple
                                    │
-                                   └──► FutureProvider
+                                   └──► other adapters
 ```
 
 Workflows never import `llm-simple`. Only `Hwfl.Llm.Simple` (or equivalent)
 depends on it. See [spec/08-llm-provider.md](spec/08-llm-provider.md).
 
-## Persistence layout (local v0)
+## Persistence layout
 
 Per workspace (names illustrative):
 
@@ -98,11 +102,11 @@ Per workspace (names illustrative):
     snapshot.json       # latest machine (or sequenced snapshots)
     spans.jsonl         # structured span open/close (thin index)
     events.jsonl        # append-only audit / live LLM deltas
-    transcripts.jsonl   # planned: opt-in LangSmith-style payloads
 ```
 
 Progress is defined by **snapshot**, not by replaying the event log.
-Spans answer topology and cost; full LLM messages are opt-in transcripts.
+Spans answer topology and cost. Full LLM message payloads are not captured
+in the default run layout (spans stay the thin index).
 
 ## Project layout (author)
 
@@ -111,9 +115,9 @@ project.json            # name, entrypoint, env allowlist, exec policy
 model-catalog.json      # models ↔ providers (provider-agnostic config)
 .env                    # API keys (host only; never in ctx)
 workflows/*.md
-tools/*.md              # optional libraries / callable modules
+tools/*.md              # libraries / callable modules
 skills/*.md             # agent skills (callable / instruction)
-types/*.md              # shared type aliases (optional; or in-language types)
+types/*.md              # shared type aliases (or in-language types)
 lib/*.md                # pure/effectful libraries
 ```
 
@@ -125,10 +129,10 @@ hwfl run   <project> …   # check (or reuse) then evaluate
 hwfl step / resume / show / approve
 ```
 
-These commands are **one frontend** over a library driver. The same
-operations (plus run-store queries and an `Observer` hook for live spans /
-pause / finish) are what a future control-plane HTTP/WS app should call —
-without Servant living in this repo. See [idea.md](idea.md) north star.
+These commands are **one frontend** over a library driver. A control-plane
+HTTP/WS app calls the same operations (plus run-store queries and an
+`Observer` hook for live spans / pause / finish) — without Servant living
+in this repo. See [idea.md](idea.md) north star.
 
 ## Library vs control plane
 
@@ -139,7 +143,7 @@ without Servant living in this repo. See [idea.md](idea.md) north star.
                              │ driver façade
 ┌────────────────────────────▼────────────────────────────────┐
 │  hwfl library — check / run / step / resume / approve / show │
-│  run-store interface (FS today; optional DB backend later)   │
+│  run-store interface (FS backend)                            │
 │  project root + workspace sandbox + LlmProvider              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -149,10 +153,10 @@ run metadata, queue, materialize project + workspace temp dirs, map
 pause/approve over WebSocket or SSE. It must not reimplement the machine;
 it persists metadata and schedules sandboxed `hwfl` library runs.
 
-**Genetic lab (example / later workflow):** treat project trees as
-candidates (genome), workspaces as task fixtures + run sandboxes, invoke
-nested runs (`meta.invoke` when shipped), score from spans / outcome /
-cost. Prefer in-language evolution over a host “evolution engine.”
+**Genetic lab:** treat project trees as candidates (genome), workspaces as
+task fixtures + run sandboxes, invoke nested runs via `meta.invoke`, score
+from spans / outcome / cost. Prefer in-language evolution over a host
+“evolution engine.”
 
 ## Project vs workspace
 
@@ -161,9 +165,9 @@ cost. Prefer in-language evolution over a host “evolution engine.”
 | **Project** | Markdown modules, `project.json`, skills — the program (lab: genome) |
 | **Workspace** | Sandboxed FS + `.hwfl/runs` — data and durable run state |
 
-CLI already accepts `--workspace`. Lab and control plane should materialize
-both as directories (often temp); do not collapse them into one tree unless
-the task truly is “edit the project in place.”
+CLI accepts `--workspace`. Lab and control plane materialize both as
+directories (often temp); do not collapse them into one tree unless the
+task truly is “edit the project in place.”
 
 ## Stdlib policy
 
@@ -177,7 +181,7 @@ the task truly is “edit the project in place.”
 | Construct                      | Layer                  | Notes                     |
 | ------------------------------ | ---------------------- | ------------------------- |
 | `let` / `fun` / `match` / `if` | L2 pure                | No snapshot mid-reduction |
-| `par` / `join`                 | L3 sugar + frames      | Structured concurrency (cooperative today; concurrent host IO future) |
+| `par` / `join`                 | L3 sugar + frames      | Structured concurrency (cooperative pool) |
 | `confirm`                      | L3 host / Human effect | Freezes `par` pool        |
 | `try` / `catch` or `Result`    | L2 (+ catch frames)    | Catchable host errors     |
 | Agent tool loop                | L3 state machine       | Like hwfi agent `Current` |

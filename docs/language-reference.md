@@ -163,7 +163,7 @@ confirm { title = …, detail = … }
 
 **Runtime note:** `par(max = N)` caps active branches; result order
 matches input order. The runtime steps one branch transition at a time
-(cooperative). Overlapping blocking host IO across branches is not yet
+(cooperative). Overlapping blocking host IO across branches is not
 supported.
 
 ## Effects

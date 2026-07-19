@@ -2,11 +2,10 @@
 
 Normative host set: [spec/05-host-ops.md](spec/05-host-ops.md).
 
-Everything else should start as **hwfl modules** under `lib/` in the
-greenfield repo (and eventually a bootstrapped stdlib shipped with the
-CLI).
+Everything else belongs as **hwfl modules** under `lib/` (and, when the set
+stabilizes, a bootstrapped stdlib shipped with the CLI).
 
-## Suggested early `lib/` modules
+## Candidate `lib/` modules
 
 | Module                      | Contents                                                                          |
 | --------------------------- | --------------------------------------------------------------------------------- |
@@ -15,7 +14,7 @@ CLI).
 | `lib/string`                | split, trim, contains, replace                                                    |
 | `lib/json`                  | parse/print helpers over `Json`                                                   |
 | `lib/option` / `lib/result` | combinators                                                                       |
-| `lib/text`                  | metrics, similarity — today: pure prelude `text.*`; later migrate to module |
+| `lib/text`                  | metrics, similarity — currently pure prelude `text.*`                             |
 
 Pure prelude also exposes `list.length` / `list.concat` and `md.sections` so
 authors can write recursive list helpers before cons patterns land.

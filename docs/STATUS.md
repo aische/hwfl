@@ -5,7 +5,6 @@ Last updated: 2026-07-19
 ## Current focus
 
 Optional mutate / next-generation loop on the compare spine.
-Frontmatter `examples` for tooling / control-plane UI shipped.
 
 ## North star
 
@@ -16,16 +15,15 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
-- **Author-doc hygiene** — strip milestone / plan / task-ID noise from
-  language-reference, tutorial, idea, architecture, stdlib; leave
-  STATUS / TASKS / plans / specs as the scaffolding layer
+- **Author-doc noise pass** — architecture / idea / stdlib / langref: drop
+  “suggested/planned/deferred/later”, fix stale `meta.invoke when shipped`,
+  refresh package layout to match `src/`
 - **Root README** — overview + coding-agent quick start
 - **Frontmatter `examples`** — sample run inputs; tooling metadata only
 - **Deterministic FS tree ops** — `fs.mkdir` / `copy` / `move` / `exists`
   / `stat`; compare lab materialize uses `fs.copy`
-- **Sub-cent LLM cost** · resume project hash · Observer `--debug`
-- Local compare lab; `meta.*`; `--cost`; semantic-check / skills /
-  coding-agent host gaps
+- Local compare lab; `meta.*`; `--cost`; Observer `--debug`; skills /
+  semantic-check / coding-agent host gaps
 
 ## Blockers
 
