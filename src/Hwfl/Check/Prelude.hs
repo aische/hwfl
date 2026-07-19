@@ -232,6 +232,24 @@ llmType =
           [EffNet]
           (t "String")
       ),
+      ( Ident "chat_messages",
+        TEffFun
+          ( TRecord
+              [ (Ident "system", t "String"),
+                ( Ident "messages",
+                  TList
+                    ( TRecord
+                        [ (Ident "role", t "String"),
+                          (Ident "content", t "String")
+                        ]
+                    )
+                ),
+                (Ident "model", t "String")
+              ]
+          )
+          [EffNet]
+          (t "String")
+      ),
       ( Ident "object",
         -- Default result is Json; Infer special-cases schema = schema(T) → T (E14).
         TEffFun
@@ -301,6 +319,16 @@ humanType =
               [ (Ident "title", t "String"),
                 (Ident "detail", t "String"),
                 (Ident "options", TList (t "String"))
+              ]
+          )
+          [EffHuman]
+          (t "String")
+      ),
+      ( Ident "ask",
+        TEffFun
+          ( TRecord
+              [ (Ident "prompt", t "String"),
+                (Ident "detail", t "String")
               ]
           )
           [EffHuman]

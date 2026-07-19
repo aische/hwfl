@@ -59,7 +59,8 @@ Active work only. Archive completed sections to `log/archive/` weekly.
       See [spec/06-runtime.md](spec/06-runtime.md) §10.
 - [ ] Alternate `LlmProvider` (OpenAI/Anthropic SDK, etc.)
 - [ ] In-language `lib/` modules per [stdlib.md](stdlib.md)
-- [ ] `llm.chat_messages`; `hwfl init` / shell completions
+- [ ] `hwfl init` / shell completions
+- [ ] Optional: `latest` run-id resolution; `--interactive` human gates
 
 ## Future / nice-to-have (coding-agent capability)
 

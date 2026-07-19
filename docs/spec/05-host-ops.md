@@ -37,7 +37,7 @@ See also [08-llm-provider.md](08-llm-provider.md).
 | Op | Signature (sketch) |
 |----|-------------------|
 | `llm.chat` | `(system?: String, prompt: String, model: String, …) -> String` |
-| `llm.chat_messages` | `(messages: List<Message>, model: String, …) -> String` |
+| `llm.chat_messages` | `(system?: String, messages: List<{ role: String, content: String }>, model: String) -> String` |
 | `llm.object` | `(prompt: String, schema: Schema, model: String) -> T` when `schema = schema(T)` (else `Json`) |
 | `llm.agent` | `(system, prompt, tools: List<ToolSpec>, model, …) -> AgentResult` |
 | `llm.agent_object` | `(system, prompt, tools, schema: Schema, model, …) -> { value: T, rounds: Int }` when `schema = schema(T)` |
@@ -87,13 +87,16 @@ anything interactive; CI projects may set `exec.confirm = false`.
 |----|-------|
 | `human.confirm` | `{ title, detail }` → `Bool` (or `Approved`/`Denied`) |
 | `human.choice` | `{ title, detail, options: List<String> }` → selected `String` |
+| `human.ask` | `{ prompt, detail? }` → free-text `String` |
 
 `human.confirm` pauses the run (`awaiting_confirm`); resolve with
 `hwfl approve --yes|--no`. `human.choice` pauses (`awaiting_choice`);
 resolve with `hwfl choose --select <option>` (must be one of `options`).
-Sugar: `confirm { … }` / `choice { … }`. In `par`, either gate triggers
-cooperative pool freeze ([06-runtime.md](06-runtime.md)). Agent tools may
-wrap `human.choice` (nested machine bubbles the pause; choose resumes the
+`human.ask` pauses (`awaiting_input`); resolve with
+`hwfl reply --text <string>`. Sugar: `confirm { … }` / `choice { … }`.
+In `par`, any human gate triggers cooperative pool freeze
+([06-runtime.md](06-runtime.md)). Agent tools may wrap `human.choice` /
+`human.ask` (nested machine bubbles the pause; choose/reply resumes the
 tool result into the agent loop).
 
 ## 5. Observability (`Read` or pure-ish)

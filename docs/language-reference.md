@@ -108,6 +108,7 @@ basename on the allowlist. Child env = keys in `exec.env` only.
 | Op | Effects | Signature |
 |----|---------|-----------|
 | `llm.chat` | Net | `{ system, prompt, model } -> String` |
+| `llm.chat_messages` | Net | `{ system, messages: List<{ role, content }>, model } -> String` |
 | `llm.object` | Net | `{ prompt, schema, model } -> T` when `schema = schema(T)` (else `Json`) |
 | `llm.agent` | Net | `{ system, prompt, tools, model, max_rounds } -> { text, rounds }` |
 | `llm.agent_object` | Net | `{ …, schema } -> { value: T, rounds }` (synthetic `submit` tool) |
@@ -118,6 +119,7 @@ basename on the allowlist. Child env = keys in `exec.env` only.
 |----|---------|-----------|
 | `human.confirm` | Human | `{ title, detail } -> Bool` |
 | `human.choice` | Human | `{ title, detail, options: List<String> } -> String` |
+| `human.ask` | Human | `{ prompt, detail } -> String` |
 | `obs.log` | — | `{ level, message, fields } -> ()` |
 | `obs.span` | — | `(name, fun () -> a) -> a` |
 | `meta.check_module` | Meta, Read | `(path: FileRef) -> { ok, error, name }` |
@@ -161,9 +163,9 @@ confirm { title = …, detail = … }
 choice { title = …, detail = …, options = […] }
 ```
 
-`confirm` / `human.confirm` / `choice` / `human.choice` inside `par` freezes
-the pool. Resolve with `hwfl approve --yes|--no` or
-`hwfl choose --select <option>` respectively.
+`confirm` / `human.confirm` / `choice` / `human.choice` / `human.ask` inside
+`par` freezes the pool. Resolve with `hwfl approve --yes|--no`,
+`hwfl choose --select <option>`, or `hwfl reply --text <string>` respectively.
 
 **Runtime note:** `par(max = N)` caps active branches; result order
 matches input order. The runtime steps one branch transition at a time

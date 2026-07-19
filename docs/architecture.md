@@ -69,7 +69,7 @@ All side effects go through **host ops** registered in the runtime:
 | FS          | `fs.read`, `fs.write`, `fs.copy`, `fs.mkdir`, …       |
 | LLM         | `llm.chat`, `llm.object`, `llm.agent`                 |
 | Process     | `exec.run`                                            |
-| Human       | `human.confirm`, `human.choice`                       |
+| Human       | `human.confirm`, `human.choice`, `human.ask`          |
 | Meta        | `meta.invoke`, `meta.list_runs`, `obs.log`            |
 | Concurrency | `par` / `join` (runtime constructs, not user threads; cooperative pool) |
 

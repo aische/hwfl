@@ -89,11 +89,13 @@ data HostOpId
   | HostFsStat
   | HostExecRun
   | HostLlmChat
+  | HostLlmChatMessages
   | HostLlmObject
   | HostLlmAgent
   | HostLlmAgentObject
   | HostHumanConfirm
   | HostHumanChoice
+  | HostHumanAsk
   | HostObsLog
   | HostObsSpan
   | HostMetaCheckModule
@@ -190,11 +192,13 @@ hostOpName = \case
   HostFsStat -> "fs.stat"
   HostExecRun -> "exec.run"
   HostLlmChat -> "llm.chat"
+  HostLlmChatMessages -> "llm.chat_messages"
   HostLlmObject -> "llm.object"
   HostLlmAgent -> "llm.agent"
   HostLlmAgentObject -> "llm.agent_object"
   HostHumanConfirm -> "human.confirm"
   HostHumanChoice -> "human.choice"
+  HostHumanAsk -> "human.ask"
   HostObsLog -> "obs.log"
   HostObsSpan -> "obs.span"
   HostMetaCheckModule -> "meta.check_module"

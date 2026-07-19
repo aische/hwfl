@@ -22,6 +22,7 @@ module Hwfl.Driver
     driverResume,
     driverApprove,
     driverChoose,
+    driverReply,
 
     -- * Inspect
     driverShow,
@@ -99,6 +100,7 @@ import Hwfl.Runtime.Run
     chooseRun,
     defaultRunTargetRequest,
     resumeRun,
+    replyRun,
     runTarget,
     stepRun,
   )
@@ -227,6 +229,9 @@ driverApprove = approveRun
 
 driverChoose :: FilePath -> Text -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
 driverChoose = chooseRun
+
+driverReply :: FilePath -> Text -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
+driverReply = replyRun
 
 driverShow :: ShowOptions -> IO (Either Text Text)
 driverShow = showRun

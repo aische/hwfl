@@ -135,6 +135,7 @@ hostOpsEnv =
       ( Ident "llm",
         VRecord
           [ (Ident "chat", VHostOp HostLlmChat),
+            (Ident "chat_messages", VHostOp HostLlmChatMessages),
             (Ident "object", VHostOp HostLlmObject),
             (Ident "agent", VHostOp HostLlmAgent),
             (Ident "agent_object", VHostOp HostLlmAgentObject)
@@ -143,7 +144,8 @@ hostOpsEnv =
       ( Ident "human",
         VRecord
           [ (Ident "confirm", VHostOp HostHumanConfirm),
-            (Ident "choice", VHostOp HostHumanChoice)
+            (Ident "choice", VHostOp HostHumanChoice),
+            (Ident "ask", VHostOp HostHumanAsk)
           ]
       ),
       ( Ident "obs",
@@ -171,7 +173,7 @@ hostOpsEnv =
     ]
 
 -- | Execute one host op (one transition / snapshot boundary).
--- @human.confirm@ / @human.choice@ / @obs.span@ / @obs.log@ / @llm.agent@ /
+-- @human.confirm@ / @human.choice@ / @human.ask@ / @obs.span@ / @obs.log@ / @llm.agent@ /
 -- @llm.agent_object@ / confirm-gated @exec.run@ are handled by the machine driver.
 runHostOp ::
   HostEnv ->
@@ -195,6 +197,7 @@ runHostOp env op args = case op of
   HostFsStat -> doFsStat env args
   HostExecRun -> doExecRun env args
   HostLlmChat -> doLlmChat env args
+  HostLlmChatMessages -> doLlmChatMessages env args
   HostLlmObject -> doLlmObject env args
   HostMetaCheckModule -> doMetaCheckModule env args
   HostMetaCheckProject -> doMetaCheckProject env args
@@ -214,6 +217,8 @@ runHostOp env op args = case op of
     pure (Left (HostErr "human.confirm must be driven by the machine (approve gate)"))
   HostHumanChoice ->
     pure (Left (HostErr "human.choice must be driven by the machine (choose gate)"))
+  HostHumanAsk ->
+    pure (Left (HostErr "human.ask must be driven by the machine (reply gate)"))
   HostObsSpan ->
     pure (Left (HostErr "obs.span must be driven by the machine (region frame)"))
 
@@ -987,6 +992,31 @@ doLlmChat env args = case parseChatArgs args of
               (providerCloseAttrs env.hePricing model pr)
           )
 
+doLlmChatMessages :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doLlmChatMessages env args = case parseChatMessagesArgs args of
+  Left e -> pure (Left e)
+  Right (system, messages, model) -> do
+    env.heLog ("llm.chat_messages model=" <> model <> " n=" <> T.pack (show (length messages)))
+    let withSystem =
+          case system of
+            Just s | not (T.null s) -> Message RoleSystem s : messages
+            _ -> messages
+        req =
+          (emptyChatRequest model)
+            { chatMessages = withSystem,
+              chatSystem = system,
+              chatOnChunk = env.heLlmOnChunk
+            }
+    result <- env.heProvider.llmChat req
+    pure $ case result of
+      Left pe -> Left (ProviderErr (renderProviderError pe))
+      Right pr ->
+        Right
+          ( HostResult
+              (VString pr.prContent)
+              (providerCloseAttrs env.hePricing model pr)
+          )
+
 doLlmObject :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doLlmObject env args = case parseObjectArgs args of
   Left e -> pure (Left e)
@@ -1021,6 +1051,40 @@ parseChatArgs args = do
   prompt <- expectString (Ident "prompt") args
   model <- expectString (Ident "model") args
   pure (system, prompt, model)
+
+parseChatMessagesArgs ::
+  [(Maybe Ident, Value)] -> Either RuntimeError (Maybe Text, [Message], Text)
+parseChatMessagesArgs args = do
+  model <- expectString (Ident "model") args
+  messages <- expectChatMessages (Ident "messages") args
+  let system = case lookupNamed (Ident "system") args of
+        Just (VString t) -> Just t
+        _ -> Nothing
+  pure (system, messages, model)
+
+expectChatMessages :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError [Message]
+expectChatMessages n args = case lookupNamed n args of
+  Just (VList xs) -> traverse parseChatMessage xs
+  Just _ -> Left (HostErr ("expected List<{ role, content }> for " <> unIdent n))
+  Nothing -> Left (HostErr ("missing named argument: " <> unIdent n))
+
+parseChatMessage :: Value -> Either RuntimeError Message
+parseChatMessage = \case
+  VRecord fs -> do
+    roleTxt <- case lookup (Ident "role") fs of
+      Just (VString t) -> Right t
+      _ -> Left (HostErr "chat message missing role: String")
+    content <- case lookup (Ident "content") fs of
+      Just (VString t) -> Right t
+      _ -> Left (HostErr "chat message missing content: String")
+    role <- case roleTxt of
+      "system" -> Right RoleSystem
+      "user" -> Right RoleUser
+      "assistant" -> Right RoleAssistant
+      other ->
+        Left (HostErr ("chat message role must be system|user|assistant, got: " <> other))
+    pure (Message role content)
+  _ -> Left (HostErr "chat message must be a record { role, content }")
 
 parseObjectArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Aeson.Value, Text)
 parseObjectArgs args = do

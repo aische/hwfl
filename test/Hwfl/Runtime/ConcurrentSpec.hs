@@ -16,12 +16,13 @@ import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Eval (StepMode (..))
-import Hwfl.Runtime.Machine (ChoiceRequest (..), MachineStatus (..), PauseReason (..))
+import Hwfl.Runtime.Machine (AskRequest (..), ChoiceRequest (..), MachineStatus (..), PauseReason (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     approveRun,
     chooseRun,
+    replyRun,
     resumeRun,
     runLoadedModule,
     emptySkillRuntime)
@@ -103,6 +104,26 @@ choiceSrc =
       "```"
     ]
 
+askSrc :: Text
+askSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/ask",
+      "inputs: {}",
+      "outputs:",
+      "  answer: String",
+      "effects: [Human]",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { answer: String } =",
+      "  let answer = human.ask({ prompt = \"Your name?\" })",
+      "  { answer }",
+      "```"
+    ]
+
 parConfirmSrc :: Text
 parConfirmSrc =
   T.unlines
@@ -121,6 +142,29 @@ parConfirmSrc =
       "  let results =",
       "    par(max = 2) for name in [\"a\", \"b\"] {",
       "      confirm { title = name, detail = name }",
+      "    }",
+      "  { results }",
+      "```"
+    ]
+
+parAskSrc :: Text
+parAskSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/par-ask",
+      "inputs: {}",
+      "outputs:",
+      "  results: List<String>",
+      "effects: [Human, Parallel]",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { results: List<String> } =",
+      "  let results =",
+      "    par(max = 2) for name in [\"first\", \"second\"] {",
+      "      human.ask({ prompt = name })",
       "    }",
       "  { results }",
       "```"
@@ -232,6 +276,41 @@ spec = describe "runtime par/confirm/step (M5)" $ do
             OutcomeCompleted (VRecord [(Ident "env", VString "staging")]) _ _ -> pure ()
             other -> expectationFailure (show other)
 
+  it "ask + reply --text" $
+    withSystemTempDirectory "hwfl-ask" $ \dir -> do
+      path <- writeMod dir askSrc
+      case loadModuleText path askSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = mockProvider,
+                  roInputs = [],
+                  roRunId = Just "ask1",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime
+                }
+              loaded
+          case outcome of
+            OutcomePaused (MsPaused (PauseAwaitingAsk a)) _ _ _ -> do
+              askPrompt a `shouldBe` "Your name?"
+              askDetail a `shouldBe` ""
+            other -> expectationFailure ("expected awaiting input, got " <> show other)
+          replied <- replyRun dir "ask1" "Ada" mockProvider "model-catalog.json" noopObserver
+          case replied of
+            OutcomeCompleted (VRecord [(Ident "answer", VString "Ada")]) _ _ -> pure ()
+            other -> expectationFailure (show other)
+
   it "par + confirm freezes pool; approve continues" $
     withSystemTempDirectory "hwfl-parconf" $ \dir -> do
       path <- writeMod dir parConfirmSrc
@@ -271,6 +350,46 @@ spec = describe "runtime par/confirm/step (M5)" $ do
             OutcomeCompleted (VRecord [(Ident "results", VList rs)]) _ _ ->
               -- If both finished in one approve somehow.
               length rs `shouldBe` 2
+            other -> expectationFailure (show other)
+
+  it "par + ask queues replies in branch order" $
+    withSystemTempDirectory "hwfl-parask" $ \dir -> do
+      path <- writeMod dir parAskSrc
+      case loadModuleText path parAskSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          paused <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = mockProvider,
+                  roInputs = [],
+                  roRunId = Just "pa1",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime
+                }
+              loaded
+          case paused of
+            OutcomePaused (MsPaused (PauseAwaitingAsk a)) _ _ _ ->
+              askPrompt a `shouldBe` "first"
+            other -> expectationFailure ("expected first ask, got " <> show other)
+          second <- replyRun dir "pa1" "one" mockProvider "model-catalog.json" noopObserver
+          case second of
+            OutcomePaused (MsPaused (PauseAwaitingAsk a)) _ _ _ ->
+              askPrompt a `shouldBe` "second"
+            other -> expectationFailure ("expected second ask, got " <> show other)
+          final <- replyRun dir "pa1" "two" mockProvider "model-catalog.json" noopObserver
+          case final of
+            OutcomeCompleted (VRecord [(Ident "results", VList values)]) _ _ ->
+              values `shouldBe` [VString "one", VString "two"]
             other -> expectationFailure (show other)
 
   it "step then resume" $

@@ -7,6 +7,7 @@ module Hwfl.Runtime.Eval
     runUntilPause,
     approveMachine,
     chooseMachine,
+    replyMachine,
     evalIO,
     applyIO,
   )
@@ -135,6 +136,8 @@ applyIO ctx f args = case openApply ctx f args of
         pure (Left (EvalErr (Unsupported "human.confirm requires the machine driver")))
     | op == HostHumanChoice ->
         pure (Left (EvalErr (Unsupported "human.choice requires the machine driver")))
+    | op == HostHumanAsk ->
+        pure (Left (EvalErr (Unsupported "human.ask requires the machine driver")))
     | op == HostObsSpan ->
         pure (Left (EvalErr (Unsupported "obs.span requires the machine driver")))
     | op == HostLlmAgent ->
@@ -161,6 +164,8 @@ resultOf m = case m.mStatus of
     Left (EvalErr (Unsupported "paused on confirm; use approve/resume"))
   MsPaused (PauseAwaitingChoice _) ->
     Left (EvalErr (Unsupported "paused on choice; use choose"))
+  MsPaused (PauseAwaitingAsk _) ->
+    Left (EvalErr (Unsupported "paused on ask; use reply"))
   other -> Left (EvalErr (Trap ("stopped: " <> T.pack (show other))))
 
 openApply ::
@@ -236,6 +241,7 @@ stepMachine ctx mode m = case m.mStatus of
         CurHost op args -> doHost ctx mode m' op args
         CurAwaitConfirm c -> doConfirm ctx m' c
         CurAwaitChoice c -> doChoice ctx m' c
+        CurAwaitAsk a -> doAsk ctx m' a
         CurParPool -> stepPar ctx mode m'
         CurCloseRegion sid v -> doCloseRegion ctx mode m' sid v
         CurAgent ag -> stepAgent ctx mode m' ag
@@ -291,6 +297,20 @@ doChoice ctx m c = do
   _ <- persist ctx (Just HostHumanChoice) Nothing (MsPaused (PauseAwaitingChoice c)) (Just m')
   pure (Right (StepResult m' True))
 
+doAsk ::
+  RunCtx -> Machine -> AskRequest -> IO (Either RuntimeError StepResult)
+doAsk ctx m a = do
+  let m' = m {mStatus = MsPaused (PauseAwaitingAsk a), mCurrent = CurAwaitAsk a}
+  _ <-
+    openSpan
+      ctx.rcStore
+      ctx.rcSpans
+      "human.ask"
+      SkHost
+      (hostOpenAttrs HostHumanAsk [(Just (Ident "prompt"), VString a.askPrompt)])
+  _ <- persist ctx (Just HostHumanAsk) Nothing (MsPaused (PauseAwaitingAsk a)) (Just m')
+  pure (Right (StepResult m' True))
+
 doHost ::
   RunCtx ->
   StepMode ->
@@ -305,6 +325,9 @@ doHost ctx mode m op args
   | op == HostHumanChoice = case choiceArgs args of
       Left e -> abortOrCatch ctx mode m e
       Right c -> doChoice ctx m c
+  | op == HostHumanAsk = case askArgs args of
+      Left e -> abortOrCatch ctx mode m e
+      Right a -> doAsk ctx m a
   | op == HostExecRun =
       case m.mFrames of
         FrExecApproved : rest ->
@@ -387,6 +410,12 @@ doHostRun ctx mode m op args = do
 attachLlmStream :: RunCtx -> HostOpId -> IO (HostEnv, IO ())
 attachLlmStream ctx = \case
   HostLlmChat -> do
+    sink <- newStreamSink ctx.rcStore ctx.rcSpans
+    pure
+      ( ctx.rcHost {heLlmOnChunk = Just sink.ssOnChunk},
+        sink.ssFlush
+      )
+  HostLlmChatMessages -> do
     sink <- newStreamSink ctx.rcStore ctx.rcSpans
     pure
       ( ctx.rcHost {heLlmOnChunk = Just sink.ssOnChunk},
@@ -693,6 +722,16 @@ stepAgentTool ctx mode m ag tr
                             }
                     _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
                     pure (Right (StepResult m' True))
+                  MsPaused (PauseAwaitingAsk _) -> do
+                    let tr' = tr {trActiveMachine = Just (mkBranch bm')}
+                        ag' = ag {agToolRound = Just tr'}
+                        m' =
+                          m
+                            { mStatus = MsPaused (PauseAwaitingAsk (askOf bm')),
+                              mCurrent = CurAgent ag'
+                            }
+                    _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
+                    pure (Right (StepResult m' True))
                   MsPaused PauseExplicit -> do
                     let tr' = tr {trActiveMachine = Just (mkBranch bm')}
                         ag' = ag {agToolRound = Just tr'}
@@ -746,6 +785,11 @@ choiceOf :: Machine -> ChoiceRequest
 choiceOf bm = case bm.mCurrent of
   CurAwaitChoice c -> c
   _ -> ChoiceRequest "choice" "" [] Nothing
+
+askOf :: Machine -> AskRequest
+askOf bm = case bm.mCurrent of
+  CurAwaitAsk a -> a
+  _ -> AskRequest "ask" "" Nothing
 
 startToolCall ::
   RunCtx ->
@@ -1329,6 +1373,39 @@ chooseMachine selected m = case m.mStatus of
               }
   _ -> Left (ConfigErr "run is not awaiting a choice")
 
+replyMachine :: Text -> Machine -> Either RuntimeError Machine
+replyMachine text m = case m.mStatus of
+  MsPaused (PauseAwaitingAsk a) ->
+    case (m.mFrames, m.mCurrent) of
+      (FrPar pjs : rest, _) -> Right (replyPar text a pjs rest m)
+      (FrAsk _ : rest, _) ->
+        Right
+          m
+            { mStatus = MsRunning,
+              mCurrent = CurReturn (VString text),
+              mFrames = rest
+            }
+      (_, CurAgent ag)
+        | Just tr <- ag.agToolRound,
+          Just (BranchMachine bm) <- tr.trActiveMachine ->
+            case replyMachine text bm of
+              Left e -> Left e
+              Right bm' ->
+                let tr' = tr {trActiveMachine = Just (mkBranch bm')}
+                    ag' = ag {agToolRound = Just tr'}
+                 in Right
+                      m
+                        { mStatus = MsRunning,
+                          mCurrent = CurAgent ag'
+                        }
+      _ ->
+        Right
+          m
+            { mStatus = MsRunning,
+              mCurrent = CurReturn (VString text)
+            }
+  _ -> Left (ConfigErr "run is not awaiting input")
+
 approvePar :: Bool -> ConfirmRequest -> ParJoinState -> [Frame] -> Machine -> Machine
 approvePar yes c pjs rest m =
   let idx = fromMaybe 0 c.crBranchIndex
@@ -1383,6 +1460,33 @@ choosePar selected c pjs rest m =
           mFrames = FrPar pjs' : rest
         }
 
+replyPar :: Text -> AskRequest -> ParJoinState -> [Frame] -> Machine -> Machine
+replyPar text a pjs rest m =
+  let idx = fromMaybe 0 a.askBranchIndex
+      pjs' =
+        pjs
+          { pjsPhase = ParScheduling,
+            pjsAskQueue = drop 1 pjs.pjsAskQueue,
+            pjsSlots = setSlot idx ParSlotRunning pjs.pjsSlots,
+            pjsActive =
+              Map.adjust
+                ( \(BranchMachine bm) ->
+                    mkBranch
+                      bm
+                        { mStatus = MsRunning,
+                          mCurrent = CurReturn (VString text),
+                          mFrames = dropAskFrame bm.mFrames
+                        }
+                )
+                idx
+                pjs.pjsActive
+          }
+   in m
+        { mStatus = MsRunning,
+          mCurrent = CurParPool,
+          mFrames = FrPar pjs' : rest
+        }
+
 dropConfirmFrame :: [Frame] -> [Frame]
 dropConfirmFrame = \case
   FrConfirm _ : rest -> rest
@@ -1391,6 +1495,11 @@ dropConfirmFrame = \case
 dropChoiceFrame :: [Frame] -> [Frame]
 dropChoiceFrame = \case
   FrChoice _ : rest -> rest
+  frames -> frames
+
+dropAskFrame :: [Frame] -> [Frame]
+dropAskFrame = \case
+  FrAsk _ : rest -> rest
   frames -> frames
 
 -------------------------------------------------------------------------------
@@ -1469,6 +1578,16 @@ stepParWith ctx mode m pjs rest
                             mFrames = FrPar pjs' : rest
                           }
                    in tryFinishDrain ctx mode m' pjs' rest
+                MsPaused (PauseAwaitingAsk a) ->
+                  let a' = a {askBranchIndex = Just idx}
+                      pjs' = absorbAsk pjs idx bm' a'
+                      m' =
+                        m
+                          { mStatus = MsDraining,
+                            mCurrent = CurParPool,
+                            mFrames = FrPar pjs' : rest
+                          }
+                   in tryFinishDrain ctx mode m' pjs' rest
                 MsPaused PauseExplicit -> do
                   let pjs' = pjs {pjsActive = Map.insert idx (mkBranch bm') pjs.pjsActive}
                       m' = m {mCurrent = CurParPool, mFrames = FrPar pjs' : rest}
@@ -1489,10 +1608,12 @@ awaitingHuman :: ParJoinState -> Bool
 awaitingHuman pjs =
   not (null pjs.pjsConfirmQueue)
     || not (null pjs.pjsChoiceQueue)
+    || not (null pjs.pjsAskQueue)
     || any
       ( \case
           ParSlotAwaitingConfirm _ -> True
           ParSlotAwaitingChoice _ -> True
+          ParSlotAwaitingAsk _ -> True
           _ -> False
       )
       pjs.pjsSlots
@@ -1505,6 +1626,7 @@ pickRunnable pjs =
             case (unBranch bm).mStatus of
               MsPaused (PauseAwaitingConfirm _) -> False
               MsPaused (PauseAwaitingChoice _) -> False
+              MsPaused (PauseAwaitingAsk _) -> False
               MsCompleted -> False
               MsFailed -> False
               _ -> True
@@ -1576,7 +1698,25 @@ tryFinishDrain ctx mode m pjs rest
                 )
             _ <- persist ctx (Just HostHumanChoice) Nothing (MsPaused (PauseAwaitingChoice c)) (Just m')
             pure (Right (StepResult m' True))
-          [] -> finishJoin ctx mode m pjs rest
+          [] -> case askQueue pjs of
+            (a : as) -> do
+              let pjs' = pjs {pjsPhase = ParPausedConfirm, pjsAskQueue = a : as}
+                  m' =
+                    m
+                      { mStatus = MsPaused (PauseAwaitingAsk a),
+                        mCurrent = CurAwaitAsk a,
+                        mFrames = FrPar pjs' : rest
+                      }
+              _ <-
+                openSpan
+                  ctx.rcStore
+                  ctx.rcSpans
+                  "human.ask"
+                  SkHost
+                  (hostOpenAttrs HostHumanAsk [(Just (Ident "prompt"), VString a.askPrompt)])
+              _ <- persist ctx (Just HostHumanAsk) Nothing (MsPaused (PauseAwaitingAsk a)) (Just m')
+              pure (Right (StepResult m' True))
+            [] -> finishJoin ctx mode m pjs rest
   | otherwise =
       finishParStep
         ctx
@@ -1588,13 +1728,14 @@ tryFinishDrain ctx mode m pjs rest
           }
         True
 
--- | Branches awaiting confirm/choice are not runnable; drain completes when none remain.
+-- | Branches awaiting human input are not runnable; drain completes when none remain.
 noRunnableActive :: ParJoinState -> Bool
 noRunnableActive pjs =
   all
     ( \bm -> case (unBranch bm).mStatus of
         MsPaused (PauseAwaitingConfirm _) -> True
         MsPaused (PauseAwaitingChoice _) -> True
+        MsPaused (PauseAwaitingAsk _) -> True
         _ -> False
     )
     (Map.elems pjs.pjsActive)
@@ -1613,6 +1754,14 @@ choiceQueue pjs
   | otherwise =
       [ c
         | ParSlotAwaitingChoice c <- pjs.pjsSlots
+      ]
+
+askQueue :: ParJoinState -> [AskRequest]
+askQueue pjs
+  | not (null pjs.pjsAskQueue) = pjs.pjsAskQueue
+  | otherwise =
+      [ a
+        | ParSlotAwaitingAsk a <- pjs.pjsSlots
       ]
 
 finishJoin ::
@@ -1703,6 +1852,15 @@ absorbChoice pjs idx bm c =
       pjsChoiceQueue = pjs.pjsChoiceQueue ++ [c]
     }
 
+absorbAsk :: ParJoinState -> Int -> Machine -> AskRequest -> ParJoinState
+absorbAsk pjs idx bm a =
+  pjs
+    { pjsSlots = setSlot idx (ParSlotAwaitingAsk a) pjs.pjsSlots,
+      pjsActive = Map.insert idx (mkBranch bm) pjs.pjsActive,
+      pjsPhase = ParDraining,
+      pjsAskQueue = pjs.pjsAskQueue ++ [a]
+    }
+
 setSlot :: Int -> ParSlot -> [ParSlot] -> [ParSlot]
 setSlot idx slot slots =
   [ if i == idx then slot else s
@@ -1788,6 +1946,7 @@ crunchOnce ctx m = case m.mStatus of
       CurHost {} -> Right Nothing
       CurAwaitConfirm {} -> Right Nothing
       CurAwaitChoice {} -> Right Nothing
+      CurAwaitAsk {} -> Right Nothing
       CurParPool -> Right Nothing
       CurCloseRegion {} -> Right Nothing
       CurAgent {} -> Right Nothing
@@ -1878,6 +2037,7 @@ pendingPar opts var body env =
       pjsPhase = ParScheduling,
       pjsConfirmQueue = [],
       pjsChoiceQueue = [],
+      pjsAskQueue = [],
       pjsParentEnv = env
     }
 
@@ -2005,6 +2165,16 @@ crunchReturn ctx m v = case m.mFrames of
               m
                 { mCurrent = CurAwaitChoice c,
                   mFrames = FrChoice c : rest
+                }
+          )
+    FrAsk _ -> case askFromValue v of
+      Left e -> Left e
+      Right a ->
+        Right
+          ( Just
+              m
+                { mCurrent = CurAwaitAsk a,
+                  mFrames = FrAsk a : rest
                 }
           )
     FrAfterConfirm _ ->
@@ -2168,6 +2338,31 @@ choiceArgs args = case lookup (Just (Ident "options")) args of
   Nothing -> case args of
     [(Nothing, v)] -> choiceFromValue v
     _ -> Left (HostErr "human.choice expects options: List<String> (and optional title/detail)")
+
+askFromValue :: Value -> Either RuntimeError AskRequest
+askFromValue = \case
+  VRecord fs -> case lookup (Ident "prompt") fs of
+    Just (VString prompt) ->
+      Right
+        AskRequest
+          { askPrompt = prompt,
+            askDetail = stringField (Ident "detail") fs,
+            askBranchIndex = Nothing
+          }
+    _ -> Left (HostErr "ask expects a record { prompt: String, detail?: String }")
+  _ -> Left (HostErr "ask expects a record { prompt: String, detail?: String }")
+
+askArgs :: [(Maybe Ident, Value)] -> Either RuntimeError AskRequest
+askArgs args = case lookup (Just (Ident "prompt")) args of
+  Just (VString prompt) ->
+    let detail = case lookup (Just (Ident "detail")) args of
+          Just (VString d) -> d
+          _ -> ""
+     in Right (AskRequest prompt detail Nothing)
+  Just _ -> Left (HostErr "human.ask prompt must be String")
+  Nothing -> case args of
+    [(Nothing, v)] -> askFromValue v
+    _ -> Left (HostErr "human.ask expects prompt: String (and optional detail)")
 
 persist ::
   RunCtx ->

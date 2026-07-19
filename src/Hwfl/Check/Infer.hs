@@ -127,6 +127,7 @@ infer' env = \case
     | isMetaInvoke f -> inferMetaInvokeApp env args
     | isMetaReadSpans f -> inferMetaReadSpansApp env args
     | isFsCopy f -> inferFsCopyApp env args
+    | isHumanAsk f -> inferHumanAskApp env args
     | EVar (Ident n) <- f,
       Just cls <- classifyOp n ->
         inferOverloadedApp env cls infer args
@@ -780,6 +781,49 @@ inferFsCopyApp env args = case classifyArgs args of
     pure tUnit
   Right (Positional _) ->
     Left (TypeMismatchMsg "fs.copy requires named arguments" (TRecord []) (TRecord []))
+
+-- | @human.ask({ prompt, detail? })@ or named equivalent.
+isHumanAsk :: Expr -> Bool
+isHumanAsk = \case
+  EProj (EVar (Ident "human")) (Ident "ask") -> True
+  _ -> False
+
+inferHumanAskApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferHumanAskApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Named nes) -> checkAskFields env nes
+  Right (Positional [recordExpr]) -> do
+    ty <- infer env recordExpr >>= resolveType env
+    case ty of
+      TRecord fields -> checkAskFieldTypes fields
+      _ -> Left (ExpectedRecord ty)
+  Right (Positional xs) -> Left (ArityMismatch 1 (length xs))
+  where
+    checkAskFields checkEnv fields = do
+      promptE <- maybe (Left (MissingNamedArg (Ident "prompt"))) pure (lookup (Ident "prompt") fields)
+      check checkEnv promptE tString
+      case lookup (Ident "detail") fields of
+        Nothing -> pure ()
+        Just detailE -> check checkEnv detailE tString
+      rejectUnknown (map fst fields)
+      pure tString
+
+    checkAskFieldTypes fields = do
+      promptTy <- maybe (Left (MissingField (Ident "prompt") (TRecord fields))) pure (lookup (Ident "prompt") fields)
+      unify tString promptTy
+      case lookup (Ident "detail") fields of
+        Nothing -> pure ()
+        Just detailTy -> unify tString detailTy
+      rejectUnknown (map fst fields)
+      pure tString
+
+    rejectUnknown names =
+      mapM_
+        ( \n ->
+            unless (n `elem` [Ident "prompt", Ident "detail"]) $
+              Left (UnknownField n (TRecord [(Ident "prompt", tString)]))
+        )
+        names
 
 tUnit, tBool, tInt, tFloat, tString, tToolSpec, tFileRef, tJson :: TypeExpr
 tUnit = TName (TypeName "Unit")

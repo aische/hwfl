@@ -66,7 +66,7 @@ data SpanCloseInfo = SpanCloseInfo
 
 data PauseInfo = PauseInfo
   { piRunId :: Text,
-    -- | @paused@ | @awaiting_confirm@ | @awaiting_choice@
+    -- | @paused@ | @awaiting_confirm@ | @awaiting_choice@ | @awaiting_input@
     piStatus :: Text,
     piMessage :: Text,
     piConfirmTitle :: Maybe Text,

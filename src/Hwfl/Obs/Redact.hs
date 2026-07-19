@@ -257,6 +257,13 @@ hostOpenAttrs op args = case op of
         "system_len" .= textLenAttr (Ident "system") args,
         "prompt_len" .= textLenAttr (Ident "prompt") args
       ]
+  HostLlmChatMessages ->
+    object
+      [ "op" .= hostOpName op,
+        "model" .= stringAttr (Ident "model") args,
+        "system_len" .= textLenAttr (Ident "system") args,
+        "messages" .= listLenAttr (Ident "messages") args
+      ]
   HostLlmObject ->
     object
       [ "op" .= hostOpName op,
@@ -291,6 +298,11 @@ hostOpenAttrs op args = case op of
       [ "op" .= hostOpName op,
         "title" .= stringAttr (Ident "title") args,
         "options" .= listLenAttr (Ident "options") args
+      ]
+  HostHumanAsk ->
+    object
+      [ "op" .= hostOpName op,
+        "prompt" .= stringAttr (Ident "prompt") args
       ]
   HostObsLog ->
     object

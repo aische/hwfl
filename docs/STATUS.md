@@ -15,15 +15,13 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
-- **`human.choice`** — parallel N-way gate (`awaiting_choice`); sugar
-  `choice { … }`; CLI `hwfl choose --select`; par freeze + agent tool nest
-- **`examples/choose.md`**, **`examples/agent-choice.md`**
-- **`examples/promote.md`** — confirm gate demo (approve/deny → Bool branch)
-- **Type/parse error locations** — located `Expr`/`Decl`; fence-absolute
-  `line:col` on check errors; JSON `line`/`column`
-- **CLI `--dump`** — opt-in llm-simple request/response JSON under `./dumps`
-- Author-doc noise pass; root README; frontmatter `examples`; FS tree ops;
-  local compare lab; `meta.*`; `--cost`; Observer `--debug`
+- **Workflow chat** — `human.ask` (`awaiting_input` + `hwfl reply --text`);
+  `llm.chat_messages`; `examples/chat.md` (recursive turn + `/quit`)
+- **`human.choice`** — N-way gate; `examples/choose.md` /
+  `agent-choice.md`
+- **`examples/promote.md`** — confirm gate demo
+- Type/parse error locations; CLI `--dump`; FS tree ops; compare lab;
+  `meta.*`; Observer `--debug`
 
 ## Blockers
 
@@ -33,6 +31,7 @@ None.
 
 1. Optional: mutate / next-generation loop on the compare spine
 2. Optional DB-backed run-store backend (same interface)
+3. Optional: `latest` run-id + `--interactive` stdin for human gates
 
 ## Deferred
 

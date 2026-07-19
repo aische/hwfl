@@ -21,6 +21,7 @@ import Hwfl.Parse.SectionSpec
 import Hwfl.Parse.TypeSpec
 import Hwfl.Runtime.AgentObjectSpec
 import Hwfl.Runtime.AgentSpec
+import Hwfl.Runtime.ChatSpec
 import Hwfl.Runtime.CodingAgentSpec
 import Hwfl.Runtime.CompareSpec
 import Hwfl.Runtime.ConcurrentSpec
@@ -62,6 +63,7 @@ main = hspec $ do
   Hwfl.Runtime.StoreSpec.spec
   Hwfl.Runtime.TrySpec.spec
   Hwfl.Runtime.ConcurrentSpec.spec
+  Hwfl.Runtime.ChatSpec.spec
   Hwfl.Runtime.HostOpsSpec.spec
   Hwfl.Runtime.MetaInvokeSpec.spec
   Hwfl.Runtime.MetaReadSpec.spec

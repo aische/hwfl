@@ -12,6 +12,7 @@ module Hwfl.Runtime.Run
     resumeRun,
     approveRun,
     chooseRun,
+    replyRun,
     loadRunEnv,
     parseCliInputs,
     projectHashOf,
@@ -86,6 +87,7 @@ import Hwfl.Runtime.Eval
     StepMode (..),
     approveMachine,
     chooseMachine,
+    replyMachine,
     runUntilPause,
   )
 import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), hostOpsEnv)
@@ -454,6 +456,8 @@ pauseFields = \case
     ("awaiting_confirm", Just c.crTitle, Just c.crDetail, Nothing)
   PauseAwaitingChoice c ->
     ("awaiting_choice", Just c.chTitle, Just c.chDetail, Just c.chOptions)
+  PauseAwaitingAsk a ->
+    ("awaiting_input", Just a.askPrompt, Just a.askDetail, Nothing)
   PauseCrashRecovery -> ("paused", Nothing, Nothing, Nothing)
 
 notifyPaused ::
@@ -508,6 +512,7 @@ pauseMessage = \case
       <> " ["
       <> T.intercalate " | " c.chOptions
       <> "]"
+  PauseAwaitingAsk a -> "awaiting input: " <> a.askPrompt
   PauseCrashRecovery -> "paused (crash recovery)"
 
 -- | Host progress logger; optional running-cost prefix for @--cost@.
@@ -852,6 +857,9 @@ stepRun workspace runId provider catalogPath observer = do
         MsPaused (PauseAwaitingChoice _) -> do
           seqNo <- readIORef seqRef
           finalizeOutcome store seqNo machine0 observer
+        MsPaused (PauseAwaitingAsk _) -> do
+          seqNo <- readIORef seqRef
+          finalizeOutcome store seqNo machine0 observer
         _ -> do
           let machine = unpauseExplicit machine0
           m1 <- runUntilPause ctx StepOnce machine
@@ -876,6 +884,9 @@ resumeRun workspace runId provider catalogPath observer = do
           seqNo <- readIORef seqRef
           finalizeOutcome store seqNo machine0 observer
         MsPaused (PauseAwaitingChoice _) -> do
+          seqNo <- readIORef seqRef
+          finalizeOutcome store seqNo machine0 observer
+        MsPaused (PauseAwaitingAsk _) -> do
           seqNo <- readIORef seqRef
           finalizeOutcome store seqNo machine0 observer
         MsCompleted -> do
@@ -964,6 +975,47 @@ chooseRun workspace runId selected provider catalogPath observer = do
             ctx.rcProjectHash
             (Just HostHumanChoice)
             (Just (VString selected))
+            machine1.mStatus
+            (Just machine1)
+            stack
+            counter
+          m2 <- runUntilPause ctx StepRun machine1
+          seqNo <- readIORef seqRef
+          closeModuleIfTerminal ctx store m2.mStatus
+          finalizeOutcome store seqNo m2 observer
+
+replyRun :: FilePath -> Text -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
+replyRun workspace runId text provider catalogPath observer = do
+  ws <- newWorkspace workspace
+  let root = workspaceRoot ws
+  loaded <- loadExisting root runId provider catalogPath observer
+  case loaded of
+    Left e -> do
+      store <- openRunDir (root </> ".hwfl" </> "runs" </> T.unpack runId) runId
+      pure (OutcomeFailed e store 0)
+    Right (ctx, machine0, store, seqRef) ->
+      case replyMachine text machine0 of
+        Left e -> pure (OutcomeFailed e store 0)
+        Right machine1 -> do
+          mSid <- currentSpanId ctx.rcSpans
+          case mSid of
+            Just sid ->
+              closeSpan
+                store
+                ctx.rcSpans
+                sid
+                SsOk
+                (object ["replied" .= True])
+                Nothing
+            Nothing -> pure ()
+          stack <- getSpanStack ctx.rcSpans
+          counter <- readIORef ctx.rcSpans.ssCounter
+          persistTransition
+            store
+            seqRef
+            ctx.rcProjectHash
+            (Just HostHumanAsk)
+            (Just (VString text))
             machine1.mStatus
             (Just machine1)
             stack

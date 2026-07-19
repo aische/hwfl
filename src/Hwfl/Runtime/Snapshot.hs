@@ -116,6 +116,7 @@ statusText = \case
   MsPaused PauseExplicit -> "paused"
   MsPaused (PauseAwaitingConfirm _) -> "awaiting_confirm"
   MsPaused (PauseAwaitingChoice _) -> "awaiting_choice"
+  MsPaused (PauseAwaitingAsk _) -> "awaiting_input"
   MsPaused PauseCrashRecovery -> "paused"
   MsCompleted -> "completed"
   MsFailed -> "failed"
@@ -137,6 +138,10 @@ parseStatus txt pauseVal = case txt of
     Just v -> MsPaused <$> parsePauseReason v
     Nothing ->
       pure (MsPaused (PauseAwaitingChoice (ChoiceRequest "" "" [] Nothing)))
+  "awaiting_input" -> case pauseVal of
+    Just v -> MsPaused <$> parsePauseReason v
+    Nothing ->
+      pure (MsPaused (PauseAwaitingAsk (AskRequest "" "" Nothing)))
   other -> fail ("unknown status: " <> T.unpack other)
 
 parsePauseReason :: Aeson.Value -> Parser PauseReason
@@ -149,6 +154,7 @@ parsePauseReason v =
           Just "explicit" -> pure PauseExplicit
           Just "crash" -> pure PauseCrashRecovery
           Just "awaiting_choice" -> PauseAwaitingChoice <$> parseChoiceObject o
+          Just "awaiting_input" -> PauseAwaitingAsk <$> parseAskObject o
           Just "awaiting_confirm" -> PauseAwaitingConfirm <$> parseConfirmObject o
           _ ->
             case KM.lookup "options" o of
@@ -201,6 +207,7 @@ pauseToJson :: MachineStatus -> Aeson.Value
 pauseToJson = \case
   MsPaused (PauseAwaitingConfirm c) -> confirmToJson c
   MsPaused (PauseAwaitingChoice c) -> choiceToJson c
+  MsPaused (PauseAwaitingAsk a) -> askToJson a
   MsPaused PauseExplicit -> object ["reason" .= String "explicit"]
   MsPaused PauseCrashRecovery -> object ["reason" .= String "crash"]
   _ -> Null
@@ -220,6 +227,8 @@ currentToJson = \case
     object ["tag" .= String "await_confirm", "confirm" .= confirmToJson c]
   CurAwaitChoice c ->
     object ["tag" .= String "await_choice", "choice" .= choiceToJson c]
+  CurAwaitAsk a ->
+    object ["tag" .= String "await_ask", "ask" .= askToJson a]
   CurParPool -> object ["tag" .= String "par_pool"]
   CurCloseRegion sid v ->
     object ["tag" .= String "close_region", "span_id" .= sid, "v" .= valueToJson v]
@@ -237,6 +246,7 @@ parseCurrent = withObject "Current" $ \o -> do
         <*> (o .: "args" >>= mapM parseArgVal)
     "await_confirm" -> CurAwaitConfirm <$> (o .: "confirm" >>= parseConfirm)
     "await_choice" -> CurAwaitChoice <$> (o .: "choice" >>= parseChoice)
+    "await_ask" -> CurAwaitAsk <$> (o .: "ask" >>= parseAsk)
     "par_pool" -> pure CurParPool
     "close_region" ->
       CurCloseRegion <$> o .: "span_id" <*> (o .: "v" >>= parseValue)
@@ -431,6 +441,7 @@ frameToJson = \case
       ]
   FrConfirm c -> object ["tag" .= String "confirm", "confirm" .= confirmToJson c]
   FrChoice c -> object ["tag" .= String "choice", "choice" .= choiceToJson c]
+  FrAsk a -> object ["tag" .= String "ask", "ask" .= askToJson a]
   FrAfterConfirm cur ->
     object ["tag" .= String "after_confirm", "current" .= currentToJson cur]
   FrExecApproved -> object ["tag" .= String "exec_approved"]
@@ -492,6 +503,7 @@ parseFrame = withObject "Frame" $ \o -> do
         <*> (o .: "handler" >>= readText)
     "confirm" -> FrConfirm <$> (o .: "confirm" >>= parseConfirm)
     "choice" -> FrChoice <$> (o .: "choice" >>= parseChoice)
+    "ask" -> FrAsk <$> (o .: "ask" >>= parseAsk)
     "after_confirm" -> FrAfterConfirm <$> (o .: "current" >>= parseCurrent)
     "exec_approved" -> pure FrExecApproved
     "region" -> FrRegion <$> o .: "span_id"
@@ -520,6 +532,7 @@ parToJson p =
       "phase" .= phaseText p.pjsPhase,
       "confirm_queue" .= map confirmToJson p.pjsConfirmQueue,
       "choice_queue" .= map choiceToJson p.pjsChoiceQueue,
+      "ask_queue" .= map askToJson p.pjsAskQueue,
       "parent_env" .= envToJson p.pjsParentEnv
     ]
 
@@ -541,6 +554,7 @@ parsePar = withObject "ParJoinState" $ \o -> do
   phase <- o .: "phase" >>= parsePhase
   cq <- o .: "confirm_queue" >>= mapM parseConfirm
   chq <- o .:? "choice_queue" .!= [] >>= mapM parseChoice
+  aq <- o .:? "ask_queue" .!= [] >>= mapM parseAsk
   penv <- o .: "parent_env" >>= parseEnv
   let onErr = if onE == ("collect" :: Text) then ParCollect else ParFail
   pure
@@ -556,6 +570,7 @@ parsePar = withObject "ParJoinState" $ \o -> do
         pjsPhase = phase,
         pjsConfirmQueue = cq,
         pjsChoiceQueue = chq,
+        pjsAskQueue = aq,
         pjsParentEnv = penv
       }
 
@@ -593,6 +608,8 @@ slotToJson = \case
     object ["tag" .= String "awaiting_confirm", "confirm" .= confirmToJson c]
   ParSlotAwaitingChoice c ->
     object ["tag" .= String "awaiting_choice", "choice" .= choiceToJson c]
+  ParSlotAwaitingAsk a ->
+    object ["tag" .= String "awaiting_ask", "ask" .= askToJson a]
 
 parseSlot :: Aeson.Value -> Parser ParSlot
 parseSlot = withObject "ParSlot" $ \o -> do
@@ -604,6 +621,7 @@ parseSlot = withObject "ParSlot" $ \o -> do
     "failed" -> ParSlotFailed <$> o .: "msg"
     "awaiting_confirm" -> ParSlotAwaitingConfirm <$> (o .: "confirm" >>= parseConfirm)
     "awaiting_choice" -> ParSlotAwaitingChoice <$> (o .: "choice" >>= parseChoice)
+    "awaiting_ask" -> ParSlotAwaitingAsk <$> (o .: "ask" >>= parseAsk)
     other -> fail ("bad slot: " <> T.unpack other)
 
 confirmToJson :: ConfirmRequest -> Aeson.Value
@@ -644,6 +662,25 @@ parseChoiceObject o =
     <$> o .: "title"
     <*> (o .:? "detail" .!= "")
     <*> (o .:? "options" .!= [])
+    <*> o .:? "branch_index"
+
+askToJson :: AskRequest -> Aeson.Value
+askToJson a =
+  object
+    [ "prompt" .= a.askPrompt,
+      "detail" .= a.askDetail,
+      "branch_index" .= a.askBranchIndex,
+      "reason" .= String "awaiting_input"
+    ]
+
+parseAsk :: Aeson.Value -> Parser AskRequest
+parseAsk = withObject "AskRequest" parseAskObject
+
+parseAskObject :: Aeson.Object -> Parser AskRequest
+parseAskObject o =
+  AskRequest
+    <$> o .: "prompt"
+    <*> (o .:? "detail" .!= "")
     <*> o .:? "branch_index"
 
 envToJson :: Env -> Aeson.Value
@@ -753,11 +790,13 @@ parseHostOp = \case
   "fs.stat" -> pure HostFsStat
   "exec.run" -> pure HostExecRun
   "llm.chat" -> pure HostLlmChat
+  "llm.chat_messages" -> pure HostLlmChatMessages
   "llm.object" -> pure HostLlmObject
   "llm.agent" -> pure HostLlmAgent
   "llm.agent_object" -> pure HostLlmAgentObject
   "human.confirm" -> pure HostHumanConfirm
   "human.choice" -> pure HostHumanChoice
+  "human.ask" -> pure HostHumanAsk
   "obs.log" -> pure HostObsLog
   "obs.span" -> pure HostObsSpan
   "meta.check_module" -> pure HostMetaCheckModule

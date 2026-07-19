@@ -5,6 +5,7 @@ module Hwfl.Runtime.Machine
     PauseReason (..),
     ConfirmRequest (..),
     ChoiceRequest (..),
+    AskRequest (..),
     Current (..),
     Frame (..),
     ParJoinState (..),
@@ -47,6 +48,7 @@ data PauseReason
   = PauseExplicit
   | PauseAwaitingConfirm ConfirmRequest
   | PauseAwaitingChoice ChoiceRequest
+  | PauseAwaitingAsk AskRequest
   | PauseCrashRecovery
   deriving stock (Eq, Show)
 
@@ -66,6 +68,14 @@ data ChoiceRequest = ChoiceRequest
   }
   deriving stock (Eq, Show)
 
+-- | Free-text human gate.
+data AskRequest = AskRequest
+  { askPrompt :: Text,
+    askDetail :: Text,
+    askBranchIndex :: Maybe Int
+  }
+  deriving stock (Eq, Show)
+
 -- | What the machine is reducing right now.
 data Current
   = -- | Evaluate expression under env.
@@ -78,6 +88,8 @@ data Current
     CurAwaitConfirm ConfirmRequest
   | -- | Blocked on human multiple-choice.
     CurAwaitChoice ChoiceRequest
+  | -- | Blocked on human free-text input.
+    CurAwaitAsk AskRequest
   | -- | Driving an active @par@ pool ('FrPar' on the frame stack).
     CurParPool
   | -- | Close an @obs.span@ region then return @Value@ into the kont.
@@ -145,6 +157,8 @@ data Frame
     FrConfirm ConfirmRequest
   | -- | After choose, continue with selected String into prior kont.
     FrChoice ChoiceRequest
+  | -- | After reply, continue with entered String into prior kont.
+    FrAsk AskRequest
   | -- | After approve of @exec.run@ confirm gate: resume the stored 'Current'
     -- (usually 'CurHost' 'HostExecRun') or fail if denied.
     FrAfterConfirm Current
@@ -172,6 +186,7 @@ data ParJoinState = ParJoinState
     pjsPhase :: ParPoolPhase,
     pjsConfirmQueue :: [ConfirmRequest],
     pjsChoiceQueue :: [ChoiceRequest],
+    pjsAskQueue :: [AskRequest],
     pjsParentEnv :: Env
   }
   deriving stock (Eq, Show)
@@ -183,6 +198,7 @@ data ParSlot
   | ParSlotFailed Text
   | ParSlotAwaitingConfirm ConfirmRequest
   | ParSlotAwaitingChoice ChoiceRequest
+  | ParSlotAwaitingAsk AskRequest
   deriving stock (Eq, Show)
 
 data ParPoolPhase

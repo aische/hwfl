@@ -12,6 +12,7 @@ Executable name provisional: **`hwfl`**.
 | `hwfl resume <workspace> <run-id>`                      | Continue until end / pause / fail                |
 | `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |
 | `hwfl choose <workspace> <run-id> --select <option>`   | Resolve multiple-choice gate                     |
+| `hwfl reply <workspace> <run-id> --text <string>`      | Resolve free-text ask gate                       |
 | `hwfl show <workspace> <run-id> [flags]`                | Spans / status / redacted snapshot               |
 | `hwfl version`                                          |                                                  |
 
