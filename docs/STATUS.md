@@ -16,6 +16,8 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **Root README** — overview + coding-agent quick start; links into
+  `docs/` and `examples/coding-agent`
 - **Frontmatter `examples`** — optional sample run inputs on modules;
   parse + key-set check; summarise dogfood; tooling metadata only
 - **Deterministic FS tree ops** — `fs.mkdir`, `fs.copy` (recursive +
