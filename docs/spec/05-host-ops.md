@@ -140,7 +140,9 @@ as long as host ops inside are correct.
 
 - `project` / `workspace` are resolved under the **parent** workspace sandbox.
 - Child run state is stored under the **child** workspace (`.hwfl/runs/<run_id>/`).
-- Same-project module call sugar (`FrInvoke`) is separate and not this op.
+- **Not** same-project composition: imported entry call `qname(inputs)` →
+  nested `FrInvoke` in the **same** run ([01-modules.md](01-modules.md)
+  §3.2, [06-runtime.md](06-runtime.md) §3.1). No `Meta` tax for that path.
 
 `meta.list_runs` / `meta.read_spans` / `meta.read_snapshot` (sketch):
 

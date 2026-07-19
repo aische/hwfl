@@ -42,6 +42,16 @@ Active work only. Archive completed sections to `log/archive/` weekly.
       - [x] `fs.move` — rename / relocate within sandbox
       - [x] `fs.exists` / `fs.stat` — branch without list+catch
 - [ ] Optional: mutate / next-generation loop on the compare spine
+- [ ] **E11 same-project entry call** (`FrInvoke`) — spec locked
+      ([01-modules.md](spec/01-modules.md) §3.2,
+      [06-runtime.md](spec/06-runtime.md) §3.1):
+      - [ ] Imported entry callable as `qname(inputs)` → callee `main` only
+      - [ ] Same run/workspace; nest via `BranchMachine` / `FrInvoke`
+            (one nest model with tools/`par`); pause bubbles
+      - [ ] Effects: callee ⊆ caller; **no** silent `Meta` tax
+      - [ ] Snapshot + spans; acceptance in
+            [12-example-suite.md](spec/12-example-suite.md) E11
+      - Not `meta.invoke` (separate child run)
 
 ## Later (P2–P3)
 

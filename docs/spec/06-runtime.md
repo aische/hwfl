@@ -53,10 +53,41 @@ Frames include at least:
 | `FrPar` | parallel map/join pool |
 | `FrTry` | catch handler |
 | `FrConfirm` | waiting human |
-| `FrInvoke` | nested module |
+| `FrInvoke` | nested same-project entry module (`qname(inputs)`) |
 | `FrAgent` | tool/model loop |
 
 Prior art: hwfi `Hwfi.Runtime.Machine` and llm-workflow `Stack (Step, Kont)`.
+
+### 3.1 Module invoke (`FrInvoke`) — same project only
+
+Authoring surface and check rules: [01-modules.md](01-modules.md) §3.2.
+This is **not** `meta.invoke` (separate child run).
+
+**Enter**
+
+1. Resolve imported entry qname → load callee `main` + frontmatter I/O.
+2. Snapshot boundary; push `FrInvoke` holding a nested `BranchMachine`
+   (same nesting primitive as agent tool machines / `par` branches —
+   **one nest model**).
+3. Open span `module:<qname>` (same naming as the top-level module span).
+
+**Step / resume**
+
+- Step the nested machine until completed, failed, or paused.
+- Human pause (`confirm` / `choice` / `ask`) and `--step` pause **bubble**
+  to the outer machine (same rules as a tool nest under `llm.agent`).
+- No child run-store row; outer `run_id` / workspace unchanged.
+
+**Exit**
+
+- Success: pop `FrInvoke`, close module span, return callee `main` value
+  (typed `outputs`) into the caller kont.
+- Failure: propagate like other host-ish transitions (`try` may catch
+  when catchable); do not invent a parallel `{ ok, status }` envelope.
+
+**Deferred for first cut:** aliased imports; calling non-`main` exports on
+entry modules; concurrent FrInvoke inside `par` (serial nest first);
+`lib/` qname elaboration (separate track).
 
 ## 4. Snapshots
 

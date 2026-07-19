@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 ## Current focus
 
@@ -16,14 +16,13 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **FrInvoke / E11 spec locked** — same-project `qname(inputs)` →
+  callee `main`; one nest model; no Meta tax (§01 §3.2, §06 §3.1)
 - **Workflow chat** — `human.ask` detail carries prior assistant reply
   (PauseInfo for CLI / server); `llm.chat_messages`; `examples/chat`
 - **CLI `--interactive`** — TTY stdin loop over confirm / choice / ask
-  via the same `approve` / `choose` / `reply` driver path; refuses
-  `--json` / non-TTY
 - **`human.choice`** — N-way gate; `examples/choose` /
   `agent-choice.md`
-- **`examples/promote.md`** — confirm gate demo
 - Type/parse error locations; CLI `--dump`; FS tree ops; compare lab;
   `meta.*`; Observer `--debug`
 
@@ -35,8 +34,8 @@ None.
 
 1. Coding-agent chat: `llm.agent` prior `history` + return `history`;
    turn values; ask+tools example (see TASKS)
-2. Optional: mutate / next-generation loop on the compare spine
-3. Optional DB-backed run-store backend (same interface)
+2. E11: implement same-project entry call (`FrInvoke`) per locked spec
+3. Optional: mutate / next-generation loop on the compare spine
 
 ## Deferred
 
@@ -50,8 +49,7 @@ None.
 - Control-plane repo (HTTP/WS, Postgres metadata, tenants) — **not** in
   hwfl; depends on the library driver + Observer above
 - Optional DB-backed run-store backend (same interface; not required yet)
-- Same-project module invoke sugar (`FrInvoke` / E11) — separate from
-  lab `meta.invoke`
+- `lib/` qname elaboration (runtime linking; separate from E11)
 - Typed validation of example values vs `TypeExpr`; CLI `--example`
 
 ## Open naming

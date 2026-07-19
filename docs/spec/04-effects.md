@@ -29,7 +29,9 @@ pure.
 4. Project `effects.deny` always wins.
 5. `Exec` additionally requires `project.json` `exec.allow` non-empty.
 6. Calling another module unions its residual effects into the caller
-   (or requires the callee’s effects ⊆ caller allow-set).
+   (or requires the callee’s effects ⊆ caller allow-set). Same-project
+   entry call `qname(inputs)` uses this rule only — it does **not**
+   require `Meta`. `Meta` is for `meta.invoke` / dynamic introspection.
 
 ## 3. Inference
 

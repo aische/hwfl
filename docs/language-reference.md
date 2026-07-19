@@ -140,6 +140,11 @@ path as the library driver. `project` and `workspace` are workspace-relative
 to child `main`. Returns a recoverable result (`ok` / `status`); child
 `run_id` lives under the child workspace’s `.hwfl/runs/`.
 
+Same-project multi-workflow composition is different: import an entry
+module and call `qname(inputs)` (runs callee `main` in the **same** run via
+`FrInvoke`). No `Meta` tax. See [spec/01-modules.md](spec/01-modules.md)
+§3.2 — **planned** until E11 ships.
+
 `meta.list_runs` lists run metas under `.hwfl/runs` for a workspace-relative
 root. `meta.read_spans` returns span records for one run (optional name /
 kind prefix filters and limit). `meta.read_snapshot` returns a redacted Json
@@ -182,4 +187,5 @@ supported.
 `Read` · `Write` · `Net` · `Exec` · `Human` · `Meta` · `Parallel`
 
 Module `effects:` is a ceiling. `Exec` also requires non-empty
-`project.json` `exec.allow`.
+`project.json` `exec.allow`. Same-project `qname(inputs)` unions callee
+effects into the caller; it does not require `Meta`.

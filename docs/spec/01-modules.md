@@ -155,11 +155,54 @@ non-`_` names.
 
 ## 3. References between modules
 
-- Import brings another module’s exports into scope under its qname prefix
-  or aliased name.
-- Calling another workflow module is a host-ish nested evaluation
-  (`meta.invoke` / direct call sugar) and is a **snapshot boundary**.
+Two different mechanisms — do not conflate them:
+
+| Mechanism | Scope | What happens |
+|-----------|--------|--------------|
+| **Same-project call** (E11 / `FrInvoke`) | Imported entry module in this project | Nested evaluation in the **same** run; typed `outputs` |
+| **`meta.invoke`** | Nested project / `.md` under a workspace path | Separate child **run** + `run_id` ([05-host-ops.md](05-host-ops.md) §6) |
+
+### 3.1 Imports
+
+- Import brings another module into scope under its qname prefix (aliased
+  imports **[defer]**).
 - Circular imports are rejected at check time.
+- **Libraries** (`lib/*`, non-entry modules): import + call exported
+  `fun`s (runtime linking / qname elaboration — separate from E11).
+- **Entry modules** (`workflows/*` and other modules with frontmatter
+  `inputs` / `outputs` + `main`): import + call **`main` only** via the
+  sugar below. Cross-module helpers belong in `lib/`, not on workflow
+  entries.
+
+### 3.2 Same-project entry call (locked)
+
+An imported entry module is callable as:
+
+```hwfl
+imports:
+  - workflows/inner
+
+-- in body:
+let out = workflows/inner({ path = "notes.txt" })
+```
+
+Semantics:
+
+- `qname(inputs)` runs the callee’s `main` with the given inputs record.
+- Result type is the callee frontmatter `outputs` record.
+- Same workspace, same `run_id` — nested frame / span, **not** a new run
+  store row. See [06-runtime.md](06-runtime.md) §3.1 (`FrInvoke`).
+- Snapshot boundary on enter/return (one nest model with agent tools /
+  `par` branches).
+- Effects: callee residual effects must be ⊆ caller allow-set (union into
+  the caller per [04-effects.md](04-effects.md) §2.6). **No** silent
+  `Meta` requirement — `Meta` stays for `meta.invoke` / dynamic
+  introspection.
+- Check: callee listed in `imports:` (reachable on the import graph),
+  has `main`, and I/O match frontmatter.
+
+`tool(f)` whose body performs such a call is allowed; nested human pause
+bubbles through the tool machine like any other nested machine.
 
 ## 4. Ambient context
 

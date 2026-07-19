@@ -75,9 +75,20 @@ Independent llm+fs joined.
 
 Force provider failure; catch; return fallback string.
 
-## E11 — Nested module invoke **H** **R**
+## E11 — Same-project nested entry call **H** **R** **check**
 
-`workflows/main` calls `workflows/inner`. Nested frames in snapshot.
+`workflows/main` imports `workflows/inner` and calls
+`workflows/inner(inputs)`. Same run / workspace; typed outputs; `FrInvoke`
+nest (not `meta.invoke`).
+
+Acceptance:
+
+- [ ] `main` imports + calls `workflows/inner`; outputs flow back typed
+- [ ] Snapshot / spans show nested `module:workflows/inner` under the
+      caller; `FrInvoke` + nested machine in snapshot
+- [ ] Mid-inner `--step` or `confirm` pause bubbles; resume continues outer
+- [ ] Caller missing a callee effect → **check** fail (no silent `Meta`)
+- [ ] (Optional) `tool(wrap)` where `wrap` calls `workflows/inner`
 
 ## E12 — Effect rejected **check**
 
