@@ -6,10 +6,19 @@ description:        A command-line engine that loads markdown modules,
                     checks a small typed ML kernel, and evaluates with
                     durable host-effect transitions.
 license:            BSD-3-Clause
+license-file:       LICENSE
+copyright:          2026 Daniel van den Eijkel
 author:             Daniel van den Eijkel
 maintainer:         1515314+aische@users.noreply.github.com
+homepage:           https://github.com/aische/hwfl
+bug-reports:        https://github.com/aische/hwfl/issues
 category:           Development
 build-type:         Simple
+extra-doc-files:    README.md
+
+source-repository head
+    type:     git
+    location: https://github.com/aische/hwfl.git
 
 common opts
     default-language: GHC2021
