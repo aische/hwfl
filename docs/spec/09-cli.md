@@ -7,7 +7,7 @@ Executable name provisional: **`hwfl`**.
 | Command                                                 | Purpose                                          |
 | ------------------------------------------------------- | ------------------------------------------------ |
 | `hwfl check <project> [--json]`                                  | Load + type + effects + graph; exit ≠0 on error  |
-| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug] [--cost] [--dump] [--json]` | Check (unless `--no-check`) + execute entrypoint |
+| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug] [--cost] [--dump] [--json] [--interactive]` | Check (unless `--no-check`) + execute entrypoint |
 | `hwfl step <workspace> <run-id>`                        | One transition, then pause                       |
 | `hwfl resume <workspace> <run-id>`                      | Continue until end / pause / fail                |
 | `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |
@@ -35,6 +35,11 @@ Executable name provisional: **`hwfl`**.
   request/response JSON under `./dumps` (stderr debug logs included).
   Off by default. Distinct from `--debug` (span observer) and from
   planned span-linked transcripts ([07-observability.md](07-observability.md) §10).
+- `--interactive` (on `run`, TTY stdin only): when paused on
+  `awaiting_confirm` / `awaiting_choice` / `awaiting_input`, prompt on
+  stdin and resolve via the same APIs as `approve` / `choose` / `reply`
+  without exiting between turns. Incompatible with `--json`; refuses on
+  non-TTY stdin.
 
 ## 2. Inputs
 
@@ -70,7 +75,4 @@ Exact codes may adjust in M4; stay stable after first release tag.
 Nice-to-have **[defer]**:
 
 - Shell completions, `hwfl init` scaffold
-- **`--interactive`** on `run` (TTY): when paused on confirm / choice /
-  ask, prompt on stdin and resolve via the same APIs as
-  `approve` / `choose` / `reply` without exiting between turns
 - Optional omit / `latest` run-id for continue commands

@@ -78,9 +78,14 @@ chatLoopSrc =
       "  history: List<Msg>,",
       "  last: String",
       "): { done: Bool, history: List<Msg>, last: String } =",
+      "  let detail =",
+      "    if last == \"\" then",
+      "      \"Type a message, or /quit to end.\"",
+      "    else",
+      "      $\"Assistant: {last}\\n\\nType a message, or /quit to end.\"",
       "  let user = human.ask({",
       "    prompt = \"You>\",",
-      "    detail = \"/quit to end\"",
+      "    detail = detail",
       "  })",
       "  if user == \"/quit\" then",
       "    { done = true, history = history, last = last }",
@@ -162,12 +167,16 @@ spec = describe "workflow chat (ask + chat_messages)" $ do
                 }
               loaded
           case o0 of
-            OutcomePaused (MsPaused (PauseAwaitingAsk a)) _ _ _ ->
+            OutcomePaused (MsPaused (PauseAwaitingAsk a)) _ _ _ -> do
               askPrompt a `shouldBe` "You>"
+              askDetail a `shouldBe` "Type a message, or /quit to end."
             other -> expectationFailure ("expected ask, got " <> show other)
           o1 <- replyRun dir "chat1" "hello" mockProvider "model-catalog.json" noopObserver
           case o1 of
-            OutcomePaused (MsPaused (PauseAwaitingAsk _)) _ _ _ -> pure ()
+            OutcomePaused (MsPaused (PauseAwaitingAsk a)) _ _ _ -> do
+              askDetail a `shouldSatisfy` T.isPrefixOf "Assistant: "
+              askDetail a `shouldSatisfy` T.isInfixOf "SUMMARY:"
+              askDetail a `shouldSatisfy` T.isInfixOf "Type a message"
             other -> expectationFailure ("expected second ask, got " <> show other)
           o2 <- replyRun dir "chat1" "/quit" mockProvider "model-catalog.json" noopObserver
           case o2 of

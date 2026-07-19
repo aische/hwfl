@@ -1,6 +1,7 @@
 module Main where
 
-import Control.Monad (unless)
+import Control.Exception (IOException, catch)
+import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -17,6 +18,7 @@ import Hwfl.Cli.Json
 import Hwfl.Driver
   ( DriverError (..),
     DriverRunRequest (..),
+    Observer,
     RunOutcome (..),
     ShowMode (..),
     ShowOptions (..),
@@ -32,6 +34,7 @@ import Hwfl.Driver
     noopObserver,
     renderDriverError,
     stderrDebugObserver,
+    storeRunId,
   )
 import Hwfl.Env (loadDotenv)
 import Hwfl.Eval.Value (renderValue)
@@ -42,13 +45,21 @@ import Hwfl.Obs.Show (showStore)
 import Hwfl.Parse.Load (loadModule)
 import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Hwfl.Runtime.Eval (StepMode (..))
+import Hwfl.Runtime.Machine
+  ( AskRequest (..),
+    ChoiceRequest (..),
+    ConfirmRequest (..),
+    MachineStatus (..),
+    PauseReason (..),
+  )
 import Hwfl.Runtime.Run (parseCliInputs)
 import Hwfl.Runtime.Store (RunStore)
 import Hwfl.Source (renderDiagnostics)
 import System.Directory (getCurrentDirectory)
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (ExitCode (..), exitWith)
-import System.IO (hPutStrLn, stderr)
+import System.IO (hFlush, hIsTerminalDevice, hPutStrLn, stdin, stderr)
+import System.IO.Error (isEOFError)
 
 main :: IO ()
 main = do
@@ -89,7 +100,7 @@ usage = do
     "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
-    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug --cost --dump --json"
+    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug --cost --dump --json --interactive"
   hPutStrLn stderr "  check options: --json"
   exitWith (ExitFailure 2)
 
@@ -170,7 +181,9 @@ data RunFlags = RunFlags
     -- | Dump llm-simple request/response JSON under ./dumps.
     rfDump :: Bool,
     -- | Machine-readable diagnostics on stderr for failures.
-    rfJson :: Bool
+    rfJson :: Bool,
+    -- | Prompt on stdin for human gates (TTY only; incompatible with --json).
+    rfInteractive :: Bool
   }
 
 cmdRun :: [String] -> IO ()
@@ -186,6 +199,14 @@ cmdRun rest = case parseRunFlags rest of
             (True, _) -> flags0
             (False, Just p) -> flags0 {rfProvider = p}
             (False, Nothing) -> flags0
+    when flags.rfInteractive $ do
+      when flags.rfJson $ do
+        reportUsage False "--interactive is incompatible with --json"
+        exitWith (ExitFailure 2)
+      tty <- hIsTerminalDevice stdin
+      unless tty $ do
+        hPutStrLn stderr "hwfl run: --interactive requires a TTY stdin"
+        exitWith (ExitFailure 2)
     cwd <- getCurrentDirectory
     let ws = fromMaybe cwd flags.rfWorkspace
     inputs <- case parseCliInputs flags.rfInputs of
@@ -196,14 +217,15 @@ cmdRun rest = case parseRunFlags rest of
     provider <- resolveProvider json flags.rfProvider flags.rfCatalog flags.rfDump
     unless (flags.rfNoCheck || json) $
       hPutStrLn stderr "hwfl run: checking…"
-    let req =
+    let observer =
+          if flags.rfDebug then stderrDebugObserver else noopObserver
+        req =
           (defaultDriverRunRequest flags.rfModule ws provider)
             { drrInputs = inputs,
               drrSkipCheck = flags.rfNoCheck,
               drrModelCatalog = flags.rfCatalog,
               drrMode = if flags.rfStep then StepOnce else StepRun,
-              drrObserver =
-                if flags.rfDebug then stderrDebugObserver else noopObserver,
+              drrObserver = observer,
               drrCost = flags.rfCost
             }
     result <- driverRun req
@@ -212,7 +234,16 @@ cmdRun rest = case parseRunFlags rest of
         reportDriverFailure json err
         exitWith (ExitFailure 1)
       Right outcome ->
-        handleOutcome json (flags.rfVerbose || flags.rfDebug) outcome
+        if flags.rfInteractive
+          then
+            handleOutcomeInteractive
+              (flags.rfVerbose || flags.rfDebug)
+              ws
+              provider
+              flags.rfCatalog
+              observer
+              outcome
+          else handleOutcome json (flags.rfVerbose || flags.rfDebug) outcome
 
 cmdStep :: [String] -> IO ()
 cmdStep args = case parseWsRun args of
@@ -278,6 +309,101 @@ handleOutcome json showTrace = \case
     dumpTrace showTrace store
     exitWith (exitFor err)
 
+-- | Like 'handleOutcome', but on human gates prompt stdin and call the same
+-- resolve APIs as @approve@ / @choose@ / @reply@ until the run finishes.
+handleOutcomeInteractive ::
+  Bool ->
+  FilePath ->
+  LlmProvider ->
+  FilePath ->
+  Observer ->
+  RunOutcome ->
+  IO ()
+handleOutcomeInteractive showTrace ws provider catalog observer = go
+  where
+    go = \case
+      OutcomeCompleted val store _ -> do
+        case renderValue val of
+          Left msg -> do
+            reportPlainFailure False 1 "runtime" "RenderError" ("result render failed: " <> msg)
+            print val
+          Right t -> TIO.putStrLn t
+        dumpTrace showTrace store
+      OutcomeFailed err store _ -> do
+        reportRuntimeFailure False (exitCodeFor err) err
+        dumpTrace showTrace store
+        exitWith (exitFor err)
+      OutcomePaused status msg store _ -> case status of
+        MsPaused (PauseAwaitingConfirm c) -> do
+          TIO.hPutStrLn stderr msg
+          yes <- promptConfirm c
+          go =<< driverApprove ws (storeRunId store) yes provider catalog observer
+        MsPaused (PauseAwaitingChoice c) -> do
+          TIO.hPutStrLn stderr msg
+          selected <- promptChoice c
+          go =<< driverChoose ws (storeRunId store) selected provider catalog observer
+        MsPaused (PauseAwaitingAsk a) -> do
+          text <- promptAsk a
+          go =<< driverReply ws (storeRunId store) text provider catalog observer
+        _ -> do
+          reportPlainFailure False 3 "runtime" "Paused" msg
+          dumpTrace showTrace store
+          exitWith (ExitFailure 3)
+
+promptConfirm :: ConfirmRequest -> IO Bool
+promptConfirm c = do
+  unless (T.null c.crDetail) $ TIO.hPutStrLn stderr c.crDetail
+  loop
+  where
+    loop = do
+      TIO.hPutStr stderr "Approve? [y/n]: "
+      hFlush stderr
+      line <- readStdinLine
+      case T.toLower (T.strip line) of
+        "y" -> pure True
+        "yes" -> pure True
+        "n" -> pure False
+        "no" -> pure False
+        _ -> do
+          hPutStrLn stderr "Please answer y or n."
+          loop
+
+promptChoice :: ChoiceRequest -> IO Text
+promptChoice c = do
+  unless (T.null c.chDetail) $ TIO.hPutStrLn stderr c.chDetail
+  mapM_ (\o -> TIO.hPutStrLn stderr ("  - " <> o)) c.chOptions
+  loop
+  where
+    loop = do
+      TIO.hPutStr stderr "Select: "
+      hFlush stderr
+      line <- T.strip <$> readStdinLine
+      if line `elem` c.chOptions
+        then pure line
+        else do
+          hPutStrLn stderr "Not a valid option."
+          loop
+
+promptAsk :: AskRequest -> IO Text
+promptAsk a = do
+  unless (T.null a.askDetail) $ TIO.hPutStrLn stderr a.askDetail
+  let prompt =
+        if T.null a.askPrompt
+          then "> "
+          else a.askPrompt <> " "
+  TIO.hPutStr stderr prompt
+  hFlush stderr
+  T.strip <$> readStdinLine
+
+readStdinLine :: IO Text
+readStdinLine =
+  TIO.hGetLine stdin `catch` \e ->
+    if isEOFError (e :: IOException)
+      then do
+        hPutStrLn stderr "hwfl: EOF on stdin"
+        exitWith (ExitFailure 2)
+      else ioError e
+
 dumpTrace :: Bool -> RunStore -> IO ()
 dumpTrace False _ = pure ()
 dumpTrace True store = do
@@ -336,7 +462,8 @@ parseRunFlags args = do
           rfDebug = False,
           rfCost = False,
           rfDump = False,
-          rfJson = False
+          rfJson = False,
+          rfInteractive = False
         }
     takeModule [] _ = Left "hwfl run: missing <module.md>"
     takeModule (x : xs) f
@@ -359,6 +486,7 @@ parseRunFlags args = do
       | x == "--cost" = takeModule xs f {rfCost = True}
       | x == "--dump" = takeModule xs f {rfDump = True}
       | x == "--json" = takeModule xs f {rfJson = True}
+      | x == "--interactive" = takeModule xs f {rfInteractive = True}
       | "-" `T.isPrefixOf` T.pack x = Left ("unknown flag: " <> x)
       | otherwise = consumeOpts xs f {rfModule = x}
     consumeOpts [] f = Right (f.rfModule, f)
@@ -382,6 +510,7 @@ parseRunFlags args = do
       | x == "--cost" = consumeOpts xs f {rfCost = True}
       | x == "--dump" = consumeOpts xs f {rfDump = True}
       | x == "--json" = consumeOpts xs f {rfJson = True}
+      | x == "--interactive" = consumeOpts xs f {rfInteractive = True}
       | otherwise = Left ("unexpected argument: " <> x)
 
 parseWsRun :: [String] -> Either String (FilePath, T.Text, String, FilePath, Bool)

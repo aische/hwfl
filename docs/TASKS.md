@@ -45,11 +45,6 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [ ] Semantic-check research (S4, S6) — parked; see
       [semantic-check-plan.md](semantic-check-plan.md); optional fitness
       filter for lab candidates
-- [ ] CLI `--interactive` — on `awaiting_confirm` / `awaiting_choice` /
-      `awaiting_input`, prompt on stdin and call the same resolve APIs
-      (`approve` / `choose` / `reply`) in-process until the run finishes;
-      refuse with `--json` / non-TTY. Ask-only first is enough for
-      `examples/chat.md`.
 - [ ] Optional: omit / `latest` run-id for approve / choose / reply / show
       (resolve from workspace run store by status + recency)
 

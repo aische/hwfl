@@ -12,9 +12,9 @@ outputs:
     summary: String
 effects: [Read, Net]
 examples:
-  - name: note
-    inputs:
-      path: note.md
+    - name: note
+      inputs:
+          path: note.md
 ---
 
 ## system
@@ -29,7 +29,7 @@ fun main(inputs): { summary: String } =
   let summary = llm.chat(
     system = @system,
     prompt = $"Summarise the following:\n\n{contents.text}",
-    model = "gpt-5"
+    model = "deepseek4flash"
   )
   { summary }
 ```

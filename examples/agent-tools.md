@@ -23,7 +23,7 @@ fun main(_): { text: String, rounds: Int } =
     system = @system,
     prompt = "find note",
     tools = [tool(fs.read), tool(search)],
-    model = "gpt-5",
+    model = "deepseek4flash",
     max_rounds = 4
   )
   { text = result.text, rounds = result.rounds }

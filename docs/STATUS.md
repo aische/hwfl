@@ -15,8 +15,11 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
-- **Workflow chat** — `human.ask` (`awaiting_input` + `hwfl reply --text`);
-  `llm.chat_messages`; `examples/chat.md` (recursive turn + `/quit`)
+- **Workflow chat** — `human.ask` detail carries prior assistant reply
+  (PauseInfo for CLI / server); `llm.chat_messages`; `examples/chat.md`
+- **CLI `--interactive`** — TTY stdin loop over confirm / choice / ask
+  via the same `approve` / `choose` / `reply` driver path; refuses
+  `--json` / non-TTY
 - **`human.choice`** — N-way gate; `examples/choose.md` /
   `agent-choice.md`
 - **`examples/promote.md`** — confirm gate demo
@@ -34,8 +37,6 @@ None.
 
 ## Deferred
 
-- **CLI `--interactive`** — on human pause, stdin → same resolve path as
-  `approve` / `choose` / `reply` (no exit-3 between turns); TTY-only
 - Optional: `latest` / omit run-id for approve / choose / reply / show
 - Opt-in LangSmith-style LLM transcripts (span-linked payloads; §07 §10)
 - Skills phase D (optional writer example)
