@@ -74,6 +74,11 @@ Each call is a transition (snapshot + span) unless noted.
 | `fs.edit` | Write | `{ path, old, new } -> { ok: Bool }` (literal replace-all; `ok` iff ≥1 hit) |
 | `fs.patch` | Write | `{ path, hunks: List<{ old, new }> } -> { ok, applied, error }` (each `old` unique after prior hunks; atomic) |
 | `fs.grep` | Read | `{ pattern, glob } -> List<{ file, line, text }>` (empty `glob` = whole workspace) |
+| `fs.mkdir` | Write | `(path: FileRef) -> ()` (creates parents) |
+| `fs.copy` | Write | `{ src, dst, overwrite?, exclude? } -> ()` (file or recursive tree; `exclude` = path prefixes under the tree root) |
+| `fs.move` | Write | `{ src, dst } -> ()` (fails if `dst` exists) |
+| `fs.exists` | Read | `(path: FileRef) -> Bool` |
+| `fs.stat` | Read | `(path: FileRef) -> { exists: Bool, kind: String, size: Int }` (`kind` is `file` / `dir` / `""`) |
 
 Paths are sandboxed to the workspace root (symlink escape fails).
 

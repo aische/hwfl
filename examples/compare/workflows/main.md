@@ -30,11 +30,8 @@ type Trial = {
 }
 
 fun materialize(id: String): {} =
-  let pj = fs.read($"genomes/{id}/project.json")
-  let main = fs.read($"genomes/{id}/workflows/main.md")
+  let _ = fs.copy(src = $"genomes/{id}", dst = $"candidates/{id}", overwrite = true)
   let article = fs.read("fixture/article.txt")
-  let _ = fs.write(path = $"candidates/{id}/project.json", text = pj.text)
-  let _ = fs.write(path = $"candidates/{id}/workflows/main.md", text = main.text)
   let _ = fs.write(path = $"trials/{id}/article.txt", text = article.text)
   {}
 

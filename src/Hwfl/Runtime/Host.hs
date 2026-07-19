@@ -54,15 +54,20 @@ import Hwfl.Runtime.Store
   )
 import Hwfl.Runtime.Workspace
   ( Workspace,
+    copyPath,
     editFile,
     findFiles,
     grepFiles,
     listDir,
+    mkdirPath,
+    movePath,
     patchFile,
+    pathExists,
     readTextFile,
     readTextSlice,
     removePath,
     resolvePath,
+    statPath,
     workspaceRoot,
     writeTextFile,
   )
@@ -114,7 +119,12 @@ hostOpsEnv =
             (Ident "patch", VHostOp HostFsPatch),
             (Ident "grep", VHostOp HostFsGrep),
             (Ident "read_slice", VHostOp HostFsReadSlice),
-            (Ident "remove", VHostOp HostFsRemove)
+            (Ident "remove", VHostOp HostFsRemove),
+            (Ident "mkdir", VHostOp HostFsMkdir),
+            (Ident "copy", VHostOp HostFsCopy),
+            (Ident "move", VHostOp HostFsMove),
+            (Ident "exists", VHostOp HostFsExists),
+            (Ident "stat", VHostOp HostFsStat)
           ]
       ),
       ( Ident "exec",
@@ -177,6 +187,11 @@ runHostOp env op args = case op of
   HostFsGrep -> doFsGrep env args
   HostFsReadSlice -> doFsReadSlice env args
   HostFsRemove -> doFsRemove env args
+  HostFsMkdir -> doFsMkdir env args
+  HostFsCopy -> doFsCopy env args
+  HostFsMove -> doFsMove env args
+  HostFsExists -> doFsExists env args
+  HostFsStat -> doFsStat env args
   HostExecRun -> doExecRun env args
   HostLlmChat -> doLlmChat env args
   HostLlmObject -> doLlmObject env args
@@ -409,6 +424,92 @@ doFsRemove env args =
   where
     orElsePos (Just x) _ = Just x
     orElsePos Nothing y = y
+
+doFsMkdir :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsMkdir env args =
+  case lookupNamed (Ident "path") args `orElsePos` lookupPositional 0 args of
+    Nothing -> pure (Left (HostErr "fs.mkdir expects a FileRef path"))
+    Just v ->
+      case fileRefValue v of
+        Left e -> pure (Left e)
+        Right path -> do
+          env.heLog ("fs.mkdir " <> path)
+          result <- mkdirPath env.heWorkspace path
+          pure $ case result of
+            Left e -> Left e
+            Right () -> Right (HostResult VUnit (object ["path" .= path]))
+  where
+    orElsePos (Just x) _ = Just x
+    orElsePos Nothing y = y
+
+doFsCopy :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsCopy env args = case parseCopyArgs args of
+  Left e -> pure (Left e)
+  Right (src, dst, overwrite, exclude) -> do
+    env.heLog ("fs.copy " <> src <> " -> " <> dst)
+    result <- copyPath env.heWorkspace src dst overwrite exclude
+    pure $ case result of
+      Left e -> Left e
+      Right () ->
+        Right
+          ( HostResult
+              VUnit
+              ( object
+                  [ "src" .= src,
+                    "dst" .= dst,
+                    "overwrite" .= overwrite,
+                    "exclude_count" .= length exclude
+                  ]
+              )
+          )
+
+doFsMove :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsMove env args = case parseMoveArgs args of
+  Left e -> pure (Left e)
+  Right (src, dst) -> do
+    env.heLog ("fs.move " <> src <> " -> " <> dst)
+    result <- movePath env.heWorkspace src dst
+    pure $ case result of
+      Left e -> Left e
+      Right () ->
+        Right (HostResult VUnit (object ["src" .= src, "dst" .= dst]))
+
+doFsExists :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsExists env args = case fileRefArg args of
+  Left e -> pure (Left e)
+  Right path -> do
+    env.heLog ("fs.exists " <> path)
+    result <- pathExists env.heWorkspace path
+    pure $ case result of
+      Left e -> Left e
+      Right ex ->
+        Right (HostResult (VBool ex) (object ["path" .= path, "exists" .= ex]))
+
+doFsStat :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doFsStat env args = case fileRefArg args of
+  Left e -> pure (Left e)
+  Right path -> do
+    env.heLog ("fs.stat " <> path)
+    result <- statPath env.heWorkspace path
+    pure $ case result of
+      Left e -> Left e
+      Right (ex, kind, size) ->
+        Right
+          ( HostResult
+              ( VRecord
+                  [ (Ident "exists", VBool ex),
+                    (Ident "kind", VString kind),
+                    (Ident "size", VInt size)
+                  ]
+              )
+              ( object
+                  [ "path" .= path,
+                    "exists" .= ex,
+                    "kind" .= kind,
+                    "size" .= size
+                  ]
+              )
+          )
 
 doExecRun :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doExecRun env args = case env.heExec of
@@ -768,6 +869,37 @@ parsePatchHunk = \case
       Nothing -> Left (HostErr "fs.patch hunk missing new")
     pure (old, new)
   _ -> Left (HostErr "fs.patch hunk must be a record { old, new }")
+
+parseCopyArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text, Bool, [Text])
+parseCopyArgs args = do
+  src <- case lookupNamed (Ident "src") args of
+    Just v -> fileRefValue v
+    Nothing -> Left (HostErr "fs.copy expects src: FileRef")
+  dst <- case lookupNamed (Ident "dst") args of
+    Just v -> fileRefValue v
+    Nothing -> Left (HostErr "fs.copy expects dst: FileRef")
+  let overwrite = case lookupNamed (Ident "overwrite") args of
+        Just (VBool b) -> b
+        _ -> False
+  exclude <- case lookupNamed (Ident "exclude") args of
+    Just (VList xs) -> traverse expectExcludeElem xs
+    Just _ -> Left (HostErr "fs.copy exclude must be a List<String>")
+    Nothing -> Right []
+  pure (src, dst, overwrite, exclude)
+  where
+    expectExcludeElem = \case
+      VString s -> Right s
+      _ -> Left (HostErr "fs.copy exclude elements must be strings")
+
+parseMoveArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text)
+parseMoveArgs args = do
+  src <- case lookupNamed (Ident "src") args of
+    Just v -> fileRefValue v
+    Nothing -> Left (HostErr "fs.move expects src: FileRef")
+  dst <- case lookupNamed (Ident "dst") args of
+    Just v -> fileRefValue v
+    Nothing -> Left (HostErr "fs.move expects dst: FileRef")
+  pure (src, dst)
 
 parseGrepArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text)
 parseGrepArgs args = do

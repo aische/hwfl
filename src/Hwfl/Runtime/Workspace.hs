@@ -15,6 +15,11 @@ module Hwfl.Runtime.Workspace
     patchFile,
     grepFiles,
     removePath,
+    mkdirPath,
+    copyPath,
+    movePath,
+    pathExists,
+    statPath,
   )
 where
 
@@ -27,13 +32,16 @@ import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import Hwfl.Runtime.Error (RuntimeError (..))
 import System.Directory
   ( canonicalizePath,
+    copyFile,
     createDirectoryIfMissing,
     doesDirectoryExist,
     doesFileExist,
+    doesPathExist,
     getFileSize,
     listDirectory,
     removeDirectoryRecursive,
     removeFile,
+    renamePath,
   )
 import System.FilePath
   ( isAbsolute,
@@ -269,6 +277,278 @@ removePath ws rel = do
                 Left ex ->
                   Left (HostErr ("remove failed for '" <> rel <> "': " <> T.pack (show ex)))
                 Right () -> Right ()
+
+-- | Create a directory (and parents) inside the sandbox.
+mkdirPath :: Workspace -> Text -> IO (Either RuntimeError ())
+mkdirPath ws rel = case resolvePath ws rel of
+  Left e -> pure (Left e)
+  Right path -> do
+    parentCanon <-
+      try
+        ( do
+            createDirectoryIfMissing True path
+            canonicalizePath path
+        ) ::
+        IO (Either IOException FilePath)
+    pure $ case parentCanon of
+      Left ex ->
+        Left (HostErr ("mkdir failed for '" <> rel <> "': " <> T.pack (show ex)))
+      Right canon
+        | not (isPathUnderRoot (workspaceRoot ws) canon) ->
+            Left (SandboxErr ("path escapes the workspace root: " <> rel))
+        | otherwise -> Right ()
+
+-- | Whether a workspace path exists (file or directory). Missing ⇒ @False@;
+-- symlink escape is still a hard sandbox failure.
+pathExists :: Workspace -> Text -> IO (Either RuntimeError Bool)
+pathExists ws rel = case resolvePath ws rel of
+  Left e -> pure (Left e)
+  Right path -> do
+    exists <- doesPathExist path
+    if not exists
+      then pure (Right False)
+      else do
+        contained <- resolveContainedPath ws rel
+        pure $ case contained of
+          Left e -> Left e
+          Right _ -> Right True
+
+-- | Stat a workspace path. @kind@ is @"file"@ / @"dir"@ / @""@ when missing;
+-- @size@ is bytes for files, @0@ for directories and missing paths.
+statPath :: Workspace -> Text -> IO (Either RuntimeError (Bool, Text, Integer))
+statPath ws rel = do
+  ex <- pathExists ws rel
+  case ex of
+    Left e -> pure (Left e)
+    Right False -> pure (Right (False, "", 0))
+    Right True -> do
+      resolved <- resolveContainedPath ws rel
+      case resolved of
+        Left e -> pure (Left e)
+        Right path -> do
+          isDir <- doesDirectoryExist path
+          if isDir
+            then pure (Right (True, "dir", 0))
+            else do
+              sizeResult <- try (getFileSize path) :: IO (Either IOException Integer)
+              pure $ case sizeResult of
+                Left ex' ->
+                  Left (HostErr ("stat failed for '" <> rel <> "': " <> T.pack (show ex')))
+                Right n -> Right (True, "file", n)
+
+-- | Copy a file or directory tree (@src@ → @dst@) within the sandbox.
+-- When @overwrite@ is false, @dst@ must not exist. @exclude@ is a list of
+-- path prefixes relative to the copied tree root (e.g. @.hwfl/runs@).
+copyPath :: Workspace -> Text -> Text -> Bool -> [Text] -> IO (Either RuntimeError ())
+copyPath ws srcRel dstRel overwrite exclude = do
+  srcResolved <- resolveContainedPath ws srcRel
+  case srcResolved of
+    Left e -> pure (Left e)
+    Right srcPath ->
+      if srcPath == workspaceRoot ws
+        then pure (Left (SandboxErr ("cannot copy workspace root: " <> srcRel)))
+        else case (resolvePath ws srcRel, resolvePath ws dstRel) of
+          (Left e, _) -> pure (Left e)
+          (_, Left e) -> pure (Left e)
+          (Right srcLex, Right dstLex) -> do
+            srcIsDir <- doesDirectoryExist srcPath
+            let nested =
+                  srcIsDir
+                    && ( dstLex == srcLex
+                           || isPathUnderRoot srcLex dstLex
+                       )
+            if nested
+              then
+                pure
+                  ( Left
+                      ( HostErr
+                          ( "cannot copy '"
+                              <> srcRel
+                              <> "' into itself or a descendant"
+                          )
+                      )
+                  )
+              else do
+                dstExists <- pathExists ws dstRel
+                case dstExists of
+                  Left e -> pure (Left e)
+                  Right True
+                    | not overwrite ->
+                        pure (Left (HostErr ("destination already exists: '" <> dstRel <> "'")))
+                    | otherwise -> do
+                        rm <- removePath ws dstRel
+                        case rm of
+                          Left e -> pure (Left e)
+                          Right () -> copyInto ws srcRel srcPath dstRel exclude
+                  Right False -> copyInto ws srcRel srcPath dstRel exclude
+
+copyInto :: Workspace -> Text -> FilePath -> Text -> [Text] -> IO (Either RuntimeError ())
+copyInto ws srcRel srcPath dstRel exclude = do
+  isDir <- doesDirectoryExist srcPath
+  isFile <- doesFileExist srcPath
+  if isDir
+    then copyTree ws srcPath dstRel "" exclude
+    else
+      if isFile
+        then copyOneFile ws srcPath dstRel
+        else pure (Left (HostErr ("path not found: '" <> srcRel <> "'")))
+
+copyOneFile :: Workspace -> FilePath -> Text -> IO (Either RuntimeError ())
+copyOneFile ws srcAbs dstRel = case resolvePath ws dstRel of
+  Left e -> pure (Left e)
+  Right dstPath -> do
+    let parent = takeDirectory dstPath
+    parentCanon <-
+      try
+        ( do
+            createDirectoryIfMissing True parent
+            canonicalizePath parent
+        ) ::
+        IO (Either IOException FilePath)
+    case parentCanon of
+      Left ex ->
+        pure (Left (HostErr ("cannot prepare copy destination '" <> dstRel <> "': " <> T.pack (show ex))))
+      Right pCanon
+        | not (isPathUnderRoot (workspaceRoot ws) pCanon) ->
+            pure (Left (SandboxErr ("path escapes the workspace root: " <> dstRel)))
+        | otherwise -> do
+            let target = pCanon </> takeFileName dstPath
+            result <- try (copyFile srcAbs target) :: IO (Either IOException ())
+            pure $ case result of
+              Left ex ->
+                Left (HostErr ("copy failed for '" <> dstRel <> "': " <> T.pack (show ex)))
+              Right () -> Right ()
+
+copyTree :: Workspace -> FilePath -> Text -> Text -> [Text] -> IO (Either RuntimeError ())
+copyTree ws srcRoot dstRel relInTree exclude
+  | isExcluded exclude relInTree = pure (Right ())
+  | otherwise = do
+      mk <- mkdirPath ws dstRel
+      case mk of
+        Left e -> pure (Left e)
+        Right () -> do
+          namesResult <- try (listDirectory srcRoot) :: IO (Either IOException [FilePath])
+          case namesResult of
+            Left ex ->
+              pure (Left (HostErr ("copy walk failed: " <> T.pack (show ex))))
+            Right names -> go (sort names)
+  where
+    go [] = pure (Right ())
+    go (name : rest) = do
+      let childRel =
+            if T.null relInTree
+              then T.pack name
+              else relInTree <> "/" <> T.pack name
+          childSrc = srcRoot </> name
+          childDst = dstRel <> "/" <> T.pack name
+      if isExcluded exclude childRel
+        then go rest
+        else do
+          srcCanon <- try (canonicalizePath childSrc) :: IO (Either IOException FilePath)
+          case srcCanon of
+            Left ex ->
+              pure (Left (HostErr ("cannot resolve copy source: " <> T.pack (show ex))))
+            Right c
+              | not (isPathUnderRoot (workspaceRoot ws) c) ->
+                  pure (Left (SandboxErr ("path escapes the workspace root during copy")))
+              | otherwise -> do
+                  isDir <- doesDirectoryExist childSrc
+                  step <-
+                    if isDir
+                      then copyTree ws childSrc childDst childRel exclude
+                      else copyOneFile ws childSrc childDst
+                  case step of
+                    Left e -> pure (Left e)
+                    Right () -> go rest
+
+isExcluded :: [Text] -> Text -> Bool
+isExcluded patterns rel =
+  let norm = T.replace "\\" "/" (T.dropWhile (== '/') rel)
+      pats = filter (not . T.null) (map (T.replace "\\" "/" . T.dropWhile (== '/')) patterns)
+   in any (\p -> norm == p || (p <> "/") `T.isPrefixOf` norm) pats
+
+-- | Rename / relocate a file or directory within the sandbox.
+-- Fails if @dst@ already exists. Cannot move the workspace root.
+movePath :: Workspace -> Text -> Text -> IO (Either RuntimeError ())
+movePath ws srcRel dstRel = do
+  srcResolved <- resolveContainedPath ws srcRel
+  case srcResolved of
+    Left e -> pure (Left e)
+    Right srcPath ->
+      if srcPath == workspaceRoot ws
+        then pure (Left (SandboxErr ("cannot move workspace root: " <> srcRel)))
+        else do
+          dstEx <- pathExists ws dstRel
+          case dstEx of
+            Left e -> pure (Left e)
+            Right True ->
+              pure (Left (HostErr ("destination already exists: '" <> dstRel <> "'")))
+            Right False -> case (resolvePath ws srcRel, resolvePath ws dstRel) of
+              (Left e, _) -> pure (Left e)
+              (_, Left e) -> pure (Left e)
+              (Right srcLex, Right dstPath) -> do
+                let parent = takeDirectory dstPath
+                parentCanon <-
+                  try
+                    ( do
+                        createDirectoryIfMissing True parent
+                        canonicalizePath parent
+                    ) ::
+                    IO (Either IOException FilePath)
+                case parentCanon of
+                  Left ex ->
+                    pure
+                      ( Left
+                          ( HostErr
+                              ( "cannot prepare move destination '"
+                                  <> dstRel
+                                  <> "': "
+                                  <> T.pack (show ex)
+                              )
+                          )
+                      )
+                  Right pCanon
+                    | not (isPathUnderRoot (workspaceRoot ws) pCanon) ->
+                        pure (Left (SandboxErr ("path escapes the workspace root: " <> dstRel)))
+                    | otherwise -> do
+                        let target = pCanon </> takeFileName dstPath
+                        srcIsDir <- doesDirectoryExist srcPath
+                        let nested =
+                              srcIsDir
+                                && ( dstPath == srcLex
+                                       || isPathUnderRoot srcLex dstPath
+                                   )
+                        if nested
+                          then
+                            pure
+                              ( Left
+                                  ( HostErr
+                                      ( "cannot move '"
+                                          <> srcRel
+                                          <> "' into itself or a descendant"
+                                      )
+                                  )
+                              )
+                          else do
+                            result <- try (renamePath srcPath target) :: IO (Either IOException ())
+                            case result of
+                              Right () -> pure (Right ())
+                              Left ex -> do
+                                -- Cross-device rename: copy then remove.
+                                copied <- copyPath ws srcRel dstRel False []
+                                case copied of
+                                  Left _ ->
+                                    pure
+                                      ( Left
+                                          ( HostErr
+                                              ( "move failed for '"
+                                                  <> srcRel
+                                                  <> "': "
+                                                  <> T.pack (show ex)
+                                              )
+                                          )
+                                      )
+                                  Right () -> removePath ws srcRel
 
 -- | Literal whole-string replacement. Returns @(ok, replacements)@ where
 -- @ok@ is true iff at least one occurrence was replaced. Empty @old@ is an error.

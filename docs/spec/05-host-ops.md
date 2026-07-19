@@ -18,7 +18,12 @@ opens/closes a **span**.
 | `fs.grep` | Read | `(pattern, glob?) -> List<Hit>` |
 | `fs.edit` | Write | `(path, old, new) -> { ok: Bool }` |
 | `fs.patch` | Write | `(path, hunks: List<{old, new}>) -> { ok, applied, error }` — unique multi-hunk; atomic |
-| `fs.move` / `copy` / `remove` / `mkdir` | Write | as expected |
+| `fs.mkdir` | Write | `(path: FileRef) -> ()` — create dir and parents |
+| `fs.copy` | Write | `{ src, dst, overwrite?, exclude? } -> ()` — file or recursive tree; `exclude` = prefixes under tree root (e.g. `.hwfl/runs`) |
+| `fs.move` | Write | `{ src, dst } -> ()` — rename / relocate; fails if `dst` exists |
+| `fs.remove` | Write | `(path: FileRef) -> ()` |
+| `fs.exists` | Read | `(path: FileRef) -> Bool` |
+| `fs.stat` | Read | `(path: FileRef) -> { exists, kind, size }` — `kind` is `file` / `dir` / `""` when missing |
 
 All paths constrained to the **workspace sandbox** (hwfi containment
 rules). Symlink escape is a hard failure.

@@ -172,6 +172,47 @@ hostToolMeta = \case
         describedObjectSchema
           [("path", t "FileRef", "Workspace-relative file or directory to remove")]
       )
+  HostFsMkdir ->
+    Right
+      ( "fs_mkdir",
+        "Create a directory (and parents) in the workspace",
+        describedObjectSchema
+          [("path", t "FileRef", "Workspace-relative directory to create")]
+      )
+  HostFsCopy ->
+    Right
+      ( "fs_copy",
+        "Copy a file or recursive directory tree within the workspace",
+        describedObjectSchema
+          [ ("src", t "FileRef", "Workspace-relative source file or directory"),
+            ("dst", t "FileRef", "Workspace-relative destination path"),
+            ("overwrite", t "Bool", "If true, replace an existing destination"),
+            ("exclude", TList (t "String"), "Path prefixes under the tree root to skip (e.g. .hwfl/runs)")
+          ]
+      )
+  HostFsMove ->
+    Right
+      ( "fs_move",
+        "Rename or relocate a file or directory within the workspace",
+        describedObjectSchema
+          [ ("src", t "FileRef", "Workspace-relative source path"),
+            ("dst", t "FileRef", "Workspace-relative destination path")
+          ]
+      )
+  HostFsExists ->
+    Right
+      ( "fs_exists",
+        "Return whether a workspace path exists",
+        describedObjectSchema
+          [("path", t "FileRef", "Workspace-relative path to check")]
+      )
+  HostFsStat ->
+    Right
+      ( "fs_stat",
+        "Return exists/kind/size for a workspace path (kind empty when missing)",
+        describedObjectSchema
+          [("path", t "FileRef", "Workspace-relative path to stat")]
+      )
   HostExecRun ->
     Right
       ( "exec_run",
@@ -477,6 +518,53 @@ coerceToolArgs ts json = case ts.tvsCallee of
       Nothing -> Left "fs_remove missing path"
     Aeson.String p -> Right [(Nothing, VString p)]
     _ -> Left "fs_remove arguments must be an object or string path"
+  VHostOp HostFsMkdir -> case json of
+    Aeson.Object o -> case KM.lookup "path" o of
+      Just (Aeson.String p) -> Right [(Just (Ident "path"), VString p)]
+      Just _ -> Left "fs_mkdir.path must be a string"
+      Nothing -> Left "fs_mkdir missing path"
+    Aeson.String p -> Right [(Nothing, VString p)]
+    _ -> Left "fs_mkdir arguments must be an object or string path"
+  VHostOp HostFsCopy -> case json of
+    Aeson.Object o -> do
+      src <- stringField o "src"
+      dst <- stringField o "dst"
+      let overwrite = case KM.lookup "overwrite" o of
+            Just (Aeson.Bool b) -> b
+            _ -> False
+          exclude = case KM.lookup "exclude" o of
+            Just (Aeson.Array arr) -> [s | Aeson.String s <- V.toList arr]
+            _ -> []
+      Right
+        [ (Just (Ident "src"), VString src),
+          (Just (Ident "dst"), VString dst),
+          (Just (Ident "overwrite"), VBool overwrite),
+          (Just (Ident "exclude"), VList (map VString exclude))
+        ]
+    _ -> Left "fs_copy arguments must be an object"
+  VHostOp HostFsMove -> case json of
+    Aeson.Object o -> do
+      src <- stringField o "src"
+      dst <- stringField o "dst"
+      Right
+        [ (Just (Ident "src"), VString src),
+          (Just (Ident "dst"), VString dst)
+        ]
+    _ -> Left "fs_move arguments must be an object"
+  VHostOp HostFsExists -> case json of
+    Aeson.Object o -> case KM.lookup "path" o of
+      Just (Aeson.String p) -> Right [(Just (Ident "path"), VString p)]
+      Just _ -> Left "fs_exists.path must be a string"
+      Nothing -> Left "fs_exists missing path"
+    Aeson.String p -> Right [(Nothing, VString p)]
+    _ -> Left "fs_exists arguments must be an object or string path"
+  VHostOp HostFsStat -> case json of
+    Aeson.Object o -> case KM.lookup "path" o of
+      Just (Aeson.String p) -> Right [(Just (Ident "path"), VString p)]
+      Just _ -> Left "fs_stat.path must be a string"
+      Nothing -> Left "fs_stat missing path"
+    Aeson.String p -> Right [(Nothing, VString p)]
+    _ -> Left "fs_stat arguments must be an object or string path"
   VHostOp HostExecRun -> case json of
     Aeson.Object o -> do
       program <- stringField o "program"

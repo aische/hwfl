@@ -170,6 +170,35 @@ hostOpenAttrs op args = case op of
       [ "op" .= hostOpName op,
         "path" .= pathAttr args
       ]
+  HostFsMkdir ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args
+      ]
+  HostFsCopy ->
+    object
+      [ "op" .= hostOpName op,
+        "src" .= stringAttr (Ident "src") args,
+        "dst" .= stringAttr (Ident "dst") args,
+        "overwrite" .= boolAttr (Ident "overwrite") args,
+        "exclude_count" .= listLenAttr (Ident "exclude") args
+      ]
+  HostFsMove ->
+    object
+      [ "op" .= hostOpName op,
+        "src" .= stringAttr (Ident "src") args,
+        "dst" .= stringAttr (Ident "dst") args
+      ]
+  HostFsExists ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args
+      ]
+  HostFsStat ->
+    object
+      [ "op" .= hostOpName op,
+        "path" .= pathAttr args
+      ]
   HostExecRun ->
     object
       [ "op" .= hostOpName op,
@@ -303,6 +332,11 @@ listLenAttr :: Ident -> [(Maybe Ident, Value)] -> Aeson.Value
 listLenAttr n args = case lookupNamed n args of
   Just (VList xs) -> Aeson.Number (fromIntegral (length xs))
   _ -> Aeson.Null
+
+boolAttr :: Ident -> [(Maybe Ident, Value)] -> Aeson.Value
+boolAttr n args = case lookupNamed n args of
+  Just (VBool b) -> Aeson.Bool b
+  _ -> Aeson.Bool False
 
 intAttr :: Ident -> Int -> [(Maybe Ident, Value)] -> Aeson.Value
 intAttr n pos args = case lookupNamed n args `orElse` lookupPos pos args of

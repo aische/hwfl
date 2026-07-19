@@ -171,6 +171,50 @@ fsType =
           (t "FileRef")
           [EffWrite]
           (t "Unit")
+      ),
+      ( Ident "mkdir",
+        TEffFun
+          (t "FileRef")
+          [EffWrite]
+          (t "Unit")
+      ),
+      ( Ident "copy",
+        -- Optional overwrite / exclude via Infer (same pattern as meta.read_spans).
+        TEffFun
+          ( TRecord
+              [ (Ident "src", t "FileRef"),
+                (Ident "dst", t "FileRef")
+              ]
+          )
+          [EffWrite]
+          (t "Unit")
+      ),
+      ( Ident "move",
+        TEffFun
+          ( TRecord
+              [ (Ident "src", t "FileRef"),
+                (Ident "dst", t "FileRef")
+              ]
+          )
+          [EffWrite]
+          (t "Unit")
+      ),
+      ( Ident "exists",
+        TEffFun
+          (t "FileRef")
+          [EffRead]
+          (t "Bool")
+      ),
+      ( Ident "stat",
+        TEffFun
+          (t "FileRef")
+          [EffRead]
+          ( TRecord
+              [ (Ident "exists", t "Bool"),
+                (Ident "kind", t "String"),
+                (Ident "size", t "Int")
+              ]
+          )
       )
     ]
 

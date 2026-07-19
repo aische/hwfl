@@ -154,6 +154,35 @@ fsPatchSrc =
       "```"
     ]
 
+fsTreeSrc :: Text
+fsTreeSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/fs-tree",
+      "inputs: {}",
+      "outputs:",
+      "  existed: Bool",
+      "  kind: String",
+      "  size: Int",
+      "  after_move: Bool",
+      "  skipped: Bool",
+      "effects: [Read, Write]",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { existed: Bool, kind: String, size: Int, after_move: Bool, skipped: Bool } =",
+      "  let _ = fs.mkdir(\"out/nested\")",
+      "  let _ = fs.copy(src = \"tree\", dst = \"out/tree\", exclude = [\"skip\"])",
+      "  let st = fs.stat(\"out/tree/a.txt\")",
+      "  let _ = fs.move(src = \"out/tree/a.txt\", dst = \"out/nested/a.txt\")",
+      "  let moved = fs.exists(\"out/nested/a.txt\")",
+      "  let skipped = fs.exists(\"out/tree/skip/hidden.txt\")",
+      "  { existed = st.exists, kind = st.kind, size = st.size, after_move = moved, skipped = skipped }",
+      "```"
+    ]
+
 spec :: Spec
 spec = describe "host ops P0 (exec + fs)" $ do
   describe "workspace helpers" $ do
@@ -252,6 +281,28 @@ spec = describe "host ops P0 (exec + fs)" $ do
         rmDir `shouldBe` Right ()
         subExists <- doesDirectoryExist (dir </> "sub")
         subExists `shouldBe` False
+
+    it "mkdir / copy (exclude) / move / exists / stat" $
+      withSystemTempDirectory "hwfl-tree-helpers" $ \dir -> do
+        ws <- newWorkspace dir
+        _ <- writeTextFile ws "tree/a.txt" "hello"
+        _ <- writeTextFile ws "tree/skip/hidden.txt" "nope"
+        _ <- writeTextFile ws "tree/keep/b.txt" "yes"
+        mk <- mkdirPath ws "staging"
+        mk `shouldBe` Right ()
+        cp <- copyPath ws "tree" "staging/tree" False ["skip"]
+        cp `shouldBe` Right ()
+        pathExists ws "staging/tree/a.txt" >>= (`shouldBe` Right True)
+        pathExists ws "staging/tree/skip/hidden.txt" >>= (`shouldBe` Right False)
+        pathExists ws "staging/tree/keep/b.txt" >>= (`shouldBe` Right True)
+        st <- statPath ws "staging/tree/a.txt"
+        st `shouldBe` Right (True, "file", 5)
+        mv <- movePath ws "staging/tree/a.txt" "staging/moved.txt"
+        mv `shouldBe` Right ()
+        pathExists ws "staging/tree/a.txt" >>= (`shouldBe` Right False)
+        pathExists ws "staging/moved.txt" >>= (`shouldBe` Right True)
+        missing <- pathExists ws "no/such"
+        missing `shouldBe` Right False
 
   describe "exec.run" $ do
     it "runs an allowlisted program and captures stdout" $
@@ -464,6 +515,45 @@ spec = describe "host ops P0 (exec + fs)" $ do
                   other -> expectationFailure (show other)
                 contents <- readFile (dir </> "src" </> "a.txt")
                 contents `shouldBe` "ALPHA\nbeta\nGAMMA\n"
+              other -> expectationFailure (show other)
+
+  describe "fs.mkdir / copy / move / exists / stat" $ do
+    it "runs through the machine" $
+      withSystemTempDirectory "hwfl-fs-tree" $ \dir -> do
+        createDirectoryIfMissing True (dir </> "tree" </> "skip")
+        writeFile (dir </> "tree" </> "a.txt") "hello"
+        writeFile (dir </> "tree" </> "skip" </> "hidden.txt") "nope"
+        case loadModuleText "fs-tree.md" fsTreeSrc of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            let opts =
+                  RunOptions
+                    { roWorkspace = dir,
+                      roProvider = mockProvider,
+                      roInputs = [],
+                      roRunId = Just "fs-tree",
+                      roEntry = "fs-tree.md",
+                      roMode = StepRun,
+                      roProjectHash = Nothing,
+                      roExec = Nothing,
+                      roObserver = noopObserver,
+                      roCost = False,
+                      roModelCatalog = "model-catalog.json",
+                      roSkillCatalog = fst emptySkillRuntime,
+                      roSkillModules = snd emptySkillRuntime
+                    }
+            outcome <- runLoadedModule opts loaded
+            case outcome of
+              OutcomeCompleted val _ _ ->
+                case val of
+                  VRecord fs -> do
+                    lookup (Ident "existed") fs `shouldBe` Just (VBool True)
+                    lookup (Ident "kind") fs `shouldBe` Just (VString "file")
+                    lookup (Ident "size") fs `shouldBe` Just (VInt 5)
+                    lookup (Ident "after_move") fs `shouldBe` Just (VBool True)
+                    lookup (Ident "skipped") fs `shouldBe` Just (VBool False)
+                  other -> expectationFailure (show other)
               other -> expectationFailure (show other)
 
 isRight :: Either a b -> Bool

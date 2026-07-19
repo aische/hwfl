@@ -4,9 +4,8 @@ Last updated: 2026-07-19
 
 ## Current focus
 
-Deterministic FS tree ops (`mkdir` / `copy` / `move` / `exists`·`stat`)
-for lab materialize; then optional mutate loop on the compare spine.
-Resume/approve project-hash fix shipped (hwfl-server Phase 1).
+Optional mutate / next-generation loop on the compare spine.
+Deterministic FS tree ops shipped.
 
 ## North star
 
@@ -17,20 +16,17 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **Deterministic FS tree ops** — `fs.mkdir`, `fs.copy` (recursive +
+  optional `overwrite` / `exclude` prefixes), `fs.move`, `fs.exists`,
+  `fs.stat`; compare lab materialize uses `fs.copy`
 - **Sub-cent LLM cost aggregation** — store `cost_micros` on span close;
-  sum in micros; round only in `formatCostUsd`. Fixes cheap-model runs
-  (e.g. DeepSeek) showing `cost: $0.00` after many sub-cent rounds
-- **Resume/approve project hash** — `loadExisting` walks from `rmEntry`
-  for `project.json`; project runs recompute `projectHashForModules` +
-  skills from that root (not entry-only `projectHashOf`). Fixes approve
-  after `awaiting_confirm` for control-plane project vs workspace layout
-- **Observer hook** — `Hwfl.Obs.Observer`: live span / pause / finish;
-  driver `drrObserver`; CLI `--debug` = `stderrDebugObserver`
-- **Local compare lab** — `examples/compare`; `CompareSpec`
-- **`meta.read_snapshot` / `meta.list_runs` / `meta.read_spans` /
-  `meta.invoke`**; shared `runTarget`; run-store interface
-- North-star docs; `--cost`; semantic-check S1–S3 + S5; `fs.patch`;
-  skills A–C; coding-agent; P0; M0–M9
+  sum in micros; round only in `formatCostUsd`
+- **Resume/approve project hash** — project runs recompute
+  `projectHashForModules` + skills from project root
+- **Observer hook** — `Hwfl.Obs.Observer`; CLI `--debug` =
+  `stderrDebugObserver`
+- Local compare lab; `meta.*` run-store ops; north-star docs; `--cost`;
+  semantic-check S1–S3 + S5; `fs.patch`; skills A–C; coding-agent; P0
 
 ## Blockers
 
@@ -38,10 +34,8 @@ None.
 
 ## Next up
 
-1. FS tree ops: `fs.mkdir`, `fs.copy` (recursive), `fs.move`,
-   `fs.exists` / `fs.stat` — workflow materialize under sandbox
-2. Optional: mutate / next-generation loop on the compare spine
-3. Optional DB-backed run-store backend (same interface)
+1. Optional: mutate / next-generation loop on the compare spine
+2. Optional DB-backed run-store backend (same interface)
 
 ## Deferred
 

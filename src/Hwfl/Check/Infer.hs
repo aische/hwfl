@@ -122,6 +122,7 @@ infer env = \case
     | isObsSpanPartial f -> inferObsSpanThunkApp env args
     | isMetaInvoke f -> inferMetaInvokeApp env args
     | isMetaReadSpans f -> inferMetaReadSpansApp env args
+    | isFsCopy f -> inferFsCopyApp env args
     | EVar (Ident n) <- f,
       Just cls <- classifyOp n ->
         inferOverloadedApp env cls infer args
@@ -734,6 +735,37 @@ inferMetaReadSpansApp env args = case classifyArgs args of
     pure metaReadSpansResultType
   Right (Positional _) ->
     Left (TypeMismatchMsg "meta.read_spans requires named arguments" (TRecord []) (TRecord []))
+
+-- | @fs.copy({ src, dst, overwrite?, exclude? })@.
+isFsCopy :: Expr -> Bool
+isFsCopy = \case
+  EProj (EVar (Ident "fs")) (Ident "copy") -> True
+  _ -> False
+
+inferFsCopyApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferFsCopyApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Named nes) -> do
+    srcE <- maybe (Left (MissingNamedArg (Ident "src"))) pure (lookup (Ident "src") nes)
+    dstE <- maybe (Left (MissingNamedArg (Ident "dst"))) pure (lookup (Ident "dst") nes)
+    check env srcE tFileRef
+    check env dstE tFileRef
+    case lookup (Ident "overwrite") nes of
+      Nothing -> pure ()
+      Just e -> check env e tBool
+    case lookup (Ident "exclude") nes of
+      Nothing -> pure ()
+      Just e -> check env e (TList tString)
+    let known = [Ident "src", Ident "dst", Ident "overwrite", Ident "exclude"]
+    mapM_
+      ( \(n, _) ->
+          unless (n `elem` known) $
+            Left (UnknownField n (TRecord [(Ident "src", tFileRef)]))
+      )
+      nes
+    pure tUnit
+  Right (Positional _) ->
+    Left (TypeMismatchMsg "fs.copy requires named arguments" (TRecord []) (TRecord []))
 
 tUnit, tBool, tInt, tFloat, tString, tToolSpec, tFileRef, tJson :: TypeExpr
 tUnit = TName (TypeName "Unit")

@@ -22,13 +22,13 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 - [x] Resume/approve recomputes `projectHashForModules` when entry is
       under a project root (skills from that root) — required for
       hwfl-server sync approve after confirm
-- [ ] Deterministic FS tree ops (lab materialize; not agent-first) —
+- [x] Deterministic FS tree ops (lab materialize; not agent-first) —
       finish [spec/05-host-ops.md](spec/05-host-ops.md) Write set:
-      - [ ] `fs.mkdir` — create dir (and parents)
-      - [ ] `fs.copy` — file or recursive directory tree (`src` → `dst`);
+      - [x] `fs.mkdir` — create dir (and parents)
+      - [x] `fs.copy` — file or recursive directory tree (`src` → `dst`);
             optional overwrite / exclude globs (e.g. skip `.hwfl/runs`)
-      - [ ] `fs.move` — rename / relocate within sandbox
-      - [ ] `fs.exists` / `fs.stat` — branch without list+catch
+      - [x] `fs.move` — rename / relocate within sandbox
+      - [x] `fs.exists` / `fs.stat` — branch without list+catch
 - [ ] Optional: mutate / next-generation loop on the compare spine
 
 ## Later (P2–P3)

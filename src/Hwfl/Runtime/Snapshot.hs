@@ -703,6 +703,11 @@ parseHostOp = \case
   "fs.grep" -> pure HostFsGrep
   "fs.read_slice" -> pure HostFsReadSlice
   "fs.remove" -> pure HostFsRemove
+  "fs.mkdir" -> pure HostFsMkdir
+  "fs.copy" -> pure HostFsCopy
+  "fs.move" -> pure HostFsMove
+  "fs.exists" -> pure HostFsExists
+  "fs.stat" -> pure HostFsStat
   "exec.run" -> pure HostExecRun
   "llm.chat" -> pure HostLlmChat
   "llm.object" -> pure HostLlmObject

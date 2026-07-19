@@ -82,6 +82,11 @@ data HostOpId
   | HostFsGrep
   | HostFsReadSlice
   | HostFsRemove
+  | HostFsMkdir
+  | HostFsCopy
+  | HostFsMove
+  | HostFsExists
+  | HostFsStat
   | HostExecRun
   | HostLlmChat
   | HostLlmObject
@@ -177,6 +182,11 @@ hostOpName = \case
   HostFsGrep -> "fs.grep"
   HostFsReadSlice -> "fs.read_slice"
   HostFsRemove -> "fs.remove"
+  HostFsMkdir -> "fs.mkdir"
+  HostFsCopy -> "fs.copy"
+  HostFsMove -> "fs.move"
+  HostFsExists -> "fs.exists"
+  HostFsStat -> "fs.stat"
   HostExecRun -> "exec.run"
   HostLlmChat -> "llm.chat"
   HostLlmObject -> "llm.object"

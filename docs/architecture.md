@@ -62,7 +62,7 @@ All side effects go through **host ops** registered in the runtime:
 
 | Category    | Examples                                              |
 | ----------- | ----------------------------------------------------- |
-| FS          | `fs.read`, `fs.write`, `fs.edit`, `fs.patch`, …       |
+| FS          | `fs.read`, `fs.write`, `fs.copy`, `fs.mkdir`, …       |
 | LLM         | `llm.chat`, `llm.object`, `llm.agent`                 |
 | Process     | `exec.run`                                            |
 | Human       | `human.confirm`                                       |
