@@ -73,7 +73,7 @@ checkModuleBodyInContext ctx body@(ModuleBody decls mexpr) = do
 checkDecl :: TypeEnv -> Decl -> Either CheckError ()
 checkDecl env = \case
   DType {} -> pure ()
-  DFun n ps _mt body -> case lookupVar n env of
+  DFun _ n ps _mt body -> case lookupVar n env of
     Nothing -> Left (UnboundVar n)
     Just (TFun domain ret) -> do
       binds <- bindParams ps domain
@@ -165,14 +165,14 @@ elaborateMainIO fm body@(ModuleBody decls mexpr)
   | null fm.fmInputs && null fm.fmOutputs = Right body
   | otherwise = case break isMain decls of
       (_, []) -> Left MissingMain
-      (before, DFun n ps mt b : after) -> do
+      (before, DFun p n ps mt b : after) -> do
         ps' <- fillParams ps
         let mt' = mt <|> Just (TRecord fm.fmOutputs)
-        pure $ ModuleBody (before ++ DFun n ps' mt' b : after) mexpr
+        pure $ ModuleBody (before ++ DFun p n ps' mt' b : after) mexpr
       _ -> Left MissingMain
   where
     isMain = \case
-      DFun (Ident "main") _ _ _ -> True
+      DFun _ (Ident "main") _ _ _ -> True
       _ -> False
     fillParams = \case
       [Param n Nothing] ->

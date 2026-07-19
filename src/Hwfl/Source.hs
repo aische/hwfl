@@ -3,6 +3,7 @@ module Hwfl.Source
   ( Pos (..),
     Diagnostic (..),
     mkDiagnostic,
+    renderPos,
     renderDiagnostic,
     renderDiagnostics,
   )
@@ -16,7 +17,7 @@ data Pos = Pos
   { posLine :: !Int,
     posCol :: !Int
   }
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Read)
 
 data Diagnostic = Diagnostic
   { diagPath :: FilePath,
@@ -28,13 +29,16 @@ data Diagnostic = Diagnostic
 mkDiagnostic :: FilePath -> Pos -> Text -> Diagnostic
 mkDiagnostic path pos msg = Diagnostic path pos msg
 
+-- | @line:col@ (no path).
+renderPos :: Pos -> Text
+renderPos p =
+  T.pack (show p.posLine) <> ":" <> T.pack (show p.posCol)
+
 renderDiagnostic :: Diagnostic -> Text
 renderDiagnostic d =
   T.pack d.diagPath
     <> ":"
-    <> T.pack (show d.diagPos.posLine)
-    <> ":"
-    <> T.pack (show d.diagPos.posCol)
+    <> renderPos d.diagPos
     <> ": "
     <> d.diagMessage
 

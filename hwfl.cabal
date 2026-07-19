@@ -147,6 +147,7 @@ test-suite hwfl-test
         -main-is Spec
     other-modules:
         Hwfl.Ast.PrettySpec
+        Hwfl.Check.LocateSpec
         Hwfl.Check.ModuleSpec
         Hwfl.Check.ProjectSpec
         Hwfl.Cli.JsonSpec

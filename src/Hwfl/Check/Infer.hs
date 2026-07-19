@@ -7,13 +7,14 @@ module Hwfl.Check.Infer
 where
 
 import Control.Monad (foldM, unless, when)
+import Data.Bifunctor (first)
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Expr
 import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameToText)
 import Hwfl.Ast.Pat (Literal (..), Pattern (..))
 import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Check.Env
-import Hwfl.Check.Error (CheckError (..))
+import Hwfl.Check.Error (CheckError (..), attachPos)
 import Hwfl.Check.Overload
   ( classifyOp,
     inferOverloadedApp,
@@ -26,9 +27,9 @@ import Hwfl.Check.Schema (schemaType, typeToSchema)
 inferModuleEnv :: ModuleBody -> Either CheckError TypeEnv
 inferModuleEnv (ModuleBody decls _) = do
   checkDuplicateFuns decls
-  env0 <- foldM addAlias preludeTypeEnv [(n, ty) | DType n ty <- decls]
-  mapM_ (uncurry (resolveAliasDef env0)) [(n, ty) | DType n ty <- decls]
-  foldM addFun env0 [(n, ps, mt) | DFun n ps mt _ <- decls]
+  env0 <- foldM addAlias preludeTypeEnv [(n, ty) | DType _ n ty <- decls]
+  mapM_ (uncurry (resolveAliasDef env0)) [(n, ty) | DType _ n ty <- decls]
+  foldM addFun env0 [(n, ps, mt) | DFun _ n ps mt _ <- decls]
   where
     addAlias env (n, ty) = insertAlias n ty env
     addFun env (n, ps, mt) = do
@@ -60,7 +61,7 @@ resolveTypeFrom env = go
 checkDuplicateFuns :: [Decl] -> Either CheckError ()
 checkDuplicateFuns decls = mapM_ one names
   where
-    names = [n | DFun n _ _ _ <- decls]
+    names = [n | DFun _ n _ _ _ <- decls]
     one n =
       when (length (filter (== n) names) > 1) $
         Left (DuplicateFun n)
@@ -89,7 +90,10 @@ paramsDomain env = \case
       Nothing -> Left (CannotInfer ("parameter " <> unIdent n))
 
 infer :: TypeEnv -> Expr -> Either CheckError TypeExpr
-infer env = \case
+infer env e = first (attachPos (exprPos e)) (infer' env e)
+
+infer' :: TypeEnv -> Expr -> Either CheckError TypeExpr
+infer' env = \case
   ELit lit -> Right (literalType lit)
   EVar n@(Ident name)
     | Just _ <- classifyOp name ->
@@ -193,7 +197,10 @@ infer env = \case
     pure schemaType
 
 check :: TypeEnv -> Expr -> TypeExpr -> Either CheckError ()
-check env e want = do
+check env e want = first (attachPos (exprPos e)) (check' env e want)
+
+check' :: TypeEnv -> Expr -> TypeExpr -> Either CheckError ()
+check' env e want = do
   want' <- resolveType env want
   case e of
     EList [] -> case want' of

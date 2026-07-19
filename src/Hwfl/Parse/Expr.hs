@@ -15,11 +15,16 @@ import Hwfl.Ast.Name
 import Hwfl.Parse.Lexer
 import Hwfl.Parse.Pat (literal, pattern_, stringLit)
 import Hwfl.Parse.Type (typeExpr)
-import Text.Megaparsec
+import Hwfl.Source (Pos)
+import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char (char)
 
 parseExprText :: FilePath -> Text -> Either (ParseErrorBundle Text Void) Expr
 parseExprText = runP expr
+
+-- | Stamp the current source position onto an expression.
+located :: Pos -> ExprF -> Expr
+located p k = Expr p k
 
 expr :: Parser Expr
 expr =
@@ -80,7 +85,9 @@ mulExpr = infixl1 appExpr mulOp
         ]
 
 binApp :: Text -> Expr -> Expr -> Expr
-binApp op l r = EApp (EVar (Ident op)) [ArgPos l, ArgPos r]
+binApp op l r =
+  let opE = located l.ePos (FVar (Ident op))
+   in located l.ePos (FApp opE [ArgPos l, ArgPos r])
 
 infixl1 :: Parser Expr -> Parser (Expr -> Expr -> Expr) -> Parser Expr
 infixl1 p op = do
@@ -95,44 +102,52 @@ infixl1 p op = do
 
 letExpr :: Parser Expr
 letExpr = do
+  pos <- getPos
   pKeyword "let"
   n <- pIdent
   mt <- optional (symbol ":" *> typeExpr)
   _ <- symbol "="
   e1 <- expr
-  choice
-    [ do
-        pKeyword "in"
-        ELet n mt e1 <$> expr,
-      -- sequential `let` block (grammar sketch + summarise sugar)
-      try (ELet n mt e1 <$> letExpr),
-      ELet n mt e1 <$> expr
-    ]
+  e2 <-
+    choice
+      [ do
+          pKeyword "in"
+          expr,
+        -- sequential `let` block (grammar sketch + summarise sugar)
+        try letExpr,
+        expr
+      ]
+  pure (located pos (FLet n mt e1 e2))
 
 funExpr :: Parser Expr
 funExpr = do
+  pos <- getPos
   pKeyword "fun"
   ps <- paramList
   mt <- optional (symbol ":" *> typeExpr)
   _ <- (void (symbol "=>") <|> void (symbol "="))
-  EFun ps mt <$> expr
+  body <- expr
+  pure (located pos (FFun ps mt body))
 
 ifExpr :: Parser Expr
 ifExpr = do
+  pos <- getPos
   pKeyword "if"
   c <- expr
   pKeyword "then"
   t <- expr
   pKeyword "else"
-  EIf c t <$> expr
+  e <- expr
+  pure (located pos (FIf c t e))
 
 matchExpr :: Parser Expr
 matchExpr = do
+  pos <- getPos
   pKeyword "match"
   s <- expr
   pKeyword "with"
   arms <- some matchArm
-  pure (EMatch s arms)
+  pure (located pos (FMatch s arms))
 
 matchArm :: Parser MatchArm
 matchArm = do
@@ -143,6 +158,7 @@ matchArm = do
 
 parExpr :: Parser Expr
 parExpr = do
+  pos <- getPos
   pKeyword "par"
   opts <- option [] $ between (symbol "(") (symbol ")") (parOpt `sepBy` symbol ",")
   pKeyword "for"
@@ -150,7 +166,7 @@ parExpr = do
   pKeyword "in"
   xs <- expr
   body <- between (symbol "{") (symbol "}") expr
-  pure (EPar opts n xs body)
+  pure (located pos (FPar opts n xs body))
 
 parOpt :: Parser ParOpt
 parOpt =
@@ -167,11 +183,12 @@ parOpt =
 
 joinExpr :: Parser Expr
 joinExpr = do
+  pos <- getPos
   pKeyword "join"
   _ <- symbol "{"
   tasks <- some task
   _ <- symbol "}"
-  pure (EJoin tasks)
+  pure (located pos (FJoin tasks))
 
 task :: Parser Expr
 task = do
@@ -180,11 +197,14 @@ task = do
 
 confirmExpr :: Parser Expr
 confirmExpr = do
+  pos <- getPos
   pKeyword "confirm"
-  EConfirm <$> appExpr
+  e <- appExpr
+  pure (located pos (FConfirm e))
 
 tryExpr :: Parser Expr
 tryExpr = do
+  pos <- getPos
   pKeyword "try"
   e <- expr
   pKeyword "catch"
@@ -192,7 +212,8 @@ tryExpr = do
   n <- pIdent
   _ <- symbol ")"
   _ <- symbol "=>"
-  ETry e n <$> expr
+  h <- expr
+  pure (located pos (FTry e n h))
 
 appExpr :: Parser Expr
 appExpr = do
@@ -215,9 +236,9 @@ appTail =
 
 applyTail :: Expr -> AppTail -> Expr
 applyTail e = \case
-  TApp args -> EApp e args
-  TProj n -> EProj e n
-  TIndex i -> EIndex e i
+  TApp args -> located e.ePos (FApp e args)
+  TProj n -> located e.ePos (FProj e n)
+  TIndex i -> located e.ePos (FIndex e i)
 
 arg :: Parser Arg
 arg =
@@ -232,22 +253,42 @@ arg =
 primary :: Parser Expr
 primary =
   choice
-    [ EInterp <$> try interpString,
-      ESection <$> try sectionRef,
+    [ do
+        pos <- getPos
+        parts <- try interpString
+        pure (located pos (FInterp parts)),
+      do
+        pos <- getPos
+        s <- try sectionRef
+        pure (located pos (FSection s)),
       try schemaExpr,
       try qnameExpr,
-      EVar <$> try pIdent,
-      ELit <$> try literal,
-      EList <$> listLit,
-      ERecord <$> recordLit,
+      do
+        pos <- getPos
+        n <- try pIdent
+        pure (located pos (FVar n)),
+      do
+        pos <- getPos
+        lit <- try literal
+        pure (located pos (FLit lit)),
+      do
+        pos <- getPos
+        es <- listLit
+        pure (located pos (FList es)),
+      do
+        pos <- getPos
+        fs <- recordLit
+        pure (located pos (FRecord fs)),
       between (symbol "(") (symbol ")") expr
     ]
 
 -- | @schema(T)@ — type argument, not a value application.
 schemaExpr :: Parser Expr
 schemaExpr = do
+  pos <- getPos
   _ <- symbol "schema"
-  ESchema <$> between (symbol "(") (symbol ")") typeExpr
+  t <- between (symbol "(") (symbol ")") typeExpr
+  pure (located pos (FSchema t))
 
 sectionRef :: Parser Slug
 sectionRef = lexeme $ do
@@ -261,9 +302,10 @@ sectionRef = lexeme $ do
 
 qnameExpr :: Parser Expr
 qnameExpr = do
+  pos <- getPos
   first <- pIdent
   rest <- some (symbol "/" *> pIdent)
-  pure (EQName (QName (first : rest)))
+  pure (located pos (FQName (QName (first : rest))))
 
 listLit :: Parser [Expr]
 listLit = between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")

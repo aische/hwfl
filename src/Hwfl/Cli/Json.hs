@@ -46,8 +46,16 @@ jsonCheckErrorAtPath mPath err =
     1
     "check"
     (checkErrorKind err)
-    (CE.renderCheckError err)
-    (maybe [] (\p -> [pathField p]) mPath)
+    (CE.renderCheckErrorRoot err)
+    (maybe [] (\p -> [pathField p]) mPath ++ posFields err)
+
+posFields :: CE.CheckError -> [(Key.Key, Value)]
+posFields err = case CE.errorPos err of
+  Nothing -> []
+  Just p ->
+    [ Key.fromText "line" .= posLine p,
+      Key.fromText "column" .= posCol p
+    ]
 
 jsonProjectCheckError :: ProjectCheckError -> Value
 jsonProjectCheckError = \case
@@ -66,8 +74,8 @@ jsonProjectCheckError = \case
       1
       "check"
       (checkErrorKind err)
-      (CE.renderCheckError err)
-      [pathField path]
+      (CE.renderCheckErrorRoot err)
+      (pathField path : posFields err)
   PceImportCycle qs ->
     errorEnvelope
       1
@@ -163,7 +171,10 @@ diagnosticJson d =
     ]
 
 checkErrorKind :: CE.CheckError -> Text
-checkErrorKind = \case
+checkErrorKind = checkErrorKindRoot . CE.errorRoot
+
+checkErrorKindRoot :: CE.CheckError -> Text
+checkErrorKindRoot = \case
   CE.UnboundVar {} -> "UnboundVar"
   CE.UnboundType {} -> "UnboundType"
   CE.TypeMismatch {} -> "TypeMismatch"
@@ -194,6 +205,7 @@ checkErrorKind = \case
   CE.ExampleInputsMismatch {} -> "ExampleInputsMismatch"
   CE.ExampleDuplicateName {} -> "ExampleDuplicateName"
   CE.Unsupported {} -> "Unsupported"
+  CE.ErrAt _ e -> checkErrorKindRoot e
 
 runtimeErrorKind :: RuntimeError -> Text
 runtimeErrorKind = \case

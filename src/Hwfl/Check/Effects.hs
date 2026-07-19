@@ -33,7 +33,7 @@ emptyEffs = Set.empty
 analyzeModuleEffects :: TypeEnv -> ModuleBody -> Either CheckError EffEnv
 analyzeModuleEffects env (ModuleBody decls _) = go Map.empty
   where
-    funs = [(n, body) | DFun n _ _ body <- decls]
+    funs = [(n, body) | DFun _ n _ _ body <- decls]
     go effEnv = do
       effEnv' <-
         foldM

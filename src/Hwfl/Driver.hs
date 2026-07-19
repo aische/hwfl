@@ -64,7 +64,7 @@ where
 
 import Data.Text (Text)
 import Hwfl.Ast.Name (Ident)
-import Hwfl.Check.Error (CheckError, renderCheckError)
+import Hwfl.Check.Error (CheckError, renderLocatedCheckError)
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Check.Project
   ( CheckProjectResult (..),
@@ -137,7 +137,7 @@ renderDriverError :: DriverError -> Text
 renderDriverError = \case
   DeProject err -> renderProjectCheckError err
   DeParse _ diags -> renderDiagnostics diags
-  DeModule _ err -> renderCheckError err
+  DeModule path err -> renderLocatedCheckError path err
 
 -- | Static check of a project directory or a single @.md@ module.
 driverCheck :: FilePath -> IO (Either DriverError DriverCheckOk)

@@ -1,7 +1,12 @@
 -- | Static check errors (types §3 / language §8).
 module Hwfl.Check.Error
   ( CheckError (..),
+    attachPos,
+    errorPos,
+    errorRoot,
     renderCheckError,
+    renderCheckErrorRoot,
+    renderLocatedCheckError,
   )
 where
 
@@ -13,6 +18,7 @@ import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Pretty (prettyType)
 import Hwfl.Ast.Type (Effect, TypeExpr, effectName)
+import Hwfl.Source (Pos, renderPos)
 
 data CheckError
   = UnboundVar Ident
@@ -47,10 +53,31 @@ data CheckError
     ExampleInputsMismatch (Maybe Text) [Ident] [Ident]
   | ExampleDuplicateName Text
   | Unsupported Text
+  | -- | Source location wrapper. Innermost location wins under 'attachPos'.
+    ErrAt Pos CheckError
   deriving stock (Eq, Show)
 
-renderCheckError :: CheckError -> Text
-renderCheckError = \case
+-- | Attach a position only when the error is not already located.
+attachPos :: Pos -> CheckError -> CheckError
+attachPos _ e@(ErrAt _ _) = e
+attachPos p e = ErrAt p e
+
+errorPos :: CheckError -> Maybe Pos
+errorPos = \case
+  ErrAt p _ -> Just p
+  _ -> Nothing
+
+errorRoot :: CheckError -> CheckError
+errorRoot = \case
+  ErrAt _ e -> errorRoot e
+  e -> e
+
+-- | Root message only (no @line:col@ prefix). Stable for JSON @message@.
+renderCheckErrorRoot :: CheckError -> Text
+renderCheckErrorRoot = renderCheckErrorRoot' . errorRoot
+
+renderCheckErrorRoot' :: CheckError -> Text
+renderCheckErrorRoot' = \case
   UnboundVar n -> "unbound variable: " <> unIdent n
   UnboundType n -> "unbound type: " <> unTypeName n
   TypeMismatch a b ->
@@ -118,6 +145,21 @@ renderCheckError = \case
   ExampleDuplicateName n ->
     "duplicate examples name: " <> n
   Unsupported msg -> "unsupported in type checker: " <> msg
+  ErrAt _ e -> renderCheckErrorRoot' e
+
+-- | Human-facing message with optional @line:col:@ prefix (no file path).
+renderCheckError :: CheckError -> Text
+renderCheckError err = case errorPos err of
+  Just p -> renderPos p <> ": " <> renderCheckErrorRoot err
+  Nothing -> renderCheckErrorRoot err
+
+-- | @path:line:col: msg@ when located; @path: msg@ otherwise.
+renderLocatedCheckError :: FilePath -> CheckError -> Text
+renderLocatedCheckError path err = case errorPos err of
+  Just p ->
+    T.pack path <> ":" <> renderPos p <> ": " <> renderCheckErrorRoot err
+  Nothing ->
+    T.pack path <> ": " <> renderCheckErrorRoot err
 
 renderEffSet :: Set Effect -> Text
 renderEffSet es

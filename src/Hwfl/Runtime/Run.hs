@@ -33,7 +33,7 @@ import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), Section (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), Slug, qnameToText)
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Check.Env (TypeEnv)
-import Hwfl.Check.Error (CheckError, renderCheckError)
+import Hwfl.Check.Error (CheckError, renderLocatedCheckError)
 import Hwfl.Check.Infer (inferModuleEnv)
 import Hwfl.Check.Module (checkLoadedModule, elaborateMainIO)
 import Hwfl.Check.Prelude (preludeTypeEnv)
@@ -181,7 +181,7 @@ renderRunTargetError :: RunTargetError -> Text
 renderRunTargetError = \case
   RtProject err -> renderProjectCheckError err
   RtParse _ diags -> renderDiagnostics diags
-  RtModule _ err -> renderCheckError err
+  RtModule path err -> renderLocatedCheckError path err
 
 -- | Check (unless skipped) then execute @main@ for a project or module path.
 runTarget :: RunTargetRequest -> IO (Either RunTargetError RunOutcome)
@@ -304,7 +304,7 @@ mkTargetRunOptions req entry hash execPol catalog skillMods =
 
 loadRunEnv :: ModuleBody -> (Env, FunTable)
 loadRunEnv (ModuleBody decls _) =
-  let funs = [(n, ps, body) | DFun n ps _ body <- decls]
+  let funs = [(n, ps, body) | DFun _ n ps _ body <- decls]
       table = Map.fromList [(n, (ps, body)) | (n, ps, body) <- funs]
       env =
         Map.union

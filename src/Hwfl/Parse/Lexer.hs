@@ -9,7 +9,9 @@ module Hwfl.Parse.Lexer
     pIdent,
     pTypeName,
     pKeyword,
+    getPos,
     runP,
+    runPFromLine,
     bundleToDiagnostics,
   )
 where
@@ -22,12 +24,20 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
-import Hwfl.Source (Diagnostic (..), Pos (..), mkDiagnostic)
-import Text.Megaparsec
+import Hwfl.Source (Diagnostic (..), Pos (Pos), mkDiagnostic)
+import Hwfl.Source qualified as Src
+import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char (space1, string)
 import Text.Megaparsec.Char.Lexer qualified as L
+import Text.Megaparsec.Pos (SourcePos (..), mkPos, sourceColumn, sourceLine, sourceName, unPos)
 
 type Parser = Parsec Void Text
+
+-- | Current megaparsec source position as a 1-based 'Hwfl.Source.Pos'.
+getPos :: Parser Src.Pos
+getPos = do
+  sp <- getSourcePos
+  pure (Pos (unPos (sourceLine sp)) (unPos (sourceColumn sp)))
 
 scn :: Parser ()
 scn = L.space space1 lineComment empty
@@ -98,7 +108,28 @@ identCont :: Parser Char
 identCont = satisfy isIdentCont
 
 runP :: Parser a -> FilePath -> Text -> Either (ParseErrorBundle Text Void) a
-runP p path = parse (scn *> p <* eof) path
+runP = runPFromLine 1
+
+-- | Like 'runP', but start numbering at @startLine@ (file-absolute fence content).
+runPFromLine :: Int -> Parser a -> FilePath -> Text -> Either (ParseErrorBundle Text Void) a
+runPFromLine startLine p path input =
+  snd $ runParser' (scn *> p <* eof) initialState
+  where
+    initialState =
+      State
+        { stateInput = input,
+          stateOffset = 0,
+          statePosState =
+            PosState
+              { pstateInput = input,
+                pstateOffset = 0,
+                pstateSourcePos =
+                  SourcePos path (mkPos (max 1 startLine)) (mkPos 1),
+                pstateTabWidth = defaultTabWidth,
+                pstateLinePrefix = ""
+              },
+          stateParseErrors = []
+        }
 
 bundleToDiagnostics :: FilePath -> ParseErrorBundle Text Void -> [Diagnostic]
 bundleToDiagnostics path bundle =

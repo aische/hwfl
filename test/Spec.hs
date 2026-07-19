@@ -1,6 +1,7 @@
 module Spec (main) where
 
 import Hwfl.Ast.PrettySpec
+import Hwfl.Check.LocateSpec
 import Hwfl.Check.ModuleSpec
 import Hwfl.Check.ProjectSpec
 import Hwfl.Cli.JsonSpec
@@ -48,6 +49,7 @@ main = hspec $ do
   Hwfl.Ast.PrettySpec.spec
   Hwfl.Eval.PureSpec.spec
   Hwfl.Check.ModuleSpec.spec
+  Hwfl.Check.LocateSpec.spec
   Hwfl.Check.ProjectSpec.spec
   Hwfl.Cli.JsonSpec.spec
   Hwfl.Check.SchemaSpec.spec

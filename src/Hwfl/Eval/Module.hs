@@ -19,7 +19,7 @@ import Hwfl.Eval.Value
 -- functions may call each other (v0 mutual recursion via knot-tying).
 loadModuleBody :: ModuleBody -> Either EvalError Env
 loadModuleBody (ModuleBody decls _) =
-  let funs = [(n, ps, body) | DFun n ps _ body <- decls]
+  let funs = [(n, ps, body) | DFun _ n ps _ body <- decls]
       env =
         Map.union
           ( Map.fromList

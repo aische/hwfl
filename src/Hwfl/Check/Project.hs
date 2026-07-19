@@ -23,7 +23,7 @@ import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..))
 import Hwfl.Ast.Name (QName (..), qnameToText)
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Check.Env (ModuleExport (..), TypeEnv (..))
-import Hwfl.Check.Error (CheckError (..), renderCheckError)
+import Hwfl.Check.Error (CheckError (..), renderLocatedCheckError)
 import Hwfl.Check.Module (CheckResult (..), checkLoadedModuleInContext)
 import Hwfl.Project
   ( ExecPolicy (..),
@@ -65,7 +65,7 @@ renderProjectCheckError :: ProjectCheckError -> Text
 renderProjectCheckError = \case
   PceLoad msg -> msg
   PceParse path diags -> T.pack path <> ":\n" <> renderDiagnostics diags
-  PceModule path err -> T.pack path <> ": " <> renderCheckError err
+  PceModule path err -> renderLocatedCheckError path err
   PceImportCycle qs -> "cyclic import: " <> T.intercalate " -> " qs
   PceImportNotFound path q -> T.pack path <> ": import not found: " <> q
   PceQNameMismatch path fm pathQ ->
@@ -251,7 +251,7 @@ moduleExportFrom (ModuleBody decls _) result =
     { meValues =
         Map.fromList
           [ (n, ty)
-            | DFun n _ _ _ <- decls,
+            | DFun _ n _ _ _ <- decls,
               Just ty <- [Map.lookup n result.crEnv.teVars]
           ],
       meEffects = result.crEffects

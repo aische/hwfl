@@ -20,7 +20,7 @@ import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Parse.Frontmatter (parseFrontmatter)
 import Hwfl.Parse.Lexer (bundleToDiagnostics)
 import Hwfl.Parse.Markdown (MarkdownFile (..), MdFence (..), parseMarkdown)
-import Hwfl.Parse.Module (parseModuleBody)
+import Hwfl.Parse.Module (parseModuleBodyFromLine)
 import Hwfl.Parse.Section (buildSections)
 import Hwfl.Source (Diagnostic (..), Pos (..), mkDiagnostic)
 
@@ -54,7 +54,9 @@ loadModuleText path src = do
           }
     _ -> do
       fence <- exactlyOneHwflFence path md.mdFences
-      body <- case parseModuleBody path fence.mfContent of
+      -- mfStartLine is the opening ``` line; content starts on the next line.
+      let contentStartLine = fence.mfStartLine + 1
+      body <- case parseModuleBodyFromLine contentStartLine path fence.mfContent of
         Left bundle -> Left (bundleToDiagnostics path bundle)
         Right b -> Right b
       pure

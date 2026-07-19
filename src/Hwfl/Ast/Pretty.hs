@@ -23,8 +23,8 @@ prettyModuleBody (ModuleBody ds me) =
 
 prettyDecl :: Decl -> Text
 prettyDecl = \case
-  DType n t -> "type " <> unTypeName n <> " = " <> prettyType t
-  DFun n ps mt e ->
+  DType _ n t -> "type " <> unTypeName n <> " = " <> prettyType t
+  DFun _ n ps mt e ->
     "fun "
       <> unIdent n
       <> prettyParams ps

@@ -7,7 +7,7 @@ import Hwfl.Ast.Decl (ModuleBody)
 import Hwfl.Ast.Expr (Expr)
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
-import Hwfl.Check.Error (CheckError (..))
+import Hwfl.Check.Error (CheckError (..), errorRoot)
 import Hwfl.Check.Infer (infer)
 import Hwfl.Check.Module (CheckResult (..), checkLoadedModule, checkModuleBody)
 import Hwfl.Check.Prelude (preludeTypeEnv)
@@ -91,9 +91,11 @@ spec = describe "type checker" $ do
         `shouldSatisfy` isRight
 
     it "rejects Secret in interpolation" $
-      checkBody
-        "fun bad(s: Secret<String>): String =\n  $\"{s}\""
-        `shouldBe` Left (NotRenderable (TSecret (TName (TypeName "String"))))
+      case checkBody "fun bad(s: Secret<String>): String =\n  $\"{s}\"" of
+        Left err ->
+          errorRoot err
+            `shouldBe` NotRenderable (TSecret (TName (TypeName "String")))
+        Right _ -> expectationFailure "expected NotRenderable"
 
   describe "type aliases" $ do
     it "resolves aliases" $

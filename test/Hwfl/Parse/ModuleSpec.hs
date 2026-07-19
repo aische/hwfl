@@ -20,6 +20,7 @@ spec = describe "module body parser" $ do
       `shouldBe` Right
         ( ModuleBody
             [ DFun
+                noPos
                 (Ident "main")
                 [Param (Ident "_") Nothing]
                 (Just (TRecord [(Ident "msg", TName (TypeName "String"))]))
@@ -33,9 +34,11 @@ spec = describe "module body parser" $ do
       `shouldBe` Right
         ( ModuleBody
             [ DType
+                noPos
                 (TypeName "Out")
                 (TRecord [(Ident "summary", TName (TypeName "String"))]),
               DFun
+                noPos
                 (Ident "f")
                 [Param (Ident "x") (Just (TName (TypeName "Int")))]
                 (Just (TName (TypeName "Int")))

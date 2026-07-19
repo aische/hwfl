@@ -42,6 +42,7 @@ body and, for pair reviews, a peer slice body. Selection metadata explains why
 the slice was flagged; it is not part of the prose under review.
 
 Rules:
+
 - Judge only text in **Slice under review** and **Peer slice** sections.
 - Do not comment on entropy, compression, outliers, or review tooling unless
   those words appear in the slice bodies.
@@ -78,7 +79,7 @@ Rules:
 
 ## body
 
-```hwfl
+````hwfl
 type Finding = {
   severity: String,
   category: String,
@@ -1484,4 +1485,4 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
     ok = okv,
     finding_count = list.length(findings)
   }
-```
+````
