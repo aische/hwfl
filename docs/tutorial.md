@@ -212,14 +212,14 @@ Related gates (same exit-`3` pause model):
 | `choice` / `human.choice` | `hwfl choose <ws> <run-id> --select <option>` |
 | `human.ask` | `hwfl reply <ws> <run-id> --text "…"` |
 
-Workflow-owned chat (history + `/quit`): [examples/chat.md](../examples/chat.md).
+Workflow-owned chat (history + `/quit`): [examples/chat](../examples/chat).
 The previous assistant reply is placed in the next `human.ask` `detail`,
 so any client (CLI or control plane) can show it from the pause payload
 without a library print path. With `--interactive` on a TTY, `run`
 prompts on stdin and resolves gates in-process (no exit-`3` between turns):
 
 ```bash
-cabal run hwfl -- run examples/chat.md --workspace /tmp/hwfl-tut --interactive
+cabal run hwfl -- run examples/chat --workspace /tmp/hwfl-tut --interactive
 ```
 
 ### One transition at a time

@@ -1,5 +1,5 @@
 ---
-name: workflows/chat
+name: workflows/main
 inputs: {}
 outputs:
     done: Bool

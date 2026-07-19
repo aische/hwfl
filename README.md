@@ -149,7 +149,7 @@ cabal run hwfl -- run examples/coding-agent \
 Run state lands under `/tmp/hwfl-build/.hwfl/runs/<run-id>/`. Use
 `hwfl show`, `approve`, `choose`, `reply`, and `resume` for paused or
 stepped runs — see [docs/tutorial.md](docs/tutorial.md). Chat-style
-workflows: [examples/chat.md](examples/chat.md).
+workflows: [examples/chat](examples/chat).
 
 More stacks and options: [examples/coding-agent/README.md](examples/coding-agent/README.md).
 
@@ -167,4 +167,4 @@ More stacks and options: [examples/coding-agent/README.md](examples/coding-agent
 - [docs/tutorial.md](docs/tutorial.md) — check → run → approve → resume → show
 - [docs/language-reference.md](docs/language-reference.md) — surface language
 - [docs/architecture.md](docs/architecture.md) — layers and boundaries
-- [examples/chat.md](examples/chat.md) — workflow chat (`human.ask` + `/quit`)
+- [examples/chat](examples/chat) — workflow chat (`human.ask` + `/quit`)

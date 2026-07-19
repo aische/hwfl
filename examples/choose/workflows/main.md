@@ -1,5 +1,5 @@
 ---
-name: workflows/choose
+name: workflows/main
 inputs: {}
 outputs:
   env: String

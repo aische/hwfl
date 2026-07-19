@@ -16,11 +16,11 @@ not the product. See [idea.md](idea.md).
 ## Done recently
 
 - **Workflow chat** — `human.ask` detail carries prior assistant reply
-  (PauseInfo for CLI / server); `llm.chat_messages`; `examples/chat.md`
+  (PauseInfo for CLI / server); `llm.chat_messages`; `examples/chat`
 - **CLI `--interactive`** — TTY stdin loop over confirm / choice / ask
   via the same `approve` / `choose` / `reply` driver path; refuses
   `--json` / non-TTY
-- **`human.choice`** — N-way gate; `examples/choose.md` /
+- **`human.choice`** — N-way gate; `examples/choose` /
   `agent-choice.md`
 - **`examples/promote.md`** — confirm gate demo
 - Type/parse error locations; CLI `--dump`; FS tree ops; compare lab;
