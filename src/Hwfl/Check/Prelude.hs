@@ -269,13 +269,15 @@ llmType =
                 (Ident "prompt", t "String"),
                 (Ident "tools", TList (t "ToolSpec")),
                 (Ident "model", t "String"),
-                (Ident "max_rounds", t "Int")
+                (Ident "max_rounds", t "Int"),
+                (Ident "history", TList (t "Turn"))
               ]
           )
           [EffNet]
           ( TRecord
               [ (Ident "text", t "String"),
-                (Ident "rounds", t "Int")
+                (Ident "rounds", t "Int"),
+                (Ident "history", TList (t "Turn"))
               ]
           )
       ),
@@ -288,13 +290,15 @@ llmType =
                 (Ident "tools", TList (t "ToolSpec")),
                 (Ident "schema", t "Schema"),
                 (Ident "model", t "String"),
-                (Ident "max_rounds", t "Int")
+                (Ident "max_rounds", t "Int"),
+                (Ident "history", TList (t "Turn"))
               ]
           )
           [EffNet]
           ( TRecord
               [ (Ident "value", t "Json"),
-                (Ident "rounds", t "Int")
+                (Ident "rounds", t "Int"),
+                (Ident "history", TList (t "Turn"))
               ]
           )
       )

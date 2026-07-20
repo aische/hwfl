@@ -26,7 +26,14 @@ import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..), QName (..), TypeName (..), qnameFromParts, qnameToText)
 import Hwfl.Eval.Value (Env, HostOpId (..), ToolSpecValue (..), hostOpName)
 import Hwfl.Eval.Value qualified as V
-import Hwfl.Llm.Types (ToolCall (..), ToolResult (..), Turn (..))
+import Hwfl.Runtime.Turn
+  ( parseToolCall,
+    parseToolResult,
+    parseTurn,
+    toolCallToJson,
+    toolResultToJson,
+    turnToJson,
+  )
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Machine
 import Text.Read (readMaybe)
@@ -331,52 +338,6 @@ parseToolSpec = withObject "ToolSpec" $ \o ->
     <*> o .: "description"
     <*> o .: "parameters"
     <*> (o .: "callee" >>= parseValue)
-
-turnToJson :: Turn -> Aeson.Value
-turnToJson = \case
-  TurnUser t -> object ["tag" .= String "user", "text" .= t]
-  TurnAssistant t calls ->
-    object
-      [ "tag" .= String "assistant",
-        "text" .= t,
-        "calls" .= map toolCallToJson calls
-      ]
-  TurnTool results ->
-    object ["tag" .= String "tool", "results" .= map toolResultToJson results]
-
-parseTurn :: Aeson.Value -> Parser Turn
-parseTurn = withObject "Turn" $ \o -> do
-  tag <- o .: "tag"
-  case tag :: Text of
-    "user" -> TurnUser <$> o .: "text"
-    "assistant" ->
-      TurnAssistant <$> o .: "text" <*> (o .: "calls" >>= mapM parseToolCall)
-    "tool" -> TurnTool <$> (o .: "results" >>= mapM parseToolResult)
-    other -> fail ("unknown turn: " <> T.unpack other)
-
-toolCallToJson :: ToolCall -> Aeson.Value
-toolCallToJson tc =
-  object
-    [ "id" .= tc.tcId,
-      "name" .= tc.tcName,
-      "arguments" .= tc.tcArguments
-    ]
-
-parseToolCall :: Aeson.Value -> Parser ToolCall
-parseToolCall = withObject "ToolCall" $ \o ->
-  ToolCall <$> o .: "id" <*> o .: "name" <*> o .: "arguments"
-
-toolResultToJson :: ToolResult -> Aeson.Value
-toolResultToJson tr =
-  object
-    [ "call_id" .= tr.trCallId,
-      "name" .= tr.trName,
-      "content" .= tr.trContent
-    ]
-
-parseToolResult :: Aeson.Value -> Parser ToolResult
-parseToolResult = withObject "ToolResult" $ \o ->
-  ToolResult <$> o .: "call_id" <*> o .: "name" <*> o .: "content"
 
 frameToJson :: Frame -> Aeson.Value
 frameToJson = \case
@@ -739,6 +700,7 @@ valueToJson = \case
   V.VSkillMain q ->
     object ["tag" .= String "skill_main", "qname" .= qnameToText q]
   V.VSchema schema -> object ["tag" .= String "schema", "v" .= schema]
+  V.VTurn t -> object ["tag" .= String "turn", "v" .= turnToJson t]
 
 valueFromJson :: Aeson.Value -> Either String V.Value
 valueFromJson = parseEither parseValue
@@ -770,6 +732,7 @@ parseValue = withObject "Value" $ \o -> do
     "tool_spec" -> V.VToolSpec <$> (o .: "tool" >>= parseToolSpec)
     "skill_main" -> V.VSkillMain . qnameFromText <$> o .: "qname"
     "schema" -> V.VSchema <$> o .: "v"
+    "turn" -> V.VTurn <$> (o .: "v" >>= parseTurn)
     other -> fail ("unknown value tag: " <> T.unpack other)
 
 parseHostOp :: Text -> Parser HostOpId

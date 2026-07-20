@@ -16,6 +16,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Vector qualified as V
 import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameToText)
 import Hwfl.Eval.Value (ToolSpecValue (..), Value (..), hostOpName)
+import Hwfl.Runtime.Turn (turnToJson)
 
 valueToJsonText :: Value -> Text
 valueToJsonText v =
@@ -54,3 +55,4 @@ valueToAeson = \case
   VToolSpec ts -> Aeson.String ("<tool:" <> ts.tvsName <> ">")
   VSkillMain q -> Aeson.String ("<skill:" <> qnameToText q <> ">")
   VSchema schema -> schema
+  VTurn t -> turnToJson t

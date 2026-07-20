@@ -22,6 +22,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Expr (Expr, Param)
 import Hwfl.Ast.Name (Ident (..), QName (..), TypeName (..))
+import Hwfl.Llm.Types (Turn)
 
 -- | Environment: identifier → value.
 type Env = Map Ident Value
@@ -142,6 +143,8 @@ data Value
     VSkillMain QName
   | -- | Reflected JSON Schema from @schema(T)@ (check-time type @Schema@).
     VSchema Aeson.Value
+  | -- | Agent transcript turn (@TurnUser@ / @TurnAssistant@ / @TurnTool@).
+    VTurn Turn
   deriving stock (Eq, Show)
 
 -- | Text rendering for string interpolation (hwfi §3.2.1 / types §3.1 subset).
@@ -172,6 +175,7 @@ renderValue = \case
   VToolSpec ts -> Left ("cannot render tool spec as text: " <> ts.tvsName)
   VSkillMain q -> Left ("cannot render skill main as text: " <> T.intercalate "/" (map unIdent (qnParts q)))
   VSchema {} -> Left "cannot render a Schema as text"
+  VTurn {} -> Left "cannot render a Turn as text"
 
 -- | Stable dotted name for spans / snapshots.
 hostOpName :: HostOpId -> Text

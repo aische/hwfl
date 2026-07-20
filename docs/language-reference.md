@@ -29,6 +29,7 @@ One-card overview of the hwfl kernel surface.
 | `Secret<T>` | non-interpolable; redacted in spans |
 | `Schema` | from `schema(T)` |
 | `ToolSpec` | from `tool(f)` |
+| `Turn` | agent transcript turn (user / assistant+tool_calls / tool results) |
 
 ## Pure prelude
 
@@ -110,13 +111,14 @@ basename on the allowlist. Child env = keys in `exec.env` only.
 | `llm.chat` | Net | `{ system, prompt, model } -> String` |
 | `llm.chat_messages` | Net | `{ system, messages: List<{ role, content }>, model } -> String` |
 | `llm.object` | Net | `{ prompt, schema, model } -> T` when `schema = schema(T)` (else `Json`) |
-| `llm.agent` | Net | `{ system, prompt, tools, model, max_rounds } -> { text, rounds }` |
-| `llm.agent_object` | Net | `{ …, schema } -> { value: T, rounds }` (synthetic `submit` tool) |
+| `llm.agent` | Net | `{ system, prompt, tools, model, max_rounds?, history? } -> { text, rounds, history }` |
+| `llm.agent_object` | Net | `{ …, schema, history? } -> { value: T, rounds, history }` (synthetic `submit` tool) |
 
-`llm.chat_messages` is text-only history. **Planned:** `llm.agent` /
-`llm.agent_object` prior `history` in + updated `history` out (tool turns
-included) for coding-agent chat — see [TASKS.md](TASKS.md) and
-[spec/05-host-ops.md](spec/05-host-ops.md) §2.
+`llm.chat_messages` is text-only history (`{ role, content }`).
+`llm.agent` / `llm.agent_object` carry tool-inclusive transcripts as
+`List<Turn>` (same algebra as snapshot agent `agHistory`). Optional
+`history` seeds prior turns; `prompt` appends as a user turn. Returned
+`history` includes assistant text and tool rounds from the call.
 
 ### Human / observability / meta
 

@@ -136,5 +136,6 @@ baseSchema = \case
   "FileRef" -> Right $ object ["type" .= String "string"]
   "Schema" -> Right $ object ["type" .= String "object"]
   "ToolSpec" -> Right $ object ["type" .= String "object"]
+  "Turn" -> Right $ object ["type" .= String "object"]
   "Error" -> Right $ object ["type" .= String "string"]
   other -> Left (SchemaUnsupported (TName (TypeName other)))

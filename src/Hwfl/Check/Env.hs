@@ -86,6 +86,7 @@ primitiveNames =
       "FileRef",
       "Schema",
       "ToolSpec",
+      "Turn",
       "Error"
     ]
 

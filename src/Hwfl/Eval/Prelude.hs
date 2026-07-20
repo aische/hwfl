@@ -213,6 +213,8 @@ valueEq a b = case (a, b) of
   (_, VSkillMain {}) -> Left (Trap "cannot compare skill mains")
   (VSchema {}, _) -> Left (Trap "cannot compare schemas")
   (_, VSchema {}) -> Left (Trap "cannot compare schemas")
+  (VTurn {}, _) -> Left (Trap "cannot compare turns")
+  (_, VTurn {}) -> Left (Trap "cannot compare turns")
   (VSecret {}, _) -> Left (Trap "cannot compare secrets")
   (_, VSecret {}) -> Left (Trap "cannot compare secrets")
   (VUnit, VUnit) -> Right True

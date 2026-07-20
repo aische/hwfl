@@ -43,6 +43,7 @@ agentSrc =
       "outputs:",
       "  text: String",
       "  rounds: Int",
+      "  history: List<Turn>",
       "effects: [Read, Net]",
       "---",
       "",
@@ -56,7 +57,7 @@ agentSrc =
       "fun search(q: String): String =",
       "  $\"hit:{q}\"",
       "",
-      "fun main(_): { text: String, rounds: Int } =",
+      "fun main(_): { text: String, rounds: Int, history: List<Turn> } =",
       "  let result = llm.agent(",
       "    system = @system,",
       "    prompt = \"find note\",",
@@ -64,44 +65,52 @@ agentSrc =
       "    model = \"gpt-5\",",
       "    max_rounds = 4",
       "  )",
-      "  { text = result.text, rounds = result.rounds }",
+      "  { text = result.text, rounds = result.rounds, history = result.history }",
       "```"
     ]
 
 -- | Scripted mock: first round calls fs_read + search; second round finishes.
 agentMock :: LlmProvider
-agentMock = mockProviderWith reply
+agentMock = mockProviderWith agentMockReply
+
+agentMockReply :: ChatRequest -> Either a ProviderResult
+agentMockReply req
+  | any isToolTurn req.chatTurns =
+      Right
+        ProviderResult
+          { prContent = "done with tools",
+            prToolCalls = [],
+            prUsage = Just (TokenUsage 1 1),
+            prFinishReason = FinishStop
+          }
+  | otherwise =
+      Right
+        ProviderResult
+          { prContent = "need tools",
+            prToolCalls =
+              [ ToolCall
+                  "c1"
+                  "fs_read"
+                  (object ["path" .= ("note.txt" :: Text)]),
+                ToolCall
+                  "c2"
+                  "search"
+                  (object ["q" .= ("note" :: Text)])
+              ],
+            prUsage = Just (TokenUsage 1 1),
+            prFinishReason = FinishToolCalls
+          }
   where
-    reply :: ChatRequest -> Either a ProviderResult
-    reply req
-      | any isToolTurn req.chatTurns =
-          Right
-            ProviderResult
-              { prContent = "done with tools",
-                prToolCalls = [],
-                prUsage = Just (TokenUsage 1 1),
-                prFinishReason = FinishStop
-              }
-      | otherwise =
-          Right
-            ProviderResult
-              { prContent = "need tools",
-                prToolCalls =
-                  [ ToolCall
-                      "c1"
-                      "fs_read"
-                      (object ["path" .= ("note.txt" :: Text)]),
-                    ToolCall
-                      "c2"
-                      "search"
-                      (object ["q" .= ("note" :: Text)])
-                  ],
-                prUsage = Just (TokenUsage 1 1),
-                prFinishReason = FinishToolCalls
-              }
     isToolTurn = \case
       TurnTool _ -> True
       _ -> False
+
+userTurns :: ChatRequest -> [Text]
+userTurns req = [t | TurnUser t <- req.chatTurns]
+
+isVTurn :: Value -> Bool
+isVTurn VTurn {} = True
+isVTurn _ = False
 
 spec :: Spec
 spec = describe "runtime agent (M7)" $ do
@@ -248,6 +257,127 @@ spec = describe "runtime agent (M7)" $ do
                       OutcomePaused {} -> go (n + 1)
                       other -> expectationFailure (show other)
           go (0 :: Int)
+
+  it "finish returns full history including tool turns" $
+    withSystemTempDirectory "hwfl-agent-hist-tools" $ \dir -> do
+      writeFile (dir </> "note.txt") "tool hist"
+      let path = dir </> "agent.md"
+      writeFile path (T.unpack agentSrc)
+      case loadModuleText path agentSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = agentMock,
+                  roInputs = [],
+                  roRunId = Just "hist-tools",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime
+                }
+              loaded
+          case outcome of
+            OutcomeCompleted (VRecord fs) _ _ -> do
+              case lookup (Ident "history") fs of
+                Just (VList hist) -> do
+                  length hist `shouldSatisfy` (>= 4)
+                  any isVTurn hist `shouldBe` True
+                other -> expectationFailure ("expected history list, got " <> show other)
+            other -> expectationFailure (show other)
+
+  it "agent with prior history resumes transcript" $
+    withSystemTempDirectory "hwfl-agent-hist-resume" $ \dir -> do
+      writeFile (dir </> "note.txt") "resume hist"
+      let path = dir </> "agent-hist.md"
+          src =
+            T.unlines
+              [ "---",
+                "name: workflows/agent-hist",
+                "inputs: {}",
+                "outputs:",
+                "  text: String",
+                "  hist_len: Int",
+                "effects: [Read, Net]",
+                "---",
+                "",
+                "## system",
+                "",
+                "You use tools when needed.",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun search(q: String): String =",
+                "  $\"hit:{q}\"",
+                "",
+                "fun main(_): { text: String, hist_len: Int } =",
+                "  let r1 = llm.agent(",
+                "    system = @system,",
+                "    prompt = \"first\",",
+                "    tools = [tool(fs.read), tool(search)],",
+                "    model = \"gpt-5\",",
+                "    max_rounds = 4",
+                "  )",
+                "  let r2 = llm.agent(",
+                "    system = @system,",
+                "    prompt = \"second\",",
+                "    tools = [tool(fs.read), tool(search)],",
+                "    model = \"gpt-5\",",
+                "    history = r1.history,",
+                "    max_rounds = 4",
+                "  )",
+                "  { text = r2.text, hist_len = list.length(r2.history) }",
+                "```"
+              ]
+          mock =
+            mockProviderWith $ \req ->
+              if length (userTurns req) >= 2
+                then
+                  Right
+                    ProviderResult
+                      { prContent = "continued",
+                        prToolCalls = [],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishStop
+                      }
+                else agentMockReply req
+      writeFile path (T.unpack src)
+      case loadModuleText path src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = mock,
+                  roInputs = [],
+                  roRunId = Just "hist-resume",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime
+                }
+              loaded
+          case outcome of
+            OutcomeCompleted (VRecord fs) _ _ -> do
+              lookup (Ident "text") fs `shouldBe` Just (VString "continued")
+              lookup (Ident "hist_len") fs `shouldSatisfy` (\case Just (VInt n) -> n > 4; _ -> False)
+            other -> expectationFailure (show other)
 
   it "agent tool ask_user pauses for choice; choose continues" $
     withSystemTempDirectory "hwfl-agent-choice" $ \dir -> do

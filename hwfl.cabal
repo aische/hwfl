@@ -95,6 +95,7 @@ library
         Hwfl.Runtime.Snapshot
         Hwfl.Runtime.Skills
         Hwfl.Runtime.Store
+        Hwfl.Runtime.Turn
         Hwfl.Runtime.Workspace
         Hwfl.SkillCatalog
         Hwfl.Source

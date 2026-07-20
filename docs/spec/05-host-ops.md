@@ -39,8 +39,8 @@ See also [08-llm-provider.md](08-llm-provider.md).
 | `llm.chat` | `(system?: String, prompt: String, model: String, …) -> String` |
 | `llm.chat_messages` | `(system?: String, messages: List<{ role: String, content: String }>, model: String) -> String` |
 | `llm.object` | `(prompt: String, schema: Schema, model: String) -> T` when `schema = schema(T)` (else `Json`) |
-| `llm.agent` | `(system, prompt, tools: List<ToolSpec>, model, …) -> AgentResult` |
-| `llm.agent_object` | `(system, prompt, tools, schema: Schema, model, …) -> { value: T, rounds: Int }` when `schema = schema(T)` |
+| `llm.agent` | `(system, prompt, tools: List<ToolSpec>, model, max_rounds?, history?: List<Turn>, …) -> { text, rounds, history }` |
+| `llm.agent_object` | `(system, prompt, tools, schema: Schema, model, max_rounds?, history?: List<Turn>, …) -> { value: T, rounds, history }` when `schema = schema(T)` |
 
 Notes:
 
@@ -57,14 +57,15 @@ Notes:
   recoverable (no tools run). Surface spelling is `agent_object` (idents have
   no `-`).
 
-**Planned (coding-agent chat):** `llm.agent` / `llm.agent_object` accept
-optional prior `history` (list of turns: user text, assistant text + tool
-calls, tool results — same algebra as host `Turn` / snapshot agent
-history) and return the updated `history` with the usual result fields.
-New `prompt` appends as `TurnUser`. Workflows can own a multi-turn
-`human.ask` loop that replays tool-inclusive transcripts across calls.
-Do **not** encode tool turns as fake `{ role, content }` strings;
-`llm.chat_messages` stays the thin text-only path.
+**Agent history (`Turn`):** `llm.agent` / `llm.agent_object` accept
+optional prior `history` (list of turns: user text, assistant text +
+tool calls, tool results — same algebra as host `Turn` / snapshot agent
+`agHistory`) and return the updated `history` with the usual result
+fields. New `prompt` appends as `TurnUser`. Workflows can own a
+multi-turn `human.ask` loop that replays tool-inclusive transcripts
+across calls. Do **not** encode tool turns as fake `{ role, content }`
+strings; `llm.chat_messages` stays the thin text-only path. Example:
+`examples/coding-agent-chat`.
 
 ### 2.1 Agent tools
 

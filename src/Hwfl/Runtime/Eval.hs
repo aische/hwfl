@@ -81,6 +81,7 @@ import Hwfl.Runtime.Skills
     agentLoadSkill,
     instructionInjectionText,
   )
+import Hwfl.Runtime.Turn (turnsToValue)
 import Hwfl.Runtime.Store (RunStore, persistTransition)
 import Hwfl.SkillCatalog (SkillEntry (..), lookupSkillEntry)
 
@@ -353,7 +354,7 @@ doHost ctx mode m op args
   | op == HostLlmAgent = startAgent ctx mode m args Nothing
   | op == HostLlmAgentObject = case parseAgentObjectArgs args of
       Left e -> abortOrCatch ctx mode m e
-      Right (system, prompt, tools, schema, model, maxRounds) ->
+      Right (system, prompt, tools, schema, model, maxRounds, history) ->
         startAgentPrepared
           ctx
           mode
@@ -366,6 +367,7 @@ doHost ctx mode m op args
           model
           maxRounds
           (Just schema)
+          history
   | otherwise = doHostRun ctx mode m op args
 
 -- | Open span, run host op, close span (standard host transition).
@@ -472,7 +474,7 @@ startAgent ::
   IO (Either RuntimeError StepResult)
 startAgent ctx mode m args submitSchema = case parseAgentArgs args of
   Left e -> abortOrCatch ctx mode m e
-  Right (system, prompt, tools, model, maxRounds) ->
+  Right (system, prompt, tools, model, maxRounds, history) ->
     startAgentPrepared
       ctx
       mode
@@ -485,6 +487,7 @@ startAgent ctx mode m args submitSchema = case parseAgentArgs args of
       model
       maxRounds
       submitSchema
+      history
 
 startAgentPrepared ::
   RunCtx ->
@@ -498,8 +501,9 @@ startAgentPrepared ::
   Text ->
   Int ->
   Maybe Aeson.Value ->
+  [Turn] ->
   IO (Either RuntimeError StepResult)
-startAgentPrepared ctx mode m hostOp args system prompt tools model maxRounds submitSchema = do
+startAgentPrepared ctx mode m hostOp args system prompt tools model maxRounds submitSchema history = do
   sid <-
     openSpan
       ctx.rcStore
@@ -507,7 +511,7 @@ startAgentPrepared ctx mode m hostOp args system prompt tools model maxRounds su
       (hostOpName hostOp)
       SkHost
       (hostOpenAttrs hostOp args)
-  let ag = initAgentState system prompt tools model maxRounds sid submitSchema
+  let ag = initAgentState system prompt tools model maxRounds sid submitSchema history
       m' = pauseIfStep mode (m {mCurrent = CurAgent ag})
   _ <- persist ctx (Just hostOp) Nothing m'.mStatus (Just m')
   pure (Right (StepResult m' True))
@@ -648,10 +652,12 @@ finishAgentText ctx mode m ag pr = case ag.agSubmitSchema of
             Nothing
       )
       ag.agRoundSpanId
-    let result =
+    let finalHistory = ag.agHistory <> [TurnAssistant pr.prContent []]
+        result =
           VRecord
             [ (Ident "text", VString pr.prContent),
-              (Ident "rounds", VInt (fromIntegral (ag.agRound + 1)))
+              (Ident "rounds", VInt (fromIntegral (ag.agRound + 1))),
+              (Ident "history", turnsToValue finalHistory)
             ]
     closeSpan
       ctx.rcStore
@@ -1014,7 +1020,8 @@ finishAgentSubmit ctx mode m ag tr value = do
   let result =
         VRecord
           [ (Ident "value", value),
-            (Ident "rounds", VInt (fromIntegral (ag.agRound + 1)))
+            (Ident "rounds", VInt (fromIntegral (ag.agRound + 1))),
+            (Ident "history", turnsToValue ag.agHistory)
           ]
   closeSpan
     ctx.rcStore

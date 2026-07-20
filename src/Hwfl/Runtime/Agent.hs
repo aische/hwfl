@@ -39,6 +39,7 @@ import Hwfl.Eval.Value
 import Hwfl.Json.Encode (jsonToValue, valueToJsonText)
 import Hwfl.Llm.Types qualified as Llm
 import Hwfl.Runtime.Error (RuntimeError (..))
+import Hwfl.Runtime.Turn (valueToTurns)
 import Hwfl.Runtime.Machine (AgentState (..), FunTable)
 
 defaultMaxRounds :: Int
@@ -359,24 +360,25 @@ validateSubmit schema args = case args of
 
 parseAgentArgs ::
   [(Maybe Ident, Value)] ->
-  Either RuntimeError (Text, Text, [ToolSpecValue], Text, Int)
+  Either RuntimeError (Text, Text, [ToolSpecValue], Text, Int, [Llm.Turn])
 parseAgentArgs args = do
   system <- expectString (Ident "system") args
   prompt <- expectString (Ident "prompt") args
   model <- expectString (Ident "model") args
   tools <- expectTools args
+  history <- expectHistory args
   let maxR = case lookupNamed (Ident "max_rounds") args of
         Just (VInt n) | n > 0 -> fromIntegral n
         _ -> defaultMaxRounds
-  pure (system, prompt, tools, model, maxR)
+  pure (system, prompt, tools, model, maxR, history)
 
 parseAgentObjectArgs ::
   [(Maybe Ident, Value)] ->
-  Either RuntimeError (Text, Text, [ToolSpecValue], Aeson.Value, Text, Int)
+  Either RuntimeError (Text, Text, [ToolSpecValue], Aeson.Value, Text, Int, [Llm.Turn])
 parseAgentObjectArgs args = do
-  (system, prompt, tools, model, maxR) <- parseAgentArgs args
+  (system, prompt, tools, model, maxR, history) <- parseAgentArgs args
   schema <- expectSchema (Ident "schema") args
-  pure (system, prompt, tools, schema, model, maxR)
+  pure (system, prompt, tools, schema, model, maxR, history)
 
 initAgentState ::
   Text ->
@@ -386,8 +388,9 @@ initAgentState ::
   Int ->
   Text ->
   Maybe Aeson.Value ->
+  [Llm.Turn] ->
   AgentState
-initAgentState system prompt tools model maxRounds spanId submitSchema =
+initAgentState system prompt tools model maxRounds spanId submitSchema priorHistory =
   let tools' = case submitSchema of
         Just schema -> tools ++ [submitToolSpec schema]
         Nothing -> tools
@@ -398,7 +401,7 @@ initAgentState system prompt tools model maxRounds spanId submitSchema =
           agMaxRounds = maxRounds,
           agTools = tools',
           agSubmitSchema = submitSchema,
-          agHistory = [Llm.TurnUser prompt],
+          agHistory = priorHistory <> [Llm.TurnUser prompt],
           agRound = 0,
           agToolRound = Nothing,
           agSpanId = spanId,
@@ -419,6 +422,11 @@ expectTools args = case lookupNamed (Ident "tools") args of
     expectTool = \case
       VToolSpec ts -> Right ts
       _ -> Left (HostErr "llm.agent tools element is not a ToolSpec (use tool(f))")
+
+expectHistory :: [(Maybe Ident, Value)] -> Either RuntimeError [Llm.Turn]
+expectHistory args = case lookupNamed (Ident "history") args of
+  Nothing -> Right []
+  Just v -> valueToTurns v
 
 expectSchema :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError Aeson.Value
 expectSchema n args = case lookupNamed n args of

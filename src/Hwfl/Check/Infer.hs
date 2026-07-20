@@ -121,6 +121,7 @@ infer' env = \case
     | isListConcat f -> inferListConcatApp env args
     | isJsonEncode f -> inferJsonEncodeApp env args
     | isLlmObject f -> inferLlmObjectApp env args
+    | isLlmAgent f -> inferLlmAgentApp env args
     | isLlmAgentObject f -> inferLlmAgentObjectApp env args
     | isObsSpan f -> inferObsSpanApp env args
     | isObsSpanPartial f -> inferObsSpanThunkApp env args
@@ -559,7 +560,65 @@ inferLlmObjectApp env args = do
     Just (ESchema te) -> resolveType env te
     _ -> pure ret
 
--- | @llm.agent_object(..., schema = schema(T), ...)@ ⇒ @{ value: T, rounds: Int }@.
+-- | @llm.agent({ …, history?: List<Turn>, … })@ ⇒ @{ text, rounds, history }@.
+isLlmAgent :: Expr -> Bool
+isLlmAgent = \case
+  EProj (EVar (Ident "llm")) (Ident "agent") -> True
+  _ -> False
+
+agentResultType :: TypeExpr
+agentResultType =
+  TRecord
+    [ (Ident "text", tString),
+      (Ident "rounds", tInt),
+      (Ident "history", TList (tTurn))
+    ]
+
+agentObjectResultType :: TypeExpr -> TypeExpr
+agentObjectResultType out =
+  TRecord
+    [ (Ident "value", out),
+      (Ident "rounds", tInt),
+      (Ident "history", TList (tTurn))
+    ]
+
+inferLlmAgentApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferLlmAgentApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Named nes) -> do
+    systemE <- maybe (Left (MissingNamedArg (Ident "system"))) pure (lookup (Ident "system") nes)
+    promptE <- maybe (Left (MissingNamedArg (Ident "prompt"))) pure (lookup (Ident "prompt") nes)
+    toolsE <- maybe (Left (MissingNamedArg (Ident "tools"))) pure (lookup (Ident "tools") nes)
+    modelE <- maybe (Left (MissingNamedArg (Ident "model"))) pure (lookup (Ident "model") nes)
+    check env systemE tString
+    check env promptE tString
+    check env toolsE (TList tToolSpec)
+    check env modelE tString
+    case lookup (Ident "max_rounds") nes of
+      Nothing -> pure ()
+      Just e -> check env e tInt
+    case lookup (Ident "history") nes of
+      Nothing -> pure ()
+      Just e -> check env e (TList tTurn)
+    let known =
+          [ Ident "system",
+            Ident "prompt",
+            Ident "tools",
+            Ident "model",
+            Ident "max_rounds",
+            Ident "history"
+          ]
+    mapM_
+      ( \(n, _) ->
+          unless (n `elem` known) $
+            Left (UnknownField n (TRecord [(Ident "system", tString)]))
+      )
+      nes
+    pure agentResultType
+  Right (Positional _) ->
+    Left (TypeMismatchMsg "llm.agent requires named arguments" (TRecord []) (TRecord []))
+
+-- | @llm.agent_object(..., schema = schema(T), ...)@ ⇒ @{ value: T, rounds: Int, history }@.
 isLlmAgentObject :: Expr -> Bool
 isLlmAgentObject = \case
   EProj (EVar (Ident "llm")) (Ident "agent_object") -> True
@@ -567,18 +626,47 @@ isLlmAgentObject = \case
 
 inferLlmAgentObjectApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
 inferLlmAgentObjectApp env args = do
-  ft <- infer env (EProj (EVar (Ident "llm")) (Ident "agent_object"))
-  ret <- applyType env ft args
-  case schemaArgExpr args of
-    Just (ESchema te) -> do
-      out <- resolveType env te
-      pure
-        ( TRecord
-            [ (Ident "value", out),
-              (Ident "rounds", tInt)
+  case classifyArgs args of
+    Left err -> Left err
+    Right (Named nes) -> do
+      systemE <- maybe (Left (MissingNamedArg (Ident "system"))) pure (lookup (Ident "system") nes)
+      promptE <- maybe (Left (MissingNamedArg (Ident "prompt"))) pure (lookup (Ident "prompt") nes)
+      toolsE <- maybe (Left (MissingNamedArg (Ident "tools"))) pure (lookup (Ident "tools") nes)
+      schemaE <- maybe (Left (MissingNamedArg (Ident "schema"))) pure (lookup (Ident "schema") nes)
+      modelE <- maybe (Left (MissingNamedArg (Ident "model"))) pure (lookup (Ident "model") nes)
+      check env systemE tString
+      check env promptE tString
+      check env toolsE (TList tToolSpec)
+      check env schemaE tSchema
+      check env modelE tString
+      case lookup (Ident "max_rounds") nes of
+        Nothing -> pure ()
+        Just e -> check env e tInt
+      case lookup (Ident "history") nes of
+        Nothing -> pure ()
+        Just e -> check env e (TList tTurn)
+      let known =
+            [ Ident "system",
+              Ident "prompt",
+              Ident "tools",
+              Ident "schema",
+              Ident "model",
+              Ident "max_rounds",
+              Ident "history"
             ]
+      mapM_
+        ( \(n, _) ->
+            unless (n `elem` known) $
+              Left (UnknownField n (TRecord [(Ident "system", tString)]))
         )
-    _ -> pure ret
+        nes
+      case schemaArgExpr args of
+        Just (ESchema te) -> do
+          out <- resolveType env te
+          pure (agentObjectResultType out)
+        _ -> pure (agentObjectResultType tJson)
+    Right (Positional _) ->
+      Left (TypeMismatchMsg "llm.agent_object requires named arguments" (TRecord []) (TRecord []))
 
 schemaArgExpr :: [Arg] -> Maybe Expr
 schemaArgExpr as = case classifyArgs as of
@@ -825,7 +913,7 @@ inferHumanAskApp env args = case classifyArgs args of
         )
         names
 
-tUnit, tBool, tInt, tFloat, tString, tToolSpec, tFileRef, tJson :: TypeExpr
+tUnit, tBool, tInt, tFloat, tString, tToolSpec, tFileRef, tJson, tSchema, tTurn :: TypeExpr
 tUnit = TName (TypeName "Unit")
 tBool = TName (TypeName "Bool")
 tInt = TName (TypeName "Int")
@@ -834,3 +922,5 @@ tString = TName (TypeName "String")
 tToolSpec = TName (TypeName "ToolSpec")
 tFileRef = TName (TypeName "FileRef")
 tJson = TName (TypeName "Json")
+tSchema = TName (TypeName "Schema")
+tTurn = TName (TypeName "Turn")
