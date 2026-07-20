@@ -11,9 +11,12 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 Prefer MCP / workflow modules over growing the host-op set.
 
-- [ ] Soft-land `max_rounds`: structured exhausted return (with
-      `history`) or pause/extend-budget — not abort / `MsFailed`.
-      Spec notes in [05-host-ops.md](spec/05-host-ops.md) /
+- [ ] Soft-land `max_rounds`: freeze the in-flight agent and extend
+      this call’s budget (pause + continue / bump `agMaxRounds`) —
+      not abort / `MsFailed`. Wire CLI + `--interactive` for that
+      gate. Optional secondary: structured exhausted return with
+      `history` for workflow chaining. Spec notes in
+      [05-host-ops.md](spec/05-host-ops.md) /
       [06-runtime.md](spec/06-runtime.md) §6. Until then, chunk via
       `history` across agent calls.
 - [ ] MCP client (tool provider behind `tool(f)` / host-op story)

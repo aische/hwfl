@@ -72,12 +72,14 @@ strings; `llm.chat_messages` stays the thin text-only path. Example:
 usually the run). Workspace side effects remain, but the transcript is
 not returned to the workflow, and `hwfl resume` does not continue a
 failed run. Raising the limit by editing the module also fails resume
-(stale project hash). **Planned:** soft-land instead of abort — either
-a structured exhausted return that includes `history` / rounds (so the
-workflow can chain another agent call), or a pause that lets the
-operator extend the budget / continue without throwing away paid tool
-work. Until then, authors should chunk with `history` across multiple
-agent calls (see coding-agent-chat). Tracked in TASKS.
+(stale project hash). **Planned (preferred):** freeze the in-flight
+agent (`CurAgent` / `agHistory` kept) and pause so the operator can
+extend this call’s budget (bump `agMaxRounds`) and continue — same
+invocation, no transcript throwaway. CLI / `--interactive` must learn
+that gate (`resume` alone does not resolve human pauses today).
+**Secondary:** structured exhausted return with `history` for outer
+workflow chaining without a human gate. Until shipped, chunk with
+`history` across agent calls (see coding-agent-chat). Tracked in TASKS.
 
 ### 2.1 Agent tools
 

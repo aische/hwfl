@@ -29,7 +29,7 @@ None.
 ## Next up
 
 1. Credible coding-agent exemplar: tools that call workflows (E11)
-2. Soft-land `max_rounds` (exhausted return or pause, not abort)
+2. Soft-land `max_rounds`: freeze in-flight agent, extend call budget
 3. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
 4. Opt-in LangSmith-style LLM transcripts
 5. Optional: sum `cost_micros` in lab fitness; semantic-check static filter
