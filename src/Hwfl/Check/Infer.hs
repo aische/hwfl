@@ -8,6 +8,7 @@ where
 
 import Control.Monad (foldM, unless, when)
 import Data.Bifunctor (first)
+import Data.Foldable (for_)
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Expr
 import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameToText)
@@ -576,7 +577,7 @@ agentResultType =
   TRecord
     [ (Ident "text", tString),
       (Ident "rounds", tInt),
-      (Ident "history", TList (tTurn))
+      (Ident "history", TList tTurn)
     ]
 
 agentObjectResultType :: TypeExpr -> TypeExpr
@@ -584,7 +585,7 @@ agentObjectResultType out =
   TRecord
     [ (Ident "value", out),
       (Ident "rounds", tInt),
-      (Ident "history", TList (tTurn))
+      (Ident "history", TList tTurn)
     ]
 
 inferLlmAgentApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
@@ -904,19 +905,15 @@ inferHumanAskApp env args = case classifyArgs args of
     checkAskFieldTypes fields = do
       promptTy <- maybe (Left (MissingField (Ident "prompt") (TRecord fields))) pure (lookup (Ident "prompt") fields)
       unify tString promptTy
-      case lookup (Ident "detail") fields of
-        Nothing -> pure ()
-        Just detailTy -> unify tString detailTy
+      for_ (lookup (Ident "detail") fields) (unify tString)
       rejectUnknown (map fst fields)
       pure tString
 
-    rejectUnknown names =
-      mapM_
+    rejectUnknown = mapM_
         ( \n ->
             unless (n `elem` [Ident "prompt", Ident "detail"]) $
               Left (UnknownField n (TRecord [(Ident "prompt", tString)]))
         )
-        names
 
 tUnit, tBool, tInt, tFloat, tString, tToolSpec, tFileRef, tJson, tSchema, tTurn :: TypeExpr
 tUnit = TName (TypeName "Unit")

@@ -6,8 +6,8 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
-import Hwfl.Llm.Types (ChatRequest (..), FinishReason (..), ProviderResult (..), TokenUsage (..), Turn (..))
 import Hwfl.Llm.Provider (LlmProvider (..))
+import Hwfl.Llm.Types (ChatRequest (..), FinishReason (..), ProviderResult (..), TokenUsage (..))
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Eval (StepMode (..))
@@ -134,7 +134,8 @@ spec =
                         roCost = False,
                         roModelCatalog = "model-catalog.json",
                         roSkillCatalog = fst emptySkillRuntime,
-                        roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
+                        roSkillModules = snd emptySkillRuntime,
+                        roEntryModules = mempty
                       }
                     loaded
                 case outcome of
@@ -166,7 +167,8 @@ spec =
                         roCost = False,
                         roModelCatalog = "model-catalog.json",
                         roSkillCatalog = fst emptySkillRuntime,
-                        roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
+                        roSkillModules = snd emptySkillRuntime,
+                        roEntryModules = mempty
                       }
                     loaded
                 case o0 of
@@ -189,8 +191,8 @@ spec =
                     case lookup (Ident "last") fs of
                       Just (VString t) -> t `shouldSatisfy` T.isInfixOf "SUMMARY:"
                       other -> expectationFailure (show other)
-                  other -> expectationFailure (show other)
-    , describe "coding-agent chat (ask + agent history)" $ do
+                  other -> expectationFailure (show other),
+      describe "coding-agent chat (ask + agent history)" $ do
         it "agent ask loop threads history then /quit" $
           withSystemTempDirectory "hwfl-agent-chat" $ \dir -> do
             writeFile (dir </> "note.txt") "hello note"
@@ -272,7 +274,8 @@ spec =
                         roCost = False,
                         roModelCatalog = "model-catalog.json",
                         roSkillCatalog = fst emptySkillRuntime,
-                        roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
+                        roSkillModules = snd emptySkillRuntime,
+                        roEntryModules = mempty
                       }
                     loaded
                 case o0 of

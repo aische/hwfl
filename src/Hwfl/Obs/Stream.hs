@@ -149,8 +149,7 @@ flushBuffer store st bufRef lastFlushRef = do
             )
 
 emitEvent :: RunStore -> SpanState -> Aeson.Value -> IO ()
-emitEvent store st fields =
-  appendEvent store st "debug" "llm.delta" fields
+emitEvent store st = appendEvent store st "debug" "llm.delta"
 
 toolCallFields :: ToolCall -> Aeson.Value
 toolCallFields tc =

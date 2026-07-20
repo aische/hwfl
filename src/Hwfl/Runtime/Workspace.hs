@@ -206,7 +206,7 @@ walk :: FilePath -> FilePath -> GlobPat -> IO [FilePath]
 walk absRoot relDir pat = do
   let absDir = if null relDir then absRoot else absRoot </> relDir
   names <- listDirectory absDir
-  fmap concat $ traverse (one absRoot relDir pat) names
+  concat <$> traverse (one absRoot relDir pat) names
 
 one :: FilePath -> FilePath -> GlobPat -> FilePath -> IO [FilePath]
 one absRoot relDir pat name = do
@@ -218,10 +218,7 @@ one absRoot relDir pat name = do
       GlobRecursiveExt _ -> walk absRoot rel pat
       GlobRootExt _ -> pure []
     else
-      pure $
-        if matchPat pat name
-          then [rel]
-          else []
+      pure ([rel | matchPat pat name])
 
 matchPat :: GlobPat -> FilePath -> Bool
 matchPat pat name = case pat of
@@ -450,7 +447,7 @@ copyTree ws srcRoot dstRel relInTree exclude
               pure (Left (HostErr ("cannot resolve copy source: " <> T.pack (show ex))))
             Right c
               | not (isPathUnderRoot (workspaceRoot ws) c) ->
-                  pure (Left (SandboxErr ("path escapes the workspace root during copy")))
+                  pure (Left (SandboxErr "path escapes the workspace root during copy"))
               | otherwise -> do
                   isDir <- doesDirectoryExist childSrc
                   step <-
@@ -688,7 +685,7 @@ walkAll :: FilePath -> FilePath -> IO [FilePath]
 walkAll absRoot relDir = do
   let absDir = if null relDir then absRoot else absRoot </> relDir
   names <- listDirectory absDir
-  fmap concat $ traverse (oneFile absRoot relDir) names
+  concat <$> traverse (oneFile absRoot relDir) names
 
 oneFile :: FilePath -> FilePath -> FilePath -> IO [FilePath]
 oneFile absRoot relDir name
@@ -704,4 +701,4 @@ oneFile absRoot relDir name
             else walkAll absRoot rel
         else do
           isFile <- doesFileExist absPath
-          pure (if isFile then [rel] else [])
+          pure ([rel | isFile])

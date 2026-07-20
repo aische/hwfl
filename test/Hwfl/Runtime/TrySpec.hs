@@ -6,15 +6,15 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
-import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Types (ProviderError (..))
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
-    runLoadedModule,
     emptySkillRuntime,
+    runLoadedModule,
   )
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -122,7 +122,7 @@ runModule src path opts =
           case outcome of
             OutcomeCompleted v _ _ -> pure (Right v)
             OutcomeFailed err _ _ -> pure (Left (T.pack (show err)))
-            OutcomePaused _ _ _ _ -> pure (Left "paused unexpectedly")
+            OutcomePaused {} -> pure (Left "paused unexpectedly")
 
 spec :: Spec
 spec = describe "try/catch runtime (E10)" $ do
@@ -130,22 +130,23 @@ spec = describe "try/catch runtime (E10)" $ do
     withSystemTempDirectory "hwfl-try" $ \dir -> do
       let path = dir </> "e10.md"
           opts =
-            (failingProvider $
-               RunOptions
-                 { roWorkspace = dir,
-                   roProvider = mockProviderWith (\_ -> Left (OtherProviderError "forced failure")),
-                   roInputs = [],
-                   roRunId = Just "test-e10",
-                   roEntry = path,
-                   roMode = StepRun,
-                   roProjectHash = Nothing,
-                   roExec = Nothing,
-                   roObserver = noopObserver,
-                   roCost = False,
-                   roModelCatalog = "model-catalog.json",
-                   roSkillCatalog = fst emptySkillRuntime,
-                   roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
-                 })
+            failingProvider $
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = mockProviderWith (\_ -> Left (OtherProviderError "forced failure")),
+                  roInputs = [],
+                  roRunId = Just "test-e10",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime,
+                  roEntryModules = mempty
+                }
       result <- runModule e10Src path opts
       case result of
         Left err -> expectationFailure (T.unpack err)
@@ -173,7 +174,8 @@ spec = describe "try/catch runtime (E10)" $ do
                 roCost = False,
                 roModelCatalog = "model-catalog.json",
                 roSkillCatalog = fst emptySkillRuntime,
-                roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
+                roSkillModules = snd emptySkillRuntime,
+                roEntryModules = mempty
               }
       result <- runModule fsCatchSrc path opts
       case result of
@@ -222,7 +224,8 @@ spec = describe "try/catch runtime (E10)" $ do
                 roCost = False,
                 roModelCatalog = "model-catalog.json",
                 roSkillCatalog = fst emptySkillRuntime,
-                roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
+                roSkillModules = snd emptySkillRuntime,
+                roEntryModules = mempty
               }
       result <- runModule src path opts
       case result of
@@ -251,7 +254,8 @@ spec = describe "try/catch runtime (E10)" $ do
                 roCost = False,
                 roModelCatalog = "model-catalog.json",
                 roSkillCatalog = fst emptySkillRuntime,
-                roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
+                roSkillModules = snd emptySkillRuntime,
+                roEntryModules = mempty
               }
       outcome <- runModule trapSrc path opts
       outcome `shouldSatisfy` isLeft

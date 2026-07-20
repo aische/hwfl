@@ -6,7 +6,7 @@ module Hwfl.Parse.Expr
 where
 
 import Control.Monad (void)
-import Data.Char (isDigit)
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
@@ -24,7 +24,7 @@ parseExprText = runP expr
 
 -- | Stamp the current source position onto an expression.
 located :: Pos -> ExprF -> Expr
-located p k = Expr p k
+located = Expr
 
 expr :: Parser Expr
 expr =
@@ -53,8 +53,7 @@ cmpExpr = do
   l <- addExpr
   option l $ do
     op <- cmpOp
-    r <- addExpr
-    pure (binApp op l r)
+    binApp op l <$> addExpr
 
 cmpOp :: Parser Text
 cmpOp =
@@ -126,9 +125,8 @@ funExpr = do
   pKeyword "fun"
   ps <- paramList
   mt <- optional (symbol ":" *> typeExpr)
-  _ <- (void (symbol "=>") <|> void (symbol "="))
-  body <- expr
-  pure (located pos (FFun ps mt body))
+  _ <- void (symbol "=>") <|> void (symbol "=")
+  located pos . FFun ps mt <$> expr
 
 ifExpr :: Parser Expr
 ifExpr = do
@@ -138,8 +136,7 @@ ifExpr = do
   pKeyword "then"
   t <- expr
   pKeyword "else"
-  e <- expr
-  pure (located pos (FIf c t e))
+  located pos . FIf c t <$> expr
 
 matchExpr :: Parser Expr
 matchExpr = do
@@ -200,15 +197,13 @@ confirmExpr :: Parser Expr
 confirmExpr = do
   pos <- getPos
   pKeyword "confirm"
-  e <- appExpr
-  pure (located pos (FConfirm e))
+  located pos . FConfirm <$> appExpr
 
 choiceExpr :: Parser Expr
 choiceExpr = do
   pos <- getPos
   pKeyword "choice"
-  e <- appExpr
-  pure (located pos (FChoice e))
+  located pos . FChoice <$> appExpr
 
 tryExpr :: Parser Expr
 tryExpr = do
@@ -220,8 +215,7 @@ tryExpr = do
   n <- pIdent
   _ <- symbol ")"
   _ <- symbol "=>"
-  h <- expr
-  pure (located pos (FTry e n h))
+  located pos . FTry e n <$> expr
 
 appExpr :: Parser Expr
 appExpr = do
@@ -281,12 +275,10 @@ primary =
         pure (located pos (FLit lit)),
       do
         pos <- getPos
-        es <- listLit
-        pure (located pos (FList es)),
+        located pos . FList <$> listLit,
       do
         pos <- getPos
-        fs <- recordLit
-        pure (located pos (FRecord fs)),
+        located pos . FRecord <$> recordLit,
       between (symbol "(") (symbol ")") expr
     ]
 
@@ -305,8 +297,8 @@ sectionRef = lexeme $ do
   cs <- takeWhileP (Just "slug") (\x -> isIdentCont x || x == '-')
   pure (Slug (T.cons c cs))
   where
-    isIdentStart x = x >= 'a' && x <= 'z' || x == '_'
-    isIdentCont x = isIdentStart x || x >= 'A' && x <= 'Z' || isDigit x
+    isIdentStart x = isAsciiLower x || x == '_'
+    isIdentCont x = isIdentStart x || isAsciiUpper x || isDigit x
 
 qnameExpr :: Parser Expr
 qnameExpr = do

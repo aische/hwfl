@@ -5,7 +5,7 @@ module Hwfl.Parse.Section
   )
 where
 
-import Data.Char (isDigit)
+import Data.Char (isAsciiLower, isDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Module (Section (..))
@@ -24,7 +24,7 @@ computeSlug t =
               T.toLower t
   where
     spaceToDash c = if c == ' ' then '-' else c
-    ok c = (c >= 'a' && c <= 'z') || isDigit c || c == '-'
+    ok c = isAsciiLower c || isDigit c || c == '-'
 
 -- | Build H2/H3 sections. Bodies are raw markdown between the heading and the
 -- next heading of equal or higher level, excluding fenced @hwfl@ blocks.

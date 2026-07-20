@@ -94,13 +94,11 @@ instance FromJSON EffectsPolicy where
     denyE <- parseEffectList deny
     pure EffectsPolicy {epDefault = defE, epDeny = denyE}
     where
-      parseEffectList xs =
-        traverse
+      parseEffectList = traverse
           ( \s -> case parseEffectName s of
               Just e -> pure e
               Nothing -> fail ("unknown effect: " <> T.unpack s)
           )
-          xs
 
 instance FromJSON ExecPolicy where
   parseJSON = withObject "exec" $ \o -> do

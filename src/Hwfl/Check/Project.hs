@@ -193,7 +193,6 @@ topoSort nodes lp = go [] (Set.toList nodes)
             Nothing ->
               Left (PceImportCycle (map qnameToText (findCycle remaining)))
             Just q -> go (q : sorted) (filter (/= q) remaining)
-    pick sortedSet qs = find (\q -> all (`Set.member` sortedSet) (deps q)) qs
     deps q =
       [ i
         | Just m <- [Map.lookup q lp.lpModules],
@@ -211,6 +210,7 @@ topoSort nodes lp = go [] (Set.toList nodes)
            in case nexts of
                 n : _ -> cycleFrom n (start : path)
                 [] -> reverse (start : path)
+    pick sortedSet = find (all (`Set.member` sortedSet) . deps)
 
 checkOne ::
   ProjectConfig ->

@@ -30,7 +30,6 @@ import Hwfl.Source qualified as Src
 import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char (space1, string)
 import Text.Megaparsec.Char.Lexer qualified as L
-import Text.Megaparsec.Pos (SourcePos (..), mkPos, sourceColumn, sourceLine, sourceName, unPos)
 
 type Parser = Parsec Void Text
 

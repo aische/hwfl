@@ -266,8 +266,7 @@ parseCurrent = withObject "Current" $ \o -> do
       CurCloseRegion <$> o .: "span_id" <*> (o .: "v" >>= parseValue)
     "agent" -> CurAgent <$> (o .: "agent" >>= parseAgent)
     "entry_invoke" ->
-      CurEntryInvoke
-        <$> (qnameFromText <$> o .: "qname")
+      (CurEntryInvoke . qnameFromText <$> (o .: "qname"))
         <*> (o .: "args" >>= mapM parseArgVal)
     "invoke" -> pure CurInvoke
     other -> fail ("unknown current: " <> T.unpack other)
@@ -493,8 +492,7 @@ parseFrame = withObject "Frame" $ \o -> do
         <*> (o .: "env" >>= parseEnv)
         <*> (o .: "rest" >>= readText)
     "invoke" ->
-      FrInvoke
-        <$> (qnameFromText <$> o .: "qname")
+      (FrInvoke . qnameFromText <$> (o .: "qname"))
         <*> o .: "span_id"
         <*> (mkBranch <$> (o .: "machine" >>= parseMachine))
     other -> fail ("unknown frame: " <> T.unpack other)

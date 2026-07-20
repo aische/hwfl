@@ -54,7 +54,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Types (Parser, parseEither)
 import Data.ByteString.Lazy qualified as LBS
 import Data.IORef (IORef, modifyIORef', readIORef)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
@@ -377,7 +377,7 @@ fsListRuns workspace = do
       names <- listDirectory root
       dirs <- filterM (\n -> doesDirectoryExist (root </> n)) names
       metas <- mapM (readMetaForDir root) dirs
-      pure (mapMaybe id metas)
+      pure (catMaybes metas)
   where
     readMetaForDir root name = do
       let store = mkHandle (root </> name) (T.pack name) (const (pure ()))

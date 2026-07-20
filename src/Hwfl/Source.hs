@@ -27,7 +27,7 @@ data Diagnostic = Diagnostic
   deriving stock (Eq, Show)
 
 mkDiagnostic :: FilePath -> Pos -> Text -> Diagnostic
-mkDiagnostic path pos msg = Diagnostic path pos msg
+mkDiagnostic = Diagnostic
 
 -- | @line:col@ (no path).
 renderPos :: Pos -> Text

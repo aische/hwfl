@@ -1,5 +1,6 @@
 module Hwfl.Runtime.StoreSpec (spec) where
 
+import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Hwfl.Driver
   ( DriverRunRequest (..),
@@ -59,7 +60,7 @@ spec = describe "run-store interface (FS)" $ do
         result <- driverRun req
         case result of
           Left err -> expectationFailure (show err)
-          Right (OutcomeCompleted _ _ _) -> pure ()
+          Right (OutcomeCompleted {}) -> pure ()
           other -> expectationFailure ("expected completed, got: " <> show other)
 
         metas <- driverListRuns dir
@@ -83,12 +84,12 @@ spec = describe "run-store interface (FS)" $ do
         any (\r -> r.srOp == "open") spans `shouldBe` True
 
         mOpen <- openRun ref
-        mOpen `shouldSatisfy` maybe False (const True)
+        mOpen `shouldSatisfy` isJust
 
     it "returns Nothing for missing runs without creating dirs" $
       withSystemTempDirectory "hwfl-store-missing" $ \dir -> do
         mMissing <- openRun (runRef dir "nope")
-        mMissing `shouldSatisfy` maybe True (const False)
+        mMissing `shouldSatisfy` isNothing
         driverListRuns dir `shouldReturn` []
         driverReadMeta (runRef dir "nope") `shouldReturn` Nothing
         driverReadSnapshot (runRef dir "nope") `shouldReturn` Nothing
@@ -145,7 +146,7 @@ spec = describe "run-store interface (FS)" $ do
         result <- driverRun req
         case result of
           Left err -> expectationFailure (show err)
-          Right (OutcomeCompleted _ _ _) -> pure ()
+          Right (OutcomeCompleted {}) -> pure ()
           other -> expectationFailure ("expected completed, got: " <> show other)
         let ref = runRef dir "filt-1"
         mStore <- openRun ref

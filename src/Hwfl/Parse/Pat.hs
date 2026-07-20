@@ -72,7 +72,7 @@ intLit = lexeme $ do
 
 floatLit :: Parser Literal
 floatLit = lexeme $ do
-  sign <- option id ((negate) <$ char '-')
+  sign <- option id (negate <$ char '-')
   a <- takeWhile1P (Just "digit") isDigit
   _ <- char '.'
   b <- takeWhile1P (Just "digit") isDigit

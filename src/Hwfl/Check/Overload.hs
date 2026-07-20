@@ -38,6 +38,7 @@ import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Check.Env (TypeEnv, resolveType, typeEq)
 import Hwfl.Check.Error (CheckError (..))
+import Data.Maybe (isJust)
 
 data OverloadClass
   = OpEq
@@ -61,7 +62,7 @@ classifyOp = \case
 
 isOverloadedOp :: Expr -> Bool
 isOverloadedOp = \case
-  EVar (Ident n) -> maybe False (const True) (classifyOp n)
+  EVar (Ident n) -> isJust (classifyOp n)
   _ -> False
 
 -- | Type an application of an overloaded binary operator.
