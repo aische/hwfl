@@ -44,8 +44,6 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Later (P2–P3)
 
-- [ ] Optional DB-backed run-store backend (same interface; not required
-      for local lab)
 - [ ] Opt-in LangSmith-style LLM transcripts — durable messages in/out
       keyed by `span_id` (`transcripts.jsonl` or `payloads/`); spans stay
       the thin index. CLI `--trace` / run option; redact + size caps.
@@ -58,12 +56,6 @@ Active work only. Archive completed sections to `log/archive/` weekly.
       filter for lab candidates
 - [ ] Optional: omit / `latest` run-id for approve / choose / reply / show
       (resolve from workspace run store by status + recency)
-
-## Out of this repo
-
-- Remote control plane (Servant/HTTP, WebSocket/SSE approve gates,
-  Postgres experiment metadata, multi-tenant auth, queue, chat UX) —
-  **separate project** depending on the hwfl library. See [idea.md](idea.md).
 
 ## Low priority
 
