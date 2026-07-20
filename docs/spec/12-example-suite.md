@@ -181,8 +181,10 @@ existing tree. Creates/edits files and runs allowlisted toolchain commands
 **Shipped:** `examples/compare` — parent materializes N candidate projects
 + per-trial workspaces from seeded `genomes/` + `fixture/`, then
 `meta.check_project` / `meta.invoke` / `meta.read_spans`, ranks by
-feasibility then fewer `llm.*` spans. Fixture: `CompareSpec` (mock;
-winner = lean).
+feasibility then fewer `llm.*` spans. **Mutate loop:** `fs.patch` turns
+`rich` → `stripped` (drop draft `llm.chat`), then re-runs elite + mutant
+(generation 1). Fixture: `CompareSpec` (mock; winner = lean;
+`trial_count` = 4, `generations` = 2).
 
 ---
 

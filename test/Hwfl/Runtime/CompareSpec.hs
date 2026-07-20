@@ -42,7 +42,7 @@ spec = describe "compare lab (local genetic prototype)" $ do
     lean `shouldSatisfy` isRight
     rich `shouldSatisfy` isRight
 
-  it "materializes candidates, prefers lean (fewer llm spans) under mock" $
+  it "scores gen0, mutates rich→stripped, re-runs; lean wins under mock" $
     withSystemTempDirectory "hwfl-compare" $ \tmp -> do
       seedWorkspace tmp
       lp <- loadProjectOrFail projectRoot
@@ -72,7 +72,8 @@ spec = describe "compare lab (local genetic prototype)" $ do
           case outcome of
             OutcomeCompleted (VRecord fs) _store _n -> do
               lookup (Ident "winner") fs `shouldBe` Just (VString "lean")
-              lookup (Ident "trial_count") fs `shouldBe` Just (VInt 2)
+              lookup (Ident "trial_count") fs `shouldBe` Just (VInt 4)
+              lookup (Ident "generations") fs `shouldBe` Just (VInt 2)
               lookup (Ident "results_path") fs
                 `shouldBe` Just (VString "results.json")
               doesFileExist (tmp </> "results.json") `shouldReturn` True
@@ -81,8 +82,19 @@ spec = describe "compare lab (local genetic prototype)" $ do
               doesFileExist
                 (tmp </> "candidates" </> "rich" </> "workflows" </> "main.md")
                 `shouldReturn` True
+              doesFileExist
+                (tmp </> "genomes" </> "stripped" </> "workflows" </> "main.md")
+                `shouldReturn` True
+              doesFileExist
+                (tmp </> "candidates" </> "stripped" </> "project.json")
+                `shouldReturn` True
               doesFileExist (tmp </> "trials" </> "lean" </> "article.txt")
                 `shouldReturn` True
+              stripped <-
+                TIO.readFile
+                  (tmp </> "genomes" </> "stripped" </> "workflows" </> "main.md")
+              T.isInfixOf "llm.chat" stripped `shouldBe` False
+              T.isInfixOf "llm.object" stripped `shouldBe` True
             other -> expectationFailure ("expected completed run, got: " <> show other)
 
 qname :: Text -> QName

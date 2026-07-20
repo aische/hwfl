@@ -4,8 +4,6 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 ## Now (P1) — lab loop + exemplars
 
-- [ ] Mutate / next-generation loop on the compare spine (score →
-      change genomes → re-run)
 - [ ] Credible coding-agent exemplar: tools that call same-project
       workflows (`FrInvoke` / E11), not only host ops
 - [ ] Richer lab fitness — outcome + cost/spans today; optional
@@ -71,4 +69,5 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check
-A+B / S1–S3 / S5, `fs.patch`, lab spine, E11, coding-agent chat).
+A+B / S1–S3 / S5, `fs.patch`, lab spine, E11, coding-agent chat, compare
+mutate / next-gen loop).

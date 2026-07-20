@@ -249,7 +249,7 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | [language-reference.md](language-reference.md) | Keywords, types, prelude, host ops |
 | `examples/coding-agent` | Full agent loop + stack skills over a workspace |
 | `examples/skills` | Minimal `skill.discover` / `skill.load` demo |
-| `examples/compare` | Lab: materialize candidates, invoke, rank by spans |
+| `examples/compare` | Lab: compare → mutate genomes → next generation |
 | `examples/semantic-check` | Multi-layer review workflow |
 
 The coding-agent lists `skill.discover` / `skill.load` explicitly and loads
