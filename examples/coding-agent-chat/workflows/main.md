@@ -5,7 +5,7 @@ outputs:
     done: Bool
     turns: Int
     last: String
-effects: [Human, Net, Read]
+effects: [Human, Net, Read, Write]
 ---
 
 ## system
@@ -17,9 +17,6 @@ when you can answer without tools.
 ## body
 
 ```hwfl
-fun search(q: String): String =
-  $"hit:{q}"
-
 fun turn(
   history: List<Turn>,
   last: String
@@ -39,7 +36,16 @@ fun turn(
     let result = llm.agent(
       system = @system,
       prompt = user,
-      tools = [tool(fs.read), tool(fs.list), tool(search)],
+      tools = [
+        tool(fs.list),
+        tool(fs.find),
+        tool(fs.read),
+        tool(fs.write),
+        tool(fs.edit),
+        tool(fs.patch),
+        tool(fs.grep),
+        tool(exec.run)
+      ],
       model = "deepseek4flash",
       history = history,
       max_rounds = 4
