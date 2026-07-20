@@ -25,6 +25,11 @@ Pure β-reduction may run **inside** a transition until the next host
 boundary (big-step pure, small-step effects). That keeps snapshots small
 and performance reasonable.
 
+**Not every host op is a snapshot boundary.** Observability ops
+(`obs.log`, `obs.span` region open/close) emit spans/events but do not
+persist machine state — see [05-host-ops.md](05-host-ops.md) §5.
+Prelude pure helpers also have no boundary.
+
 Crash mid-host-op (e.g. kill during HTTP): that transition is **re-run**
 on resume (at-least-once). Host ops should be written with that in mind
 (LLM calls may duplicate; document idempotency expectations).

@@ -70,14 +70,17 @@ All side effects go through **host ops** registered in the runtime:
 | LLM         | `llm.chat`, `llm.object`, `llm.agent`                 |
 | Process     | `exec.run`                                            |
 | Human       | `human.confirm`, `human.choice`, `human.ask`          |
-| Meta        | `meta.invoke`, `meta.list_runs`, `obs.log`            |
+| Meta        | `meta.invoke`, `meta.list_runs`, …                    |
+| Observability | `obs.log`, `obs.span` (spans/events; not snapshot boundaries) |
 | Concurrency | `par` / `join` (runtime constructs, not user threads; cooperative pool) |
 
 Host ops:
 
 1. Appear as ordinary function calls in surface syntax (or sugar).
 2. Are typed and effect-annotated.
-3. Are the **only** resume/snapshot boundaries (plus module entry/return / par join).
+3. Effectful host ops are the **resume/snapshot boundaries** (plus module
+   entry/return / par join). Exceptions: `obs.log` and `obs.span` region
+   enter/leave — observability only, no machine snapshot.
 4. Emit a span with redacted args + timing (+ token usage for LLM).
 
 ## Provider boundary (LLM)

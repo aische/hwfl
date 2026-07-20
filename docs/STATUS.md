@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 ## Current focus
 
@@ -36,6 +36,7 @@ None.
 
 ## Deferred
 
+- `obs.log` non-snapshotting (spec done; runtime still persists)
 - Semantic-check S4 / S6 — research; optional static fitness later
 - Skills phase D (optional writer example)
 - Concurrent `par` host IO (or external parallel lab processes)

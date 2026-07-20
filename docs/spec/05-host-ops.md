@@ -127,12 +127,17 @@ tool result into the agent loop).
 
 | Op | Notes |
 |----|-------|
-| `obs.log` | `(level, message, fields: Json) -> ()` — attaches to current span |
-| `obs.span` | `(name, fun () -> a) -> a` — nested span region (may be sugar) |
+| `obs.log` | `(level, message, fields: Json) -> ()` — event (and optional short span) on the current span; **no snapshot boundary** |
+| `obs.span` | `(name, fun () -> a) -> a` — nested span region (may be sugar); **region open/close is not a snapshot boundary** |
 
-`obs.span` around pure code is allowed; it still creates span events but
-need not snapshot every entry if the body is pure — implementer’s choice
-as long as host ops inside are correct.
+`obs.log` is observability only (`()`). It must not write a machine
+snapshot or become a resume cursor. Crash/resume may drop or duplicate
+the log event (best-effort / at-most-once is fine). Do not replay logs
+from the event channel as control-flow truth.
+
+`obs.span` around pure code still creates span events but must not
+snapshot on region enter/leave; host ops inside the body keep their
+normal boundaries.
 
 ## 6. Meta (`Meta` / `Read`)
 

@@ -32,11 +32,13 @@ Span
 
 Rules:
 
-- Every host op ⇒ span
+- Every host op ⇒ span (including `obs.log`; span need not imply a snapshot)
 - Module `main` ⇒ span
-- `obs.span("name") { … }` ⇒ region span
+- `obs.span("name") { … }` ⇒ region span (not a snapshot boundary)
 - Agent model rounds ⇒ `agent_round` spans; each tool call ⇒ `tool:<name>`
   child span (args summarized/redacted); nested host ops under the tool
+- `snapshot_seq` on a span only when that transition actually persisted
+  a machine snapshot
 - CLI: `hwfl run --debug` installs `stderrDebugObserver` on the driver
   `Observer` hook (live span open/close + pause/finish); `hwfl run --cost`
   prefixes host progress lines with running LLM spend; `hwfl show` prints attrs
@@ -58,6 +60,12 @@ Same intent as hwfi:
 obs.log("info", "clustered", { n = length(xs) })
 obs.span("review_gate") { … }
 ```
+
+**Snapshot grain:** `obs.log` and `obs.span` region enter/leave are **not**
+machine snapshot boundaries (see [05-host-ops.md](05-host-ops.md) §5).
+They append spans/events only. Resume correctness comes from real effect
+host ops (`fs.*`, `llm.*`, human gates, …). Log lines are best-effort
+across crash/resume — do not treat `events.jsonl` as replay truth.
 
 ## 6. CLI
 
