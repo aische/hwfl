@@ -2,83 +2,60 @@
 
 Active work only. Archive completed sections to `log/archive/` weekly.
 
-## Now (P1) — lab spine
+## Now (P1) — lab loop + exemplars
 
-- [x] Library driver façade — check / run / step / resume / approve / show
-      as one API the CLI wraps (control plane will call the same)
-- [x] Run-store interface over `.hwfl/runs` (list / read meta / spans /
-      snapshot); FS backend first
-- [x] `meta.invoke` — nested module/project run with inputs; return
-      run_id + outcome (snapshot boundary)
-- [x] `meta.list_runs` / `meta.read_spans`
-- [x] Careful `meta.read_snapshot` (redact secrets)
-- [x] Local compare / genetic prototype — `examples/compare` (materialize
-      N projects + per-trial workspaces; score outcome + llm span count)
-- [x] Observer hook for live span / pause events (CLI `--debug` =
-      `stderrDebugObserver`; WS/SSE maps onto the same)
+- [ ] Mutate / next-generation loop on the compare spine (score →
+      change genomes → re-run)
+- [ ] Credible coding-agent exemplar: tools that call same-project
+      workflows (`FrInvoke` / E11), not only host ops
+- [ ] Richer lab fitness — outcome + cost/spans today; optional
+      semantic-check as static filter before burning tokens
 
-## Next (P1–P2)
+## Next (P1–P2) — agent substrate
 
-- [x] **Coding-agent chat** — multi-turn `human.ask` + tools with a
-      growing transcript that includes tool calls/results:
-      - [x] Extend `llm.agent` / `llm.agent_object`: optional prior
-            `history` (turn list) in; return updated `history` with
-            `{ text, rounds }` / `{ value, rounds }`
-      - [x] Language/runtime `Turn` values (user / assistant+tool_calls /
-            tool results) — host `Turn` / snapshot JSON codec
-      - [x] Example `examples/coding-agent-chat` — ask loop + agent tools
-            + history threaded across turns; `/quit`
-      - [x] Spec/prelude/tests: [spec/05-host-ops.md](spec/05-host-ops.md) §2
-- [x] Resume/approve recomputes `projectHashForModules` when entry is
-      under a project root (skills from that root) — required for
-      hwfl-server sync approve after confirm
-- [x] Deterministic FS tree ops (lab materialize; not agent-first) —
-      finish [spec/05-host-ops.md](spec/05-host-ops.md) Write set:
-      - [x] `fs.mkdir` — create dir and parents
-      - [x] `fs.copy` — file or recursive directory tree (`src` → `dst`);
-            optional overwrite / exclude globs (e.g. skip `.hwfl/runs`)
-      - [x] `fs.move` — rename / relocate within sandbox
-      - [x] `fs.exists` / `fs.stat` — branch without list+catch
-- [ ] Optional: mutate / next-generation loop on the compare spine
-- [x] **E11 same-project entry call** (`FrInvoke`) — shipped
+Prefer MCP / workflow modules over growing the host-op set.
+
+- [ ] MCP client (tool provider behind `tool(f)` / host-op story)
+- [ ] Git (read-heavy host ops or MCP) — status / diff / log
+- [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot
+      `exec.run`
+- [ ] Context pre-pass workflow module — rank files under a token budget
 
 ## Later (P2–P3)
+
+### Observability
 
 - [ ] Opt-in LangSmith-style LLM transcripts — durable messages in/out
       keyed by `span_id` (`transcripts.jsonl` or `payloads/`); spans stay
       the thin index. CLI `--trace` / run option; redact + size caps.
       See [spec/07-observability.md](spec/07-observability.md) §10.
-- [ ] MCP client (tool provider behind `tool(f)` / host-op story)
-- [ ] Skills phase D (optional) — `examples/skills/` writer; no hidden
-      `skill.extract` host
-- [ ] Semantic-check research (S4, S6) — parked; see
+
+### Research / optional
+
+- [ ] Semantic-check S4 / S6 — parked; see
       [semantic-check-plan.md](semantic-check-plan.md); optional fitness
       filter for lab candidates
+- [ ] Skills phase D (optional) — `examples/skills/` writer; no hidden
+      `skill.extract` host
 - [ ] Optional: omit / `latest` run-id for approve / choose / reply / show
       (resolve from workspace run store by status + recency)
 
-## Low priority
+### Parallelism
 
 - [ ] Concurrent host transitions in `par` — overlap blocking IO across
-      branches; or run lab candidates as external parallel processes.
+      branches; **or** run lab candidates as external parallel processes.
       See [spec/06-runtime.md](spec/06-runtime.md) §10.
+
+## Low priority
+
 - [ ] Alternate `LlmProvider` (OpenAI/Anthropic SDK, etc.)
 - [ ] In-language `lib/` modules per [stdlib.md](stdlib.md)
 - [ ] `hwfl init` / shell completions
+- [ ] Typed validation of example values vs `TypeExpr`; CLI `--example`
 
-## Future / nice-to-have (coding-agent capability)
+## Future / nice-to-have (coding-agent Tier B)
 
-Headless agent benchmark for the lab. Prefer MCP / workflow modules over
-host growth. Delay RAG / embeddings / LSP until a measured gap.
-
-### Tier A — credible autonomous coding agent (backend)
-
-- [x] `fs.patch` (structured multi-hunk edit)
-- [ ] Git host ops (read-heavy) or MCP git — status / diff / log
-- [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot `exec.run`
-- [ ] Context pre-pass workflow module — rank files under a token budget
-
-### Tier B — Cursor-class context
+Delay until a measured lab / coding-agent gap.
 
 - [ ] Codebase index (embeddings and/or tree-sitter + ripgrep)
 - [ ] LSP bridge; project rules/hooks skills; auto context assembly;
@@ -87,10 +64,11 @@ host growth. Delay RAG / embeddings / LSP until a measured gap.
 ### Explicitly out of scope (Tier C / product)
 
 IDE surface, inline diff UX, browser / multimodal — control-plane or
-other product; hwfl stays the orchestration kernel.
+other product; hwfl stays the orchestration kernel. Control plane /
+Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
-and 2026-07-15/16/17 completions (including P0, coding-agent, skills A–C,
-semantic-check A+B / S1–S3 / S5, `fs.patch`, `--cost`).
+and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check
+A+B / S1–S3 / S5, `fs.patch`, lab spine, E11, coding-agent chat).

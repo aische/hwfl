@@ -4,28 +4,24 @@ Last updated: 2026-07-20
 
 ## Current focus
 
-**Post-E11** — same-project entry calls shipped; next lab or Tier A ops.
+**Post-E11 backlog reframe** — lab loop + real exemplars next; agent
+substrate and observability after. Control plane is **hwfl-server**.
 
 ## North star
 
 hwfl = durable workflow **runtime library**. Toward a **workflow research
-lab** (compare / mutate / re-run candidates) and a **separate** remote
-control plane. Coding-agent and semantic-check are benchmarks / research,
-not the product. See [idea.md](idea.md).
+lab** (compare / mutate / re-run candidates). Coding-agent and
+semantic-check are benchmarks / research, not the product. See
+[idea.md](idea.md).
 
 ## Done recently
 
-- **E11 same-project entry call** — `qname(inputs)` → callee `main` in
-  same run/workspace; `FrInvoke` / `BranchMachine` nest; effects bubble;
-  no Meta tax; snapshot + module spans; `examples/e11`; 203 tests pass
-- **Coding-agent chat** — `Turn` values; `llm.agent` / `llm.agent_object`
-  optional `history` in + `history` out; `examples/coding-agent-chat`
-- **Workflow chat** — `human.ask` detail carries prior assistant reply;
-  `llm.chat_messages`; `examples/chat`
-- **CLI `--interactive`** — TTY stdin loop over confirm / choice / ask
-- **`human.choice`** — N-way gate; `examples/choose` / `agent-choice.md`
-- Type/parse error locations; CLI `--dump`; FS tree ops; compare lab;
-  `meta.*`; Observer `--debug`
+- **E11 same-project entry call** — `qname(inputs)` → callee `main`;
+  `FrInvoke` / `BranchMachine`; `examples/call-inner-workflow`
+- **Coding-agent chat** — `Turn` values; `llm.agent` history in/out;
+  `examples/coding-agent-chat`
+- Lab spine (driver façade, FS run-store, `meta.*`, compare, Observer);
+  FS tree ops; resume/approve project-hash for hwfl-server confirm
 
 ## Blockers
 
@@ -33,23 +29,19 @@ None.
 
 ## Next up
 
-1. Optional: mutate / next-generation loop on the compare spine
-2. Tier A coding-agent ops (git, terminals) when lab needs them
-3. LangSmith-style LLM transcripts (opt-in, span-linked)
+1. Mutate / next-generation loop on the compare spine
+2. Coding-agent exemplar with tools that call workflows (E11)
+3. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
+4. Opt-in LangSmith-style LLM transcripts
 
 ## Deferred
 
-- Optional: `latest` / omit run-id for approve / choose / reply / show
-- Opt-in LangSmith-style LLM transcripts (span-linked payloads; §07 §10)
+- Semantic-check S4 / S6 — research; optional static fitness later
 - Skills phase D (optional writer example)
-- Semantic-check S4 / S6 — research only; optional static fitness later
-- Coding-agent Tier B (RAG / MCP / LSP) — when needed as a lab benchmark
-- Concurrent `par` host IO; MCP client host
-- Control-plane repo (HTTP/WS, Postgres metadata, tenants) — **not** in
-  hwfl; depends on the library driver + Observer above
-- Optional DB-backed run-store backend (same interface; not required yet)
-- `lib/` qname elaboration (runtime linking; separate from E11)
-- Typed validation of example values vs `TypeExpr`; CLI `--example`
+- Concurrent `par` host IO (or external parallel lab processes)
+- Coding-agent Tier B (index / LSP / RAG) — measured gap only
+- `latest` / omit run-id; `lib/` elaboration; typed `--example`;
+  alt `LlmProvider`; `hwfl init` / completions
 
 ## Open naming
 
