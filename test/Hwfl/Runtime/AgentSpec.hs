@@ -191,7 +191,7 @@ spec = describe "runtime agent (M7)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of
@@ -241,7 +241,7 @@ spec = describe "runtime agent (M7)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome0 of
@@ -282,7 +282,7 @@ spec = describe "runtime agent (M7)" $ do
                   roCost = False,
                   roModelCatalog = "model-catalog.json",
                   roSkillCatalog = fst emptySkillRuntime,
-                  roSkillModules = snd emptySkillRuntime
+                  roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of
@@ -370,7 +370,7 @@ spec = describe "runtime agent (M7)" $ do
                   roCost = False,
                   roModelCatalog = "model-catalog.json",
                   roSkillCatalog = fst emptySkillRuntime,
-                  roSkillModules = snd emptySkillRuntime
+                  roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of
@@ -466,7 +466,7 @@ spec = describe "runtime agent (M7)" $ do
                   roCost = False,
                   roModelCatalog = "model-catalog.json",
                   roSkillCatalog = fst emptySkillRuntime,
-                  roSkillModules = snd emptySkillRuntime
+                  roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of

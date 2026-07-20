@@ -38,7 +38,10 @@ data TypeEnv = TypeEnv
 -- | Exported bindings from an imported module (qname key is slash text).
 data ModuleExport = ModuleExport
   { meValues :: Map Ident TypeExpr,
-    meEffects :: Map Ident (Set Effect)
+    meEffects :: Map Ident (Set Effect),
+    -- | When the module is an entry module (has @inputs@/@outputs@), the
+    -- resolved @(inputs, outputs)@ types enabling @qname(inputs)@ call syntax.
+    meEntryIO :: Maybe (TypeExpr, TypeExpr)
   }
   deriving stock (Eq, Show)
 

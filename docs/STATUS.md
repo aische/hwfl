@@ -4,8 +4,7 @@ Last updated: 2026-07-20
 
 ## Current focus
 
-**E11 same-project entry call** (`FrInvoke`) — spec locked; implement
-`qname(inputs)` → callee `main` in the same run.
+**Post-E11** — same-project entry calls shipped; next lab or Tier A ops.
 
 ## North star
 
@@ -16,10 +15,11 @@ not the product. See [idea.md](idea.md).
 
 ## Done recently
 
+- **E11 same-project entry call** — `qname(inputs)` → callee `main` in
+  same run/workspace; `FrInvoke` / `BranchMachine` nest; effects bubble;
+  no Meta tax; snapshot + module spans; `examples/e11`; 203 tests pass
 - **Coding-agent chat** — `Turn` values; `llm.agent` / `llm.agent_object`
   optional `history` in + `history` out; `examples/coding-agent-chat`
-- **FrInvoke / E11 spec locked** — same-project `qname(inputs)` →
-  callee `main`; one nest model; no Meta tax (§01 §3.2, §06 §3.1)
 - **Workflow chat** — `human.ask` detail carries prior assistant reply;
   `llm.chat_messages`; `examples/chat`
 - **CLI `--interactive`** — TTY stdin loop over confirm / choice / ask
@@ -33,9 +33,9 @@ None.
 
 ## Next up
 
-1. E11: implement same-project entry call (`FrInvoke`) per locked spec
-2. Optional: mutate / next-generation loop on the compare spine
-3. Tier A coding-agent ops (git, terminals) when lab needs them
+1. Optional: mutate / next-generation loop on the compare spine
+2. Tier A coding-agent ops (git, terminals) when lab needs them
+3. LangSmith-style LLM transcripts (opt-in, span-linked)
 
 ## Deferred
 

@@ -141,6 +141,8 @@ data Value
     VToolSpec ToolSpecValue
   | -- | Skill module @main@ resolved via 'RunCtx' skill tables.
     VSkillMain QName
+  | -- | Imported entry module callable as @qname(inputs)@ → callee @main@.
+    VEntryMain QName
   | -- | Reflected JSON Schema from @schema(T)@ (check-time type @Schema@).
     VSchema Aeson.Value
   | -- | Agent transcript turn (@TurnUser@ / @TurnAssistant@ / @TurnTool@).
@@ -174,6 +176,7 @@ renderValue = \case
   VHostOp op -> Left ("cannot render host op as text: " <> hostOpName op)
   VToolSpec ts -> Left ("cannot render tool spec as text: " <> ts.tvsName)
   VSkillMain q -> Left ("cannot render skill main as text: " <> T.intercalate "/" (map unIdent (qnParts q)))
+  VEntryMain q -> Left ("cannot render entry main as text: " <> T.intercalate "/" (map unIdent (qnParts q)))
   VSchema {} -> Left "cannot render a Schema as text"
   VTurn {} -> Left "cannot render a Turn as text"
 

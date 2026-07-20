@@ -122,6 +122,13 @@ inferExprEffects env effEnv = go
 
     calleeResidual = \case
       EVar n -> pure (Map.findWithDefault emptyEffs n effEnv)
+      -- Entry module call: @qname(inputs)@ — union all effects of callee @main@.
+      EQName q ->
+        pure $
+          maybe
+            emptyEffs
+            (\ex -> Map.findWithDefault emptyEffs (Ident "main") ex.meEffects)
+            (lookupImport (qnameToText q) env)
       EProj (EQName q) n ->
         pure $
           maybe

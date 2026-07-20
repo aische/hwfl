@@ -100,9 +100,14 @@ infer' env = \case
         Left (CannotInfer ("overloaded operator " <> name <> " must be applied"))
     | otherwise ->
         maybe (Left (UnboundVar n)) (resolveType env) (lookupVar n env)
+  -- An imported entry module is callable as @qname(inputs)@; bare reference
+  -- resolves to the callable type @TFun inputs outputs@.  Non-entry imports
+  -- resolve to their record of exported values (library / type-module access).
   EQName q -> case lookupImport (qnameToText q) env of
     Nothing -> Left (UnboundModule (qnameToText q))
-    Just ex -> resolveType env (moduleExportRecord ex)
+    Just ex -> case ex.meEntryIO of
+      Just (inputsTy, outputsTy) -> resolveType env (TFun inputsTy outputsTy)
+      Nothing -> resolveType env (moduleExportRecord ex)
   ESection _ -> Right tString
   EList [] -> Left (CannotInfer "empty list; add a type annotation")
   EList (e : es) -> do

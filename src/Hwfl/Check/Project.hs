@@ -19,6 +19,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
+import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..))
 import Hwfl.Ast.Name (QName (..), qnameToText)
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
@@ -237,7 +238,7 @@ checkOne cfg execOk lp (exports, checked) q
           result <-
             firstModuleErr m.lmPath $
               checkLoadedModuleInContext cfg execOk importExports m
-          let ex = moduleExportFrom (lmBody m) result
+          let ex = moduleExportFrom m.lmFrontmatter (lmBody m) result
           Right (Map.insert q ex exports, Set.insert q checked)
 
 firstModuleErr :: FilePath -> Either CheckError a -> Either ProjectCheckError a
@@ -245,8 +246,8 @@ firstModuleErr path = \case
   Left err -> Left (PceModule path err)
   Right x -> Right x
 
-moduleExportFrom :: ModuleBody -> CheckResult -> ModuleExport
-moduleExportFrom (ModuleBody decls _) result =
+moduleExportFrom :: Frontmatter -> ModuleBody -> CheckResult -> ModuleExport
+moduleExportFrom fm (ModuleBody decls _) result =
   ModuleExport
     { meValues =
         Map.fromList
@@ -254,5 +255,10 @@ moduleExportFrom (ModuleBody decls _) result =
             | DFun _ n _ _ _ <- decls,
               Just ty <- [Map.lookup n result.crEnv.teVars]
           ],
-      meEffects = result.crEffects
+      meEffects = result.crEffects,
+      meEntryIO = entryIO
     }
+  where
+    entryIO
+      | null fm.fmInputs && null fm.fmOutputs = Nothing
+      | otherwise = Just (TRecord fm.fmInputs, TRecord fm.fmOutputs)

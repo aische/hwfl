@@ -136,7 +136,9 @@ data RunOptions = RunOptions
     -- | Skill catalog from @hwfl check@ (empty when running a lone module).
     roSkillCatalog :: SkillCatalog,
     -- | Callable skill modules for mid-loop tool advertising.
-    roSkillModules :: Map QName LoadedModule
+    roSkillModules :: Map QName LoadedModule,
+    -- | Same-project entry modules callable as @qname(inputs)@ (E11).
+    roEntryModules :: Map QName LoadedModule
   }
 
 data RunOutcome
@@ -208,6 +210,7 @@ runTargetProject req = do
           let entry = lp.lpConfig.pcEntrypoint
               entryPath = modulePathForQname req.rtrTarget entry
               skillMods = callableSkillModules lp.lpModules
+              entryMods = lp.lpModules
           case Map.lookup entry lp.lpModules of
             Nothing ->
               pure (Left (RtProject (PceEntryNotFound (qnameToText entry))))
@@ -220,6 +223,7 @@ runTargetProject req = do
                       lp.lpConfig.pcExec
                       catalog
                       skillMods
+                      entryMods
               Right <$> runLoadedModule opts loaded
 
 resolveTargetCatalog ::
@@ -279,6 +283,7 @@ runTargetModule req = do
               Nothing
               catalog
               skillMods
+              Map.empty
       Right <$> runLoadedModule opts loaded
 
 mkTargetRunOptions ::
@@ -288,8 +293,9 @@ mkTargetRunOptions ::
   Maybe ExecPolicy ->
   SkillCatalog ->
   Map QName LoadedModule ->
+  Map QName LoadedModule ->
   RunOptions
-mkTargetRunOptions req entry hash execPol catalog skillMods =
+mkTargetRunOptions req entry hash execPol catalog skillMods entryMods =
   RunOptions
     { roWorkspace = req.rtrWorkspace,
       roProvider = req.rtrProvider,
@@ -303,7 +309,8 @@ mkTargetRunOptions req entry hash execPol catalog skillMods =
       roCost = req.rtrCost,
       roModelCatalog = req.rtrModelCatalog,
       roSkillCatalog = catalog,
-      roSkillModules = skillMods
+      roSkillModules = skillMods,
+      roEntryModules = entryMods
     }
 
 loadRunEnv :: ModuleBody -> (Env, FunTable)
@@ -371,6 +378,7 @@ runLoadedModule opts loaded = do
       typeEnv = loadTypeEnv loaded
       baseEnv = withRunCtx runId started baseEnv0
       skillFuns = buildSkillFunTables opts.roSkillModules
+      entryFuns = buildEntryFunTables opts.roEntryModules
       host =
         mkHostEnv
           ws
@@ -393,7 +401,8 @@ runLoadedModule opts loaded = do
             rcSeq = seqRef,
             rcSpans = spans,
             rcSkillFuns = skillFuns,
-            rcSkillModules = opts.roSkillModules
+            rcSkillModules = opts.roSkillModules,
+            rcEntryModules = entryFuns
           }
       modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
   hPutStrLn stderr ("hwfl run: run_id=" <> T.unpack runId)
@@ -546,9 +555,10 @@ mkCtx ::
   SpanState ->
   SkillCatalog ->
   Map QName LoadedModule ->
+  Map QName LoadedModule ->
   FilePath ->
   IO RunCtx
-mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods modelCatalog = do
+mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods entryMods modelCatalog = do
   ws <- newWorkspace wsRoot
   execPol <- loadExecPolicy wsRoot
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
@@ -568,7 +578,8 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
             roCost = False,
             roModelCatalog = modelCatalog,
             roSkillCatalog = catalog,
-            roSkillModules = skillMods
+            roSkillModules = skillMods,
+            roEntryModules = entryMods
           }
       host =
         mkHostEnv
@@ -592,7 +603,8 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
         rcSeq = seqRef,
         rcSpans = spans,
         rcSkillFuns = buildSkillFunTables skillMods,
-        rcSkillModules = skillMods
+        rcSkillModules = skillMods,
+        rcEntryModules = buildEntryFunTables entryMods
       }
 
 -- | Build 'HostEnv' with nested @meta.invoke@ wired.
@@ -732,6 +744,20 @@ buildSkillFunTables =
       SkillInstruction -> Nothing
       SkillCallable -> Just (loadRunEnv (lmBody m))
 
+-- | Build env+fun tables for imported entry modules (non-skill, has @main@).
+-- Used to populate 'rcEntryModules' for same-project entry calls (E11).
+buildEntryFunTables :: Map QName LoadedModule -> Map QName (Env, FunTable)
+buildEntryFunTables =
+  Map.mapMaybeWithKey $ \_q m ->
+    let fm = lmFrontmatter m
+     in if null fm.fmInputs && null fm.fmOutputs
+          then Nothing
+          else
+            let (env, funs) = loadRunEnv (lmBody m)
+             in if Map.member (Ident "main") funs
+                  then Just (env, funs)
+                  else Nothing
+
 -- | Load @exec@ policy from workspace @project.json@ when present.
 loadExecPolicy :: FilePath -> IO (Maybe ExecPolicy)
 loadExecPolicy root = do
@@ -783,7 +809,7 @@ loadExisting workspace runId provider catalogPath observer = do
           Right loaded -> do
             -- Project runs store projectHashForModules; lone modules store
             -- projectHashOf. Resolve the same way on resume/approve.
-            (hash, catalog, skillMods) <- resolveResumeProject meta.rmEntry loaded root
+            (hash, catalog, skillMods, entryMods) <- resolveResumeProject meta.rmEntry loaded root
             if hash /= snap.rsProjectHash
               then pure (Left (ConfigErr "stale project: hash mismatch"))
               else do
@@ -806,6 +832,7 @@ loadExisting workspace runId provider catalogPath observer = do
                     spans
                     catalog
                     skillMods
+                    entryMods
                     catalogPath
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
@@ -815,20 +842,20 @@ resolveResumeProject ::
   FilePath ->
   LoadedModule ->
   FilePath ->
-  IO (Text, SkillCatalog, Map QName LoadedModule)
+  IO (Text, SkillCatalog, Map QName LoadedModule, Map QName LoadedModule)
 resolveResumeProject entryPath loaded workspaceRoot = do
   mProjectRoot <- findProjectRoot entryPath
   case mProjectRoot of
     Just projectRoot -> do
       lpE <- loadProject projectRoot
       (catalog, skillMods) <- loadSkillRuntime projectRoot
-      let hash = case lpE of
-            Right lp -> projectHashForModules lp.lpModules
-            Left _ -> projectHashOf loaded
-      pure (hash, catalog, skillMods)
+      let (hash, entryMods) = case lpE of
+            Right lp -> (projectHashForModules lp.lpModules, lp.lpModules)
+            Left _ -> (projectHashOf loaded, Map.empty)
+      pure (hash, catalog, skillMods, entryMods)
     Nothing -> do
       (catalog, skillMods) <- loadSkillRuntime workspaceRoot
-      pure (projectHashOf loaded, catalog, skillMods)
+      pure (projectHashOf loaded, catalog, skillMods, Map.empty)
 
 findProjectRoot :: FilePath -> IO (Maybe FilePath)
 findProjectRoot start = go start (32 :: Int)

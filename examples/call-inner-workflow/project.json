@@ -1,0 +1,9 @@
+{
+    "name": "e11",
+    "version": "0.1.0",
+    "entrypoint": "workflows/main",
+    "effects": {
+        "default": ["Read"],
+        "deny": []
+    }
+}

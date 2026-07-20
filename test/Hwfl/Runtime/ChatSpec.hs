@@ -134,7 +134,7 @@ spec =
                         roCost = False,
                         roModelCatalog = "model-catalog.json",
                         roSkillCatalog = fst emptySkillRuntime,
-                        roSkillModules = snd emptySkillRuntime
+                        roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                       }
                     loaded
                 case outcome of
@@ -166,7 +166,7 @@ spec =
                         roCost = False,
                         roModelCatalog = "model-catalog.json",
                         roSkillCatalog = fst emptySkillRuntime,
-                        roSkillModules = snd emptySkillRuntime
+                        roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                       }
                     loaded
                 case o0 of
@@ -272,7 +272,7 @@ spec =
                         roCost = False,
                         roModelCatalog = "model-catalog.json",
                         roSkillCatalog = fst emptySkillRuntime,
-                        roSkillModules = snd emptySkillRuntime
+                        roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                       }
                     loaded
                 case o0 of

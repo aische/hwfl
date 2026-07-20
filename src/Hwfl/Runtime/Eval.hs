@@ -100,7 +100,9 @@ data RunCtx = RunCtx
     -- | Prebuilt env+funs for callable skills (keyed by skill qname).
     rcSkillFuns :: Map QName (Env, FunTable),
     -- | Loaded skill modules for tool schema / body rebuild.
-    rcSkillModules :: Map QName LoadedModule
+    rcSkillModules :: Map QName LoadedModule,
+    -- | Prebuilt env+funs for callable entry modules (same-project; E11).
+    rcEntryModules :: Map QName (Env, FunTable)
   }
 
 data StepMode = StepOnce | StepRun
@@ -154,6 +156,8 @@ applyIO ctx f args = case openApply ctx f args of
           Right hr -> do
             _ <- persist ctx (Just op) (Just hr.hrValue) MsRunning Nothing
             pure (Right hr.hrValue)
+  Right (CurEntryInvoke q _) ->
+    pure (Left (EvalErr (Unsupported ("entry invoke requires the machine driver: " <> qnameToText q))))
   Right c ->
     pure (Left (EvalErr (Trap ("applyIO: unexpected " <> T.pack (show c)))))
 
@@ -194,6 +198,8 @@ openApply ctx fv argv = case fv of
       Just (params, body) -> case bindParams params argv of
         Left e -> Left (EvalErr e)
         Right binds -> Right (CurEval body (extendEnvMany binds env))
+  -- Same-project entry call (E11): the caller drives a nested BranchMachine.
+  VEntryMain q -> Right (CurEntryInvoke q argv)
   VHostOp op -> Right (CurHost op argv)
   _ -> Left (EvalErr (Trap "applied a non-function value"))
 
@@ -246,6 +252,8 @@ stepMachine ctx mode m = case m.mStatus of
         CurParPool -> stepPar ctx mode m'
         CurCloseRegion sid v -> doCloseRegion ctx mode m' sid v
         CurAgent ag -> stepAgent ctx mode m' ag
+        CurEntryInvoke q argv -> doEntryInvoke ctx mode m' q argv
+        CurInvoke -> stepInvoke ctx mode m'
         CurReturn v | null m'.mFrames -> doComplete ctx mode m' v
         _ -> pure (Right (StepResult m' False))
 
@@ -1170,6 +1178,120 @@ mergeObjects a b = case (a, b) of
   (Aeson.Object ka, Aeson.Object kb) -> Aeson.Object (KM.union kb ka)
   _ -> b
 
+-------------------------------------------------------------------------------
+-- Entry module invoke (E11 / FrInvoke)
+
+-- | Enter a same-project nested module call: open span, create BranchMachine,
+-- push 'FrInvoke', set 'CurInvoke'.
+doEntryInvoke ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  QName ->
+  [(Maybe Ident, Value)] ->
+  IO (Either RuntimeError StepResult)
+doEntryInvoke ctx mode m q argv =
+  case Map.lookup q ctx.rcEntryModules of
+    Nothing ->
+      abortOrCatch ctx mode m (HostErr ("entry module not loaded: " <> qnameToText q))
+    Just (calleeEnv, calleeFuns) ->
+      case Map.lookup (Ident "main") calleeFuns of
+        Nothing ->
+          abortOrCatch ctx mode m (HostErr ("entry module missing main: " <> qnameToText q))
+        Just (params, body) ->
+          case bindParams params argv of
+            Left e -> abortOrCatch ctx mode m (EvalErr e)
+            Right binds -> do
+              let spanName = "module:" <> qnameToText q
+              sid <-
+                openSpan
+                  ctx.rcStore
+                  ctx.rcSpans
+                  spanName
+                  SkModule
+                  (object [])
+              let nested =
+                    initialMachine
+                      m.mProjectHash
+                      (CurEval body (extendEnvMany binds calleeEnv))
+                  m' =
+                    pauseIfStep
+                      mode
+                      m
+                        { mCurrent = CurInvoke,
+                          mFrames = FrInvoke q sid (mkBranch nested) : m.mFrames
+                        }
+              _ <- persist ctx Nothing Nothing m'.mStatus (Just m')
+              pure (Right (StepResult m' True))
+
+-- | Step the 'BranchMachine' held in the top 'FrInvoke' frame.
+stepInvoke ::
+  RunCtx -> StepMode -> Machine -> IO (Either RuntimeError StepResult)
+stepInvoke ctx mode m = case m.mFrames of
+  FrInvoke q sid (BranchMachine bm0) : rest -> do
+    let bm = case bm0.mStatus of
+          MsPaused PauseExplicit -> bm0 {mStatus = MsRunning}
+          _ -> bm0
+    er <- stepMachine ctx StepOnce bm
+    case er of
+      Left e -> abortOrCatch ctx mode m e
+      Right sr ->
+        let bm' = sr.srMachine
+         in case bm'.mStatus of
+              MsCompleted -> do
+                let result = fromMaybe VUnit bm'.mLastResult
+                closeSpan ctx.rcStore ctx.rcSpans sid SsOk (object []) Nothing
+                let m' = pauseIfStep mode (m {mCurrent = CurReturn result, mFrames = rest})
+                _ <- persist ctx Nothing (Just result) m'.mStatus (Just m')
+                pure (Right (StepResult m' True))
+              MsFailed -> do
+                let err = fromMaybe (EvalErr (Trap "entry invoke failed")) bm'.mError
+                closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr err]) Nothing
+                abortOrCatch ctx mode (m {mFrames = rest}) err
+              MsPaused (PauseAwaitingConfirm c) -> do
+                let m' =
+                      m
+                        { mStatus = MsPaused (PauseAwaitingConfirm c),
+                          mCurrent = CurAwaitConfirm c,
+                          mFrames = FrInvoke q sid (mkBranch bm') : rest
+                        }
+                _ <- persist ctx Nothing Nothing m'.mStatus (Just m')
+                pure (Right (StepResult m' True))
+              MsPaused (PauseAwaitingChoice c) -> do
+                let m' =
+                      m
+                        { mStatus = MsPaused (PauseAwaitingChoice c),
+                          mCurrent = CurAwaitChoice c,
+                          mFrames = FrInvoke q sid (mkBranch bm') : rest
+                        }
+                _ <- persist ctx Nothing Nothing m'.mStatus (Just m')
+                pure (Right (StepResult m' True))
+              MsPaused (PauseAwaitingAsk a) -> do
+                let m' =
+                      m
+                        { mStatus = MsPaused (PauseAwaitingAsk a),
+                          mCurrent = CurAwaitAsk a,
+                          mFrames = FrInvoke q sid (mkBranch bm') : rest
+                        }
+                _ <- persist ctx Nothing Nothing m'.mStatus (Just m')
+                pure (Right (StepResult m' True))
+              MsPaused PauseExplicit -> do
+                let m' = pauseIfStep mode (m {mFrames = FrInvoke q sid (mkBranch bm') : rest})
+                _ <- persist ctx Nothing Nothing m'.mStatus (Just m')
+                pure (Right (StepResult m' True))
+              _ ->
+                if sr.srTransitioned
+                  then do
+                    let m' =
+                          pauseIfStep
+                            mode
+                            m {mCurrent = CurInvoke, mFrames = FrInvoke q sid (mkBranch bm') : rest}
+                    _ <- persist ctx Nothing Nothing m'.mStatus (Just m')
+                    pure (Right (StepResult m' True))
+                  else
+                    pure (Left (EvalErr (Trap ("entry invoke machine made no progress: " <> qnameToText q))))
+  _ -> pure (Left (EvalErr (Trap "CurInvoke without FrInvoke")))
+
 doObsLog ::
   RunCtx -> StepMode -> Machine -> [(Maybe Ident, Value)] -> IO (Either RuntimeError StepResult)
 doObsLog ctx mode m args = case parseObsLog args of
@@ -1329,6 +1451,16 @@ approveMachine yes m = case m.mStatus of
                         { mStatus = MsRunning,
                           mCurrent = CurAgent ag'
                         }
+      (FrInvoke q sid (BranchMachine bm) : rest, _) ->
+        case approveMachine yes bm of
+          Left e -> Left e
+          Right bm' ->
+            Right
+              m
+                { mStatus = MsRunning,
+                  mCurrent = CurInvoke,
+                  mFrames = FrInvoke q sid (mkBranch bm') : rest
+                }
       _ ->
         Right
           m
@@ -1372,6 +1504,16 @@ chooseMachine selected m = case m.mStatus of
                           { mStatus = MsRunning,
                             mCurrent = CurAgent ag'
                           }
+        (FrInvoke q sid (BranchMachine bm) : rest, _) ->
+          case chooseMachine selected bm of
+            Left e -> Left e
+            Right bm' ->
+              Right
+                m
+                  { mStatus = MsRunning,
+                    mCurrent = CurInvoke,
+                    mFrames = FrInvoke q sid (mkBranch bm') : rest
+                  }
         _ ->
           Right
             m
@@ -1405,6 +1547,16 @@ replyMachine text m = case m.mStatus of
                         { mStatus = MsRunning,
                           mCurrent = CurAgent ag'
                         }
+      (FrInvoke q sid (BranchMachine bm) : rest, _) ->
+        case replyMachine text bm of
+          Left e -> Left e
+          Right bm' ->
+            Right
+              m
+                { mStatus = MsRunning,
+                  mCurrent = CurInvoke,
+                  mFrames = FrInvoke q sid (mkBranch bm') : rest
+                }
       _ ->
         Right
           m
@@ -1957,6 +2109,8 @@ crunchOnce ctx m = case m.mStatus of
       CurParPool -> Right Nothing
       CurCloseRegion {} -> Right Nothing
       CurAgent {} -> Right Nothing
+      CurEntryInvoke {} -> Right Nothing
+      CurInvoke -> Right Nothing
       CurEval e env -> crunchEval ctx m e env
       CurReturn v -> crunchReturn ctx m v
 
@@ -1966,7 +2120,8 @@ crunchEval ctx m e env = case e of
   EVar n -> case lookupEnv n env of
     Nothing -> Left (EvalErr (Trap ("unbound variable: " <> unIdent n)))
     Just v -> ret m v
-  EQName q -> Left (EvalErr (Unsupported ("qname not elaborated: " <> qnameToText q)))
+  -- Resolved at check time; elaborate to a callable entry-main value.
+  EQName q -> ret m (VEntryMain q)
   ESection s -> case Map.lookup s ctx.rcSections of
     Just t -> ret m (VString t)
     Nothing -> Left (EvalErr (Trap ("unknown section: @" <> slugToText s)))
@@ -2200,6 +2355,8 @@ crunchReturn ctx m v = case m.mFrames of
                   mFrames = FrJoin (v : acc) env es' : rest
                 }
           )
+    FrInvoke {} ->
+      Left (EvalErr (Trap "unexpected return into FrInvoke"))
 
 applyOrArgs ::
   RunCtx ->

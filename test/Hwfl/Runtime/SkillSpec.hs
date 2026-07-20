@@ -72,7 +72,7 @@ spec = describe "skills runtime (phases B–C)" $ do
                         roCost = False,
                     roModelCatalog = "model-catalog.json",
                         roSkillCatalog = cpr.cprSkillCatalog,
-                        roSkillModules = skillMods
+                        roSkillModules = skillMods, roEntryModules = mempty
                       }
               outcome <- runLoadedModule opts loaded
               case outcome of
@@ -108,7 +108,7 @@ spec = describe "skills runtime (phases B–C)" $ do
                         roCost = False,
                     roModelCatalog = "model-catalog.json",
                         roSkillCatalog = cpr.cprSkillCatalog,
-                        roSkillModules = callableSkills lp
+                        roSkillModules = callableSkills lp, roEntryModules = mempty
                       }
               outcome <- runLoadedModule opts loaded
               case outcome of

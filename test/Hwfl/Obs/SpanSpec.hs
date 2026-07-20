@@ -188,7 +188,7 @@ spec = describe "observability (M6)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                   }
                 loaded
             case outcome of
@@ -224,7 +224,7 @@ spec = describe "observability (M6)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of

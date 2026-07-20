@@ -211,6 +211,8 @@ valueEq a b = case (a, b) of
   (_, VToolSpec {}) -> Left (Trap "cannot compare tool specs")
   (VSkillMain {}, _) -> Left (Trap "cannot compare skill mains")
   (_, VSkillMain {}) -> Left (Trap "cannot compare skill mains")
+  (VEntryMain {}, _) -> Left (Trap "cannot compare entry mains")
+  (_, VEntryMain {}) -> Left (Trap "cannot compare entry mains")
   (VSchema {}, _) -> Left (Trap "cannot compare schemas")
   (_, VSchema {}) -> Left (Trap "cannot compare schemas")
   (VTurn {}, _) -> Left (Trap "cannot compare turns")

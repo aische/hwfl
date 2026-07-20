@@ -66,7 +66,7 @@ spec = describe "compare lab (local genetic prototype)" $ do
                   roCost = False,
                   roModelCatalog = "model-catalog.json",
                   roSkillCatalog = catalog,
-                  roSkillModules = skillMods
+                  roSkillModules = skillMods, roEntryModules = mempty
                 }
               m
           case outcome of

@@ -197,7 +197,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of
@@ -231,7 +231,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of
@@ -264,7 +264,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roCost = False,
                   roModelCatalog = "model-catalog.json",
                   roSkillCatalog = fst emptySkillRuntime,
-                  roSkillModules = snd emptySkillRuntime
+                  roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of
@@ -298,7 +298,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roCost = False,
                   roModelCatalog = "model-catalog.json",
                   roSkillCatalog = fst emptySkillRuntime,
-                  roSkillModules = snd emptySkillRuntime
+                  roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of
@@ -332,7 +332,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of
@@ -374,7 +374,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                   roCost = False,
                   roModelCatalog = "model-catalog.json",
                   roSkillCatalog = fst emptySkillRuntime,
-                  roSkillModules = snd emptySkillRuntime
+                  roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case paused of
@@ -416,7 +416,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case o0 of
@@ -457,7 +457,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           -- Mutate kernel body so project_hash changes.

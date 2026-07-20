@@ -113,7 +113,7 @@ spec = describe "meta.invoke" $ do
                       roCost = False,
                       roModelCatalog = "model-catalog.json",
                       roSkillCatalog = catalog,
-                      roSkillModules = skillMods
+                      roSkillModules = skillMods, roEntryModules = mempty
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of
@@ -152,7 +152,7 @@ spec = describe "meta.invoke" $ do
                       roCost = False,
                       roModelCatalog = "model-catalog.json",
                       roSkillCatalog = catalog,
-                      roSkillModules = skillMods
+                      roSkillModules = skillMods, roEntryModules = mempty
                     }
             outcome <- runLoadedModule opts loaded
             case outcome of

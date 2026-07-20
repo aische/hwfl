@@ -28,7 +28,7 @@ import Data.Aeson qualified as Aeson
 import Data.Map.Strict (Map)
 import Data.Text (Text)
 import Hwfl.Ast.Expr (Arg, Expr, Field, MatchArm, Param, StringPart)
-import Hwfl.Ast.Name (Ident)
+import Hwfl.Ast.Name (Ident, QName)
 import Hwfl.Eval.Value (Env, HostOpId, ToolSpecValue, Value (..))
 import Hwfl.Llm.Types (ToolCall, ToolResult, Turn)
 import Hwfl.Runtime.Error (RuntimeError)
@@ -96,6 +96,12 @@ data Current
     CurCloseRegion Text Value
   | -- | @llm.agent@ multi-transition loop (model / tool rounds).
     CurAgent AgentState
+  | -- | Enter a nested same-project entry call (@FrInvoke@; E11).
+    -- Carries the callee qname and evaluated input args before the
+    -- BranchMachine is created and pushed onto 'FrInvoke'.
+    CurEntryInvoke QName [(Maybe Ident, Value)]
+  | -- | Step the nested BranchMachine held in the top 'FrInvoke' frame.
+    CurInvoke
   deriving stock (Eq, Show)
 
 -- | Serializable agent loop state (spec §06 §6 / hwfi MachineAgent).
@@ -167,6 +173,9 @@ data Frame
   | -- | Open @obs.span@ region; close when value returns.
     FrRegion Text
   | FrJoin [Value] Env [Expr]
+  | -- | Nested same-project entry call (E11 / spec §06 §3.1). Holds the
+    -- callee's 'BranchMachine' and the open module span id.
+    FrInvoke QName Text BranchMachine
   deriving stock (Eq, Show)
 
 data ParOnError

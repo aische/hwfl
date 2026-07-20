@@ -189,7 +189,7 @@ spec = describe "coding-agent example" $ do
                       roCost = False,
                     roModelCatalog = "model-catalog.json",
                       roSkillCatalog = cpr.cprSkillCatalog,
-                      roSkillModules = callableSkills lp
+                      roSkillModules = callableSkills lp, roEntryModules = mempty
                     }
                   m
               case outcome of

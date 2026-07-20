@@ -240,6 +240,13 @@ currentToJson = \case
   CurCloseRegion sid v ->
     object ["tag" .= String "close_region", "span_id" .= sid, "v" .= valueToJson v]
   CurAgent ag -> object ["tag" .= String "agent", "agent" .= agentToJson ag]
+  CurEntryInvoke q argv ->
+    object
+      [ "tag" .= String "entry_invoke",
+        "qname" .= qnameToText q,
+        "args" .= map argValToJson argv
+      ]
+  CurInvoke -> object ["tag" .= String "invoke"]
 
 parseCurrent :: Aeson.Value -> Parser Current
 parseCurrent = withObject "Current" $ \o -> do
@@ -258,6 +265,11 @@ parseCurrent = withObject "Current" $ \o -> do
     "close_region" ->
       CurCloseRegion <$> o .: "span_id" <*> (o .: "v" >>= parseValue)
     "agent" -> CurAgent <$> (o .: "agent" >>= parseAgent)
+    "entry_invoke" ->
+      CurEntryInvoke
+        <$> (qnameFromText <$> o .: "qname")
+        <*> (o .: "args" >>= mapM parseArgVal)
+    "invoke" -> pure CurInvoke
     other -> fail ("unknown current: " <> T.unpack other)
 
 agentToJson :: AgentState -> Aeson.Value
@@ -414,6 +426,13 @@ frameToJson = \case
         "env" .= envToJson env,
         "rest" .= showText es
       ]
+  FrInvoke q sid bm ->
+    object
+      [ "tag" .= String "invoke",
+        "qname" .= qnameToText q,
+        "span_id" .= sid,
+        "machine" .= machineToJson (unBranch bm)
+      ]
 
 parseFrame :: Aeson.Value -> Parser Frame
 parseFrame = withObject "Frame" $ \o -> do
@@ -473,6 +492,11 @@ parseFrame = withObject "Frame" $ \o -> do
         <$> (o .: "acc" >>= mapM parseValue)
         <*> (o .: "env" >>= parseEnv)
         <*> (o .: "rest" >>= readText)
+    "invoke" ->
+      FrInvoke
+        <$> (qnameFromText <$> o .: "qname")
+        <*> o .: "span_id"
+        <*> (mkBranch <$> (o .: "machine" >>= parseMachine))
     other -> fail ("unknown frame: " <> T.unpack other)
 
 parToJson :: ParJoinState -> Aeson.Value
@@ -699,6 +723,8 @@ valueToJson = \case
   V.VToolSpec ts -> object ["tag" .= String "tool_spec", "tool" .= toolSpecToJson ts]
   V.VSkillMain q ->
     object ["tag" .= String "skill_main", "qname" .= qnameToText q]
+  V.VEntryMain q ->
+    object ["tag" .= String "entry_main", "qname" .= qnameToText q]
   V.VSchema schema -> object ["tag" .= String "schema", "v" .= schema]
   V.VTurn t -> object ["tag" .= String "turn", "v" .= turnToJson t]
 
@@ -731,6 +757,7 @@ parseValue = withObject "Value" $ \o -> do
     "host" -> V.VHostOp <$> (o .: "op" >>= parseHostOp)
     "tool_spec" -> V.VToolSpec <$> (o .: "tool" >>= parseToolSpec)
     "skill_main" -> V.VSkillMain . qnameFromText <$> o .: "qname"
+    "entry_main" -> V.VEntryMain . qnameFromText <$> o .: "qname"
     "schema" -> V.VSchema <$> o .: "v"
     "turn" -> V.VTurn <$> (o .: "v" >>= parseTurn)
     other -> fail ("unknown value tag: " <> T.unpack other)

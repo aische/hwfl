@@ -144,7 +144,7 @@ spec = describe "try/catch runtime (E10)" $ do
                    roCost = False,
                    roModelCatalog = "model-catalog.json",
                    roSkillCatalog = fst emptySkillRuntime,
-                   roSkillModules = snd emptySkillRuntime
+                   roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                  })
       result <- runModule e10Src path opts
       case result of
@@ -173,7 +173,7 @@ spec = describe "try/catch runtime (E10)" $ do
                 roCost = False,
                 roModelCatalog = "model-catalog.json",
                 roSkillCatalog = fst emptySkillRuntime,
-                roSkillModules = snd emptySkillRuntime
+                roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
               }
       result <- runModule fsCatchSrc path opts
       case result of
@@ -222,7 +222,7 @@ spec = describe "try/catch runtime (E10)" $ do
                 roCost = False,
                 roModelCatalog = "model-catalog.json",
                 roSkillCatalog = fst emptySkillRuntime,
-                roSkillModules = snd emptySkillRuntime
+                roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
               }
       result <- runModule src path opts
       case result of
@@ -251,7 +251,7 @@ spec = describe "try/catch runtime (E10)" $ do
                 roCost = False,
                 roModelCatalog = "model-catalog.json",
                 roSkillCatalog = fst emptySkillRuntime,
-                roSkillModules = snd emptySkillRuntime
+                roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
               }
       outcome <- runModule trapSrc path opts
       outcome `shouldSatisfy` isLeft

@@ -74,7 +74,7 @@ spec = describe "runtime llm.object (E14)" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime
+                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
                 }
               loaded
           case outcome of

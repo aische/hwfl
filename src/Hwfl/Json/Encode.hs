@@ -54,5 +54,6 @@ valueToAeson = \case
   VHostOp op -> Aeson.String ("<" <> hostOpName op <> ">")
   VToolSpec ts -> Aeson.String ("<tool:" <> ts.tvsName <> ">")
   VSkillMain q -> Aeson.String ("<skill:" <> qnameToText q <> ">")
+  VEntryMain q -> Aeson.String ("<entry:" <> qnameToText q <> ">")
   VSchema schema -> schema
   VTurn t -> turnToJson t
