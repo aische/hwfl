@@ -29,9 +29,10 @@ None.
 ## Next up
 
 1. Credible coding-agent exemplar: tools that call workflows (E11)
-2. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
-3. Opt-in LangSmith-style LLM transcripts
-4. Optional: sum `cost_micros` in lab fitness; semantic-check static filter
+2. Soft-land `max_rounds` (exhausted return or pause, not abort)
+3. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
+4. Opt-in LangSmith-style LLM transcripts
+5. Optional: sum `cost_micros` in lab fitness; semantic-check static filter
 
 ## Deferred
 

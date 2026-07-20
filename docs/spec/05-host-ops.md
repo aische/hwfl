@@ -67,6 +67,18 @@ across calls. Do **not** encode tool turns as fake `{ role, content }`
 strings; `llm.chat_messages` stays the thin text-only path. Example:
 `examples/coding-agent-chat`.
 
+**`max_rounds` budget (today vs planned):** Today, exhausting
+`max_rounds` is a catchable `ProviderErr` that fails the agent (and
+usually the run). Workspace side effects remain, but the transcript is
+not returned to the workflow, and `hwfl resume` does not continue a
+failed run. Raising the limit by editing the module also fails resume
+(stale project hash). **Planned:** soft-land instead of abort — either
+a structured exhausted return that includes `history` / rounds (so the
+workflow can chain another agent call), or a pause that lets the
+operator extend the budget / continue without throwing away paid tool
+work. Until then, authors should chunk with `history` across multiple
+agent calls (see coding-agent-chat). Tracked in TASKS.
+
 ### 2.1 Agent tools
 
 A tool is a **typed function** reference plus schema:

@@ -178,6 +178,13 @@ persist `active_tool_ids` / `loaded_instruction_ids`. Agent tool spans
 appear as `tool:skill_discover` / `tool:skill_load` under the enclosing
 agent round. See [skills-plan.md](../skills-plan.md).
 
+**`max_rounds` (planned soft-land):** Hitting the round budget currently
+fails the agent (`MsFailed`). Preferred semantics: treat budget
+exhaustion as a normal completion boundary — return structured
+exhausted state with `history` (workflow continues / chains), **or**
+pause for extend-budget / continue — not a terminal abort. See
+[05-host-ops.md](05-host-ops.md) agent notes.
+
 ## 7. Workspace & sandbox
 
 Identical intent to hwfi:

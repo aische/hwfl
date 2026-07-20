@@ -11,6 +11,11 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 Prefer MCP / workflow modules over growing the host-op set.
 
+- [ ] Soft-land `max_rounds`: structured exhausted return (with
+      `history`) or pause/extend-budget — not abort / `MsFailed`.
+      Spec notes in [05-host-ops.md](spec/05-host-ops.md) /
+      [06-runtime.md](spec/06-runtime.md) §6. Until then, chunk via
+      `history` across agent calls.
 - [ ] MCP client (tool provider behind `tool(f)` / host-op story)
 - [ ] Git (read-heavy host ops or MCP) — status / diff / log
 - [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot
