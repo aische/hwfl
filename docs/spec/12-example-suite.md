@@ -186,6 +186,15 @@ feasibility then fewer `llm.*` spans. **Mutate loop:** `fs.patch` turns
 (generation 1). Fixture: `CompareSpec` (mock; winner = lean;
 `trial_count` = 4, `generations` = 2).
 
+## E23 — Evolve coding-agent genomes **H**
+
+**Shipped:** `examples/evolve-agent` — lab parent scores slim coding-agent
+genomes (`wasteful` vs `tight`) on a fixed Python fixture via nested
+`meta.invoke`, ranks by task `ok` then fewer `llm.*` spans, proposes an
+`llm.object` patch mutation (structural fallback if hunks fail), iterates
+elite + child for N generations. Isolated `trials/g{N}/{id}/`. Fixture:
+`EvolveAgentSpec` (mock; winner = `tight`; 3 gens → 6 trials).
+
 ---
 
 ## Contracts table (summary)
@@ -203,6 +212,7 @@ feasibility then fewer `llm.*` spans. **Mutate loop:** `fs.patch` turns
 | E20     | ✓           | ✓   | optional | library spans         |
 | E21     | ✓           | ✓   | mid-tool | agent_object + exec   |
 | E22     | ✓           | ✓   | —        | nested invoke + spans |
+| E23     | ✓           | ✓   | —        | evolve agent genomes  |
 
 ## Using the suite
 

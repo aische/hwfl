@@ -250,6 +250,7 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | `examples/coding-agent` | Full agent loop + stack skills over a workspace |
 | `examples/skills` | Minimal `skill.discover` / `skill.load` demo |
 | `examples/compare` | Lab: compare → mutate genomes → next generation |
+| `examples/evolve-agent` | Lab: evolve coding-agent genomes on a fixed task |
 | `examples/semantic-check` | Multi-layer review workflow |
 
 The coding-agent lists `skill.discover` / `skill.load` explicitly and loads

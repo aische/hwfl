@@ -6,8 +6,6 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 - [ ] Credible coding-agent exemplar: tools that call same-project
       workflows (`FrInvoke` / E11), not only host ops
-- [ ] Richer lab fitness — outcome + cost/spans today; optional
-      semantic-check as static filter before burning tokens
 
 ## Next (P1–P2) — agent substrate
 
@@ -33,6 +31,7 @@ Prefer MCP / workflow modules over growing the host-op set.
 - [ ] Semantic-check S4 / S6 — parked; see
       [semantic-check-plan.md](semantic-check-plan.md); optional fitness
       filter for lab candidates
+- [ ] Optional: lab fitness sum `cost_micros` (spans already counted)
 - [ ] Skills phase D (optional) — `examples/skills/` writer; no hidden
       `skill.extract` host
 - [ ] Optional: omit / `latest` run-id for approve / choose / reply / show
@@ -70,4 +69,4 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check
 A+B / S1–S3 / S5, `fs.patch`, lab spine, E11, coding-agent chat, compare
-mutate / next-gen loop).
+mutate / next-gen, evolve-agent E23).

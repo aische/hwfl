@@ -1,0 +1,22 @@
+{
+  "name": "agent-tight",
+  "version": "0.1.0",
+  "entrypoint": "workflows/main",
+  "env": [],
+  "effects": {
+    "default": ["Read", "Write", "Net", "Exec", "Meta"],
+    "deny": []
+  },
+  "skills": {
+    "max_instruction_loads": 3,
+    "max_instruction_chars": 8000,
+    "max_callable_loads": 10
+  },
+  "exec": {
+    "allow": ["python3", "python", "pytest", "bash", "sh", "echo", "ls", "cat"],
+    "env": ["PATH", "HOME", "USER", "LANG", "TMPDIR", "TMP", "TEMP", "TERM"],
+    "timeout_ms": 120000,
+    "max_output_bytes": 1048576,
+    "confirm": false
+  }
+}

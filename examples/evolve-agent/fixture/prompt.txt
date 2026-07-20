@@ -1,0 +1,2 @@
+Create a tiny Python module add.py with add(a, b) and a test_add.py that
+asserts add(2, 3) == 5. Verify with python3 -c. Keep the tree minimal.
