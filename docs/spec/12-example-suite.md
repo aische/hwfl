@@ -189,11 +189,14 @@ feasibility then fewer `llm.*` spans. **Mutate loop:** `fs.patch` turns
 ## E23 — Evolve coding-agent genomes **H**
 
 **Shipped:** `examples/evolve-agent` — lab parent scores slim coding-agent
-genomes (`wasteful` vs `tight`) on a fixed Python fixture via nested
-`meta.invoke`, ranks by task `ok` then fewer `llm.*` spans, proposes an
-`llm.object` patch mutation (structural fallback if hunks fail), iterates
-elite + child for N generations. Isolated `trials/g{N}/{id}/`. Fixture:
-`EvolveAgentSpec` (mock; winner = `tight`; 3 gens → 6 trials).
+genomes (`wasteful` vs `tight`) on a **seeded broken** Python fixture
+(`stats.py` / `test_stats.py`) via nested `meta.invoke`. Fitness = task
+`ok` then fewer `llm.*` spans. Mutation uses an operator menu
+(`strip_warmup` / `shrink_rounds` / `drop_fs_list`): `llm.object` patch
+with **no-op rejection**, then gen-rotated structural fallbacks. Isolated
+`trials/g{N}/{id}/`. Fixture: `EvolveAgentSpec` (mock; winner = `tight`;
+3 gens → 6 trials; `mut-g0` ≠ `mut-g1`).
+
 
 ---
 

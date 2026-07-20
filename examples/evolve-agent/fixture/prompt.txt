@@ -1,2 +1,11 @@
-Create a tiny Python module add.py with add(a, b) and a test_add.py that
-asserts add(2, 3) == 5. Verify with python3 -c. Keep the tree minimal.
+The workspace already contains a small broken Python package:
+
+- stats.py — buggy mean / percentile
+- test_stats.py — failing tests
+
+Fix stats.py so every test passes. Do not rewrite the tests unless a test
+is clearly wrong. Verify with:
+
+  python3 -c "from test_stats import test_mean, test_mean_empty, test_percentile; test_mean(); test_mean_empty(); test_percentile(); print('ok')"
+
+Prefer reading existing files before editing. ok=true only when verify exits 0.

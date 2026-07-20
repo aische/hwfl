@@ -13,8 +13,9 @@ effects: [Read, Write, Net, Meta]
 
 # Evolve agent lab
 
-Score slim coding-agent genomes on a fixed Python task, propose an LLM
-patch mutation (with structural fallback), and iterate elite + child.
+Score slim coding-agent genomes on a seeded broken Python fixture, mutate
+with an operator menu (LLM patch + structural fallbacks), reject no-ops,
+and iterate elite + child.
 
 ## body
 
@@ -37,6 +38,7 @@ type Trial = {
 type PatchHunk = { old: String, new: String }
 
 type Mutation = {
+  operator: String,
   rationale: String,
   hunks: List<PatchHunk>
 }
@@ -47,6 +49,7 @@ type MutEvent = {
   child: String,
   ok: Bool,
   via: String,
+  operator: String,
   error: String
 }
 
@@ -69,7 +72,7 @@ fun empty_trial(err: String): Trial =
 fun materialize(gen: Int, id: String): String =
   let trial_ws = $"trials/g{gen}/{id}"
   let _ = fs.copy(src = $"genomes/{id}", dst = $"candidates/{id}", overwrite = true)
-  let _ = fs.mkdir(trial_ws)
+  let _ = fs.copy(src = "fixture/project", dst = trial_ws, overwrite = true)
   trial_ws
 
 fun run_trial(gen: Int, id: String, prompt: String, model: String): Trial =
@@ -167,11 +170,14 @@ fun worst_of(trials: List<Trial>): Trial =
   if n == 0 then empty_trial("no trials")
   else pick_worst(trials, 1, n, trials[0])
 
--- Strip the deliberate warmup llm.chat from wasteful-style genomes.
-fun fallback_strip_warmup(src: String, dst: String): { ok: Bool, error: String } =
+fun genome_path(id: String): String = $"genomes/{id}/workflows/main.md"
+
+-- Structural operators (deterministic). Each copies src → dst then edits.
+fun op_strip_warmup(src: String, dst: String): { ok: Bool, error: String } =
   let _ = fs.copy(src = $"genomes/{src}", dst = $"genomes/{dst}", overwrite = true)
+  let before = fs.read(genome_path(dst))
   let p = fs.patch(
-    path = $"genomes/{dst}/workflows/main.md",
+    path = genome_path(dst),
     hunks = [
       {
         old = """  let _warmup = llm.chat(
@@ -184,41 +190,95 @@ fun fallback_strip_warmup(src: String, dst: String): { ok: Bool, error: String }
       }
     ]
   )
-  if p.ok then { ok = true, error = "" }
+  let after = fs.read(genome_path(dst))
+  if p.ok && before.text != after.text then { ok = true, error = "" }
+  else { ok = false, error = "strip_warmup: no change" }
+
+fun op_shrink_rounds(src: String, dst: String): { ok: Bool, error: String } =
+  let _ = fs.copy(src = $"genomes/{src}", dst = $"genomes/{dst}", overwrite = true)
+  let before = fs.read(genome_path(dst))
+  let e16 = fs.edit(path = genome_path(dst), old = "max_rounds = 16", new = "max_rounds = 8")
+  let e8 =
+    if e16.ok then { ok = true }
+    else fs.edit(path = genome_path(dst), old = "max_rounds = 8", new = "max_rounds = 4")
+  let after = fs.read(genome_path(dst))
+  if (e16.ok || e8.ok) && before.text != after.text then { ok = true, error = "" }
+  else { ok = false, error = "shrink_rounds: no change" }
+
+fun op_drop_fs_list(src: String, dst: String): { ok: Bool, error: String } =
+  let _ = fs.copy(src = $"genomes/{src}", dst = $"genomes/{dst}", overwrite = true)
+  let before = fs.read(genome_path(dst))
+  let p = fs.patch(
+    path = genome_path(dst),
+    hunks = [
+      {
+        old = """      tool(skill.load),
+      tool(fs.list),
+      tool(fs.read),""",
+        new = """      tool(skill.load),
+      tool(fs.read),"""
+      }
+    ]
+  )
+  let after = fs.read(genome_path(dst))
+  if p.ok && before.text != after.text then { ok = true, error = "" }
+  else { ok = false, error = "drop_fs_list: no change" }
+
+fun apply_named_op(op: String, src: String, dst: String): { ok: Bool, error: String } =
+  if op == "strip_warmup" then op_strip_warmup(src, dst)
+  else if op == "shrink_rounds" then op_shrink_rounds(src, dst)
+  else if op == "drop_fs_list" then op_drop_fs_list(src, dst)
+  else { ok = false, error = $"unknown operator: {op}" }
+
+-- Try operators starting at gen offset so later gens explore different edits.
+fun fallback_ops(
+  src: String,
+  dst: String,
+  ops: List<String>,
+  start: Int,
+  i: Int,
+  n: Int
+): { ok: Bool, error: String, operator: String } =
+  if i >= n then { ok = false, error = "all operators failed", operator = "" }
   else
-    let e = fs.edit(
-      path = $"genomes/{dst}/workflows/main.md",
-      old = "max_rounds = 16",
-      new = "max_rounds = 8"
-    )
-    if e.ok then { ok = true, error = "fallback: shrunk max_rounds" }
-    else { ok = false, error = p.error }
+    let op = ops[(start + i) - ((start + i) / n) * n]
+    let r = apply_named_op(op, src, dst)
+    if r.ok then { ok = true, error = "", operator = op }
+    else fallback_ops(src, dst, ops, start, i + 1, n)
 
 fun mutate_genome(
   src: String,
   dst: String,
-  model: String
-): { ok: Bool, error: String, rationale: String, via: String } =
-  let src_body = fs.read($"genomes/{src}/workflows/main.md")
+  model: String,
+  gen: Int
+): { ok: Bool, error: String, rationale: String, via: String, operator: String } =
+  let ops = ["strip_warmup", "shrink_rounds", "drop_fs_list"]
+  let src_body = fs.read(genome_path(src))
   let proposal = llm.object(
-    prompt = $"Propose a single fs.patch that removes wasted LLM work from this coding-agent module (keep I/O and tools). Prefer deleting a warmup llm.chat if present.\n\nMODULE:\n{src_body.text}",
+    prompt = $"Pick ONE operator from [strip_warmup, shrink_rounds, drop_fs_list] and emit exact fs.patch hunks that apply it to this coding-agent module. Hunks must change the file (no identity patches). Prefer strip_warmup if a warmup llm.chat is present, else shrink_rounds, else drop_fs_list.\n\nMODULE:\n{src_body.text}",
     schema = schema(Mutation),
     model = model
   )
   let _ = fs.copy(src = $"genomes/{src}", dst = $"genomes/{dst}", overwrite = true)
-  let p = fs.patch(
-    path = $"genomes/{dst}/workflows/main.md",
-    hunks = proposal.hunks
-  )
-  if p.ok then
-    { ok = true, error = "", rationale = proposal.rationale, via = "llm_patch" }
+  let before = fs.read(genome_path(dst))
+  let p = fs.patch(path = genome_path(dst), hunks = proposal.hunks)
+  let after = fs.read(genome_path(dst))
+  if p.ok && before.text != after.text then
+    {
+      ok = true,
+      error = "",
+      rationale = proposal.rationale,
+      via = "llm_patch",
+      operator = proposal.operator
+    }
   else
-    let fb = fallback_strip_warmup(src, dst)
+    let fb = fallback_ops(src, dst, ops, gen, 0, list.length(ops))
     {
       ok = fb.ok,
       error = fb.error,
       rationale = proposal.rationale,
-      via = "fallback"
+      via = "fallback",
+      operator = fb.operator
     }
 
 fun evolve(
@@ -247,13 +307,14 @@ fun evolve(
     let parent = worst_of(trials)
     let child = $"mut-g{g}"
     let src = if parent.id == "" then best.id else parent.id
-    let mut = mutate_genome(src, child, model)
+    let mut = mutate_genome(src, child, model, g)
     let mut_row = {
       gen = g,
       parent = src,
       child = child,
       ok = mut.ok,
       via = mut.via,
+      operator = mut.operator,
       error = mut.error
     }
     let elite = if best.feasible then best.id else src

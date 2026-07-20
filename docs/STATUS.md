@@ -4,8 +4,8 @@ Last updated: 2026-07-20
 
 ## Current focus
 
-**Lab loop + exemplars** — evolve-agent lab shipped; next is a
-coding-agent exemplar whose tools call same-project workflows (E11).
+**Lab loop + exemplars** — evolve-agent hardened (fixture + operators);
+next is coding-agent tools that call same-project workflows (E11).
 Control plane is **hwfl-server**.
 
 ## North star
@@ -17,10 +17,10 @@ semantic-check are benchmarks / research, not the product. See
 
 ## Done recently
 
-- **Evolve-agent lab (E23)** — score slim coding-agent genomes on a fixed
-  Python task; `llm.object` mutate + structural fallback; N-gen elite+child;
-  fitness = task `ok` then fewer `llm.*` spans; isolated trial dirs
-- Compare mutate loop; E11 entry call; coding-agent chat; lab spine
+- **Evolve-agent v2** — seeded broken `stats` fixture; operator menu
+  (`strip_warmup` / `shrink_rounds` / `drop_fs_list`); no-op patch
+  rejection; gen-rotated fallbacks so `mut-g0` ≠ `mut-g1`
+- Evolve-agent E23; compare mutate; E11; coding-agent chat; lab spine
 
 ## Blockers
 

@@ -40,7 +40,37 @@ projectRoot = "examples/evolve-agent"
 modulePath :: FilePath
 modulePath = projectRoot </> "workflows" </> "main.md"
 
--- | Nested coding-agent tool loop + default structured replies for mutate.
+fixedStatsPy :: Text
+fixedStatsPy =
+  T.unlines
+    [ "def mean(nums):",
+      "    \"\"\"Arithmetic mean. Empty list -> 0.0.\"\"\"",
+      "    if not nums:",
+      "        return 0.0",
+      "    return sum(nums) / len(nums)",
+      "",
+      "",
+      "def percentile(nums, p):",
+      "    \"\"\"Nearest-rank percentile for p in [0, 100]. Empty -> 0.0.\"\"\"",
+      "    if not nums:",
+      "        return 0.0",
+      "    s = sorted(nums)",
+      "    if p <= 0:",
+      "        return s[0]",
+      "    if p >= 100:",
+      "        return s[-1]",
+      "    idx = int(round((p / 100.0) * (len(s) - 1)))",
+      "    return s[idx]",
+      ""
+    ]
+
+verifyArgs :: [Text]
+verifyArgs =
+  [ "-c",
+    "from test_stats import test_mean, test_mean_empty, test_percentile; test_mean(); test_mean_empty(); test_percentile(); print('ok')"
+  ]
+
+-- | Nested coding-agent tool loop + weak mutate proposals (force fallback).
 evolveMock :: LlmProvider
 evolveMock = mockProviderWith reply
   where
@@ -48,14 +78,12 @@ evolveMock = mockProviderWith reply
     reply req
       | not (null req.chatTools) = codingAgentReply req
       | otherwise =
-          -- llm.object / llm.chat: fillSchema path via a tiny local echo.
-          -- Deliberately weak patch proposals so structural fallback runs.
           case req.chatResponseFormat of
             Just _ ->
               Right
                 ProviderResult
                   { prContent =
-                      "{\"rationale\":\"mock\",\"hunks\":[{\"old\":\"___no_match___\",\"new\":\"x\"}]}",
+                      "{\"operator\":\"strip_warmup\",\"rationale\":\"mock\",\"hunks\":[{\"old\":\"___no_match___\",\"new\":\"x\"}]}",
                     prToolCalls = [],
                     prUsage = Just (TokenUsage 1 1),
                     prFinishReason = FinishStop
@@ -94,34 +122,27 @@ evolveMock = mockProviderWith reply
                 ]
             2 ->
               needTools
+                [ ToolCall "c3" "fs_read" (object ["path" .= ("stats.py" :: Text)])
+                ]
+            3 ->
+              needTools
                 [ ToolCall
-                    "c3"
-                    "fs_write"
-                    ( object
-                        [ "path" .= ("add.py" :: Text),
-                          "text" .= ("def add(a, b):\n    return a + b\n" :: Text)
-                        ]
-                    ),
-                  ToolCall
                     "c4"
                     "fs_write"
                     ( object
-                        [ "path" .= ("test_add.py" :: Text),
-                          "text"
-                            .= ( "from add import add\n\ndef test_add():\n    assert add(2, 3) == 5\n"
-                                   :: Text
-                               )
+                        [ "path" .= ("stats.py" :: Text),
+                          "text" .= fixedStatsPy
                         ]
                     )
                 ]
-            3 ->
+            4 ->
               needTools
                 [ ToolCall
                     "c5"
                     "exec_run"
                     ( object
                         [ "program" .= ("python3" :: Text),
-                          "args" .= (["-c", "from add import add; assert add(2,3)==5"] :: [Text]),
+                          "args" .= verifyArgs,
                           "stdin" .= ("" :: Text)
                         ]
                     )
@@ -134,10 +155,10 @@ evolveMock = mockProviderWith reply
                         "c6"
                         "submit"
                         ( object
-                            [ "summary" .= ("Created add.py and test_add.py" :: Text),
+                            [ "summary" .= ("Fixed mean and percentile in stats.py" :: Text),
                               "ok" .= True,
                               "stack" .= ("python" :: Text),
-                              "files_written" .= (["add.py", "test_add.py"] :: [Text]),
+                              "files_written" .= (["stats.py"] :: [Text]),
                               "verify_exit" .= (0 :: Int)
                             ]
                         )
@@ -170,7 +191,7 @@ spec = describe "evolve-agent lab" $ do
     tight `shouldSatisfy` isRight
     wasteful `shouldSatisfy` isRight
 
-  it "evolves 3 gens under mock; tight wins; fallback mutates wasteful" $
+  it "evolves 3 gens; distinct fallback operators; tight wins under mock" $
     withSystemTempDirectory "hwfl-evolve-agent" $ \tmp -> do
       seedWorkspace tmp
       lp <- loadProjectOrFail projectRoot
@@ -207,17 +228,30 @@ spec = describe "evolve-agent lab" $ do
               lookup (Ident "trial_count") fs `shouldBe` Just (VInt 6)
               lookup (Ident "generations") fs `shouldBe` Just (VInt 3)
               doesFileExist (tmp </> "results.json") `shouldReturn` True
+              doesFileExist (tmp </> "trials" </> "g0" </> "tight" </> "stats.py")
+                `shouldReturn` True
+              doesFileExist (tmp </> "trials" </> "g0" </> "tight" </> "test_stats.py")
+                `shouldReturn` True
               doesFileExist
                 (tmp </> "genomes" </> "mut-g0" </> "workflows" </> "main.md")
                 `shouldReturn` True
               doesFileExist
-                (tmp </> "trials" </> "g0" </> "tight" </> "add.py")
+                (tmp </> "genomes" </> "mut-g1" </> "workflows" </> "main.md")
                 `shouldReturn` True
               mut0 <-
                 TIO.readFile
                   (tmp </> "genomes" </> "mut-g0" </> "workflows" </> "main.md")
+              mut1 <-
+                TIO.readFile
+                  (tmp </> "genomes" </> "mut-g1" </> "workflows" </> "main.md")
               T.isInfixOf "llm.chat" mut0 `shouldBe` False
               T.isInfixOf "llm.agent_object" mut0 `shouldBe` True
+              mut0 `shouldNotBe` mut1
+              -- gen0 fallback strip_warmup; gen1 starts at shrink_rounds
+              T.isInfixOf "max_rounds = 8" mut1
+                || T.isInfixOf "max_rounds = 4" mut1
+                || not (T.isInfixOf "tool(fs.list)" mut1)
+                `shouldBe` True
             other -> expectationFailure ("expected completed run, got: " <> show other)
 
 qname :: Text -> QName
@@ -228,6 +262,12 @@ seedWorkspace ws = do
   copyFileRel
     (projectRoot </> "fixture" </> "prompt.txt")
     (ws </> "fixture" </> "prompt.txt")
+  copyFileRel
+    (projectRoot </> "fixture" </> "project" </> "stats.py")
+    (ws </> "fixture" </> "project" </> "stats.py")
+  copyFileRel
+    (projectRoot </> "fixture" </> "project" </> "test_stats.py")
+    (ws </> "fixture" </> "project" </> "test_stats.py")
   mapM_ (copyGenome ws) ["tight", "wasteful"]
 
 copyGenome :: FilePath -> FilePath -> IO ()
