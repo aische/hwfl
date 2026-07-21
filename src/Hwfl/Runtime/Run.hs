@@ -404,7 +404,8 @@ runLoadedModule opts loaded = do
             rcSpans = spans,
             rcSkillFuns = skillFuns,
             rcSkillModules = opts.roSkillModules,
-            rcEntryModules = entryFuns
+            rcEntryModules = entryFuns,
+            rcNestDepth = 0
           }
       modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
   hPutStrLn stderr ("hwfl run: run_id=" <> T.unpack runId)
@@ -620,7 +621,8 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
         rcSpans = spans,
         rcSkillFuns = buildSkillFunTables skillMods,
         rcSkillModules = skillMods,
-        rcEntryModules = buildEntryFunTables entryMods
+        rcEntryModules = buildEntryFunTables entryMods,
+        rcNestDepth = 0
       }
 
 -- | Build 'HostEnv' with nested @meta.invoke@ wired.

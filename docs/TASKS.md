@@ -2,14 +2,12 @@
 
 Active work only. Archive completed sections to `log/archive/` weekly.
 
-## Now (P1) — runtime integrity (issues.md High #1–#5)
+## Now (P1) — runtime integrity (issues.md High #2–#5)
 
 Source review 2026-07-21 (`issues.md`). Fix in this order; do not lean
-harder on nested invoke / E11 until 1–3 land.
+harder on nested invoke / E11 until 2–3 land. (#1 nested snapshot
+persist done — outer-only via `rcNestDepth`.)
 
-- [ ] **#1 Nested snapshot persist** — never write a bare `BranchMachine`
-      as root `snapshot.json` (agent tools / `FrInvoke` / `par`); persist
-      only the outer machine (or a dedicated nested-store encoding)
 - [ ] **#2 `meta.invoke` sandbox** — resolve `project` / `workspace`
       through the same containment as `fs.*` (`resolvePath` /
       canonicalize); reject abs / `../` escape
@@ -93,4 +91,5 @@ See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check
 A+B / S1–S3 / S5, `fs.patch`, lab spine, E11, coding-agent chat, compare
 mutate / next-gen, evolve-agent E23, `obs.log` non-snapshotting,
-soft-land `max_rounds`, turing-machine exemplar + zero-arg funs).
+soft-land `max_rounds`, turing-machine exemplar + zero-arg funs,
+nested snapshot outer-only persist (#1)).

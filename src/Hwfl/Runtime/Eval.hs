@@ -103,8 +103,16 @@ data RunCtx = RunCtx
     -- | Loaded skill modules for tool schema / body rebuild.
     rcSkillModules :: Map QName LoadedModule,
     -- | Prebuilt env+funs for callable entry modules (same-project; E11).
-    rcEntryModules :: Map QName (Env, FunTable)
+    rcEntryModules :: Map QName (Env, FunTable),
+    -- | Nest depth while stepping a 'BranchMachine' (agent tool / FrInvoke / par).
+    -- Snapshot writes are suppressed when > 0 so a bare branch never overwrites
+    -- root @snapshot.json@; the outer wrapper persists the full machine.
+    rcNestDepth :: Int
   }
+
+-- | Step a nested branch under the same run store without root snapshot writes.
+nestedCtx :: RunCtx -> RunCtx
+nestedCtx ctx = ctx {rcNestDepth = ctx.rcNestDepth + 1}
 
 data StepMode = StepOnce | StepRun
   deriving stock (Eq, Show)
@@ -405,18 +413,18 @@ doHostRun ctx mode m op args = do
     Left e -> do
       abortOrCatch ctx mode m e >>= \case
         Right sr -> do
-          seqNo <- persist ctx (Just op) Nothing sr.srMachine.mStatus (Just sr.srMachine)
-          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) (Just seqNo)
+          mSeq <- persist ctx (Just op) Nothing sr.srMachine.mStatus (Just sr.srMachine)
+          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) mSeq
           pure (Right sr)
         Left _ -> do
           let m' = m {mStatus = MsFailed, mError = Just e}
-          seqNo <- persist ctx (Just op) Nothing MsFailed (Just m')
-          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) (Just seqNo)
+          mSeq <- persist ctx (Just op) Nothing MsFailed (Just m')
+          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) mSeq
           pure (Left e)
     Right hr -> do
       let m' = pauseIfStep mode (m {mCurrent = CurReturn hr.hrValue})
-      seqNo <- persist ctx (Just op) (Just hr.hrValue) m'.mStatus (Just m')
-      closeSpan ctx.rcStore ctx.rcSpans sid SsOk hr.hrCloseAttrs (Just seqNo)
+      mSeq <- persist ctx (Just op) (Just hr.hrValue) m'.mStatus (Just m')
+      closeSpan ctx.rcStore ctx.rcSpans sid SsOk hr.hrCloseAttrs mSeq
       pure (Right (StepResult m' True))
 
 -- | Wire a progressive chunk sink for @llm.chat@ only (not @llm.object@).
@@ -704,7 +712,7 @@ stepAgentTool ctx mode m ag tr
         let bm = case bm0.mStatus of
               MsPaused PauseExplicit -> bm0 {mStatus = MsRunning}
               _ -> bm0 {mStatus = MsRunning}
-        er <- stepMachine ctx StepOnce bm
+        er <- stepMachine (nestedCtx ctx) StepOnce bm
         case er of
           Left e -> recoverableTool ctx mode m ag tr e
           Right sr ->
@@ -1237,7 +1245,7 @@ stepInvoke ctx mode m = case m.mFrames of
     let bm = case bm0.mStatus of
           MsPaused PauseExplicit -> bm0 {mStatus = MsRunning}
           _ -> bm0
-    er <- stepMachine ctx StepOnce bm
+    er <- stepMachine (nestedCtx ctx) StepOnce bm
     case er of
       Left e -> abortOrCatch ctx mode m e
       Right sr ->
@@ -1720,7 +1728,7 @@ stepParWith ctx mode m pjs rest
           bm = case bm0.mStatus of
             MsPaused PauseExplicit -> bm0 {mStatus = MsRunning}
             _ -> bm0 {mStatus = MsRunning}
-      er <- stepMachine ctx StepOnce bm
+      er <- stepMachine (nestedCtx ctx) StepOnce bm
       case er of
         Left e ->
           handleAfterBranch ctx mode m (absorbFailed pjs idx (renderErr e)) rest
@@ -2552,24 +2560,29 @@ askArgs args = case lookup (Just (Ident "prompt")) args of
     [(Nothing, v)] -> askFromValue v
     _ -> Left (HostErr "human.ask expects prompt: String (and optional detail)")
 
+-- | Persist the root machine snapshot. Returns 'Just' seq when a snapshot was
+-- written; 'Nothing' when nested (@rcNestDepth > 0@) so branch machines never
+-- overwrite root @snapshot.json@.
 persist ::
   RunCtx ->
   Maybe HostOpId ->
   Maybe Value ->
   MachineStatus ->
   Maybe Machine ->
-  IO Int
-persist ctx mHost mVal status mMachine = do
-  stack <- getSpanStack ctx.rcSpans
-  counter <- readIORef ctx.rcSpans.ssCounter
-  persistTransition
-    ctx.rcStore
-    ctx.rcSeq
-    ctx.rcProjectHash
-    mHost
-    mVal
-    status
-    mMachine
-    stack
-    counter
-  readIORef ctx.rcSeq
+  IO (Maybe Int)
+persist ctx mHost mVal status mMachine
+  | ctx.rcNestDepth > 0 = pure Nothing
+  | otherwise = do
+      stack <- getSpanStack ctx.rcSpans
+      counter <- readIORef ctx.rcSpans.ssCounter
+      persistTransition
+        ctx.rcStore
+        ctx.rcSeq
+        ctx.rcProjectHash
+        mHost
+        mVal
+        status
+        mMachine
+        stack
+        counter
+      Just <$> readIORef ctx.rcSeq
