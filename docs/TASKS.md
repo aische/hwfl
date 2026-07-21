@@ -38,19 +38,24 @@ chat (human.ask + history)
 - [ ] Dogfood: resume mid-task / mid-verify; effect check on callees;
       keep instruction `skills/*`; avoid nesting agent-in-agent by default
 
-**Skills policy (open — decide at implement / lab A-B):**
+**Skills policy — comparative research variants (not a product fork):**
+
+Ship **both** as example workflows (sibling projects or modules) and run
+them on the same task fixtures — head-to-head via check/run/spans/cost/
+`ok`. That comparison *is* the research use of hwfl (cheap markdown
+variants vs two host programs). Genetic evolve is a separate lab mode
+that can sit on top later.
 
 - **(A) Agent-driven** — planner/coder advertise `skill.discover` /
   `skill.load`; each agent loads if it wants (closest to today’s
-  coding-agent). Default for the first cut.
+  coding-agent).
 - **(B) Workflow-driven** — session module calls discover/load *outside*
   the agent and injects instruction `content` into `system` for plan /
   do_task; agents have no `skill.*` tools.
 
 Either way: verifier stays a non-agent workflow (no skill tools); one
-skill file can still be the stack source of truth. Both variants are
-fine later as compare/evolve genomes — not required as dual product
-surface.
+skill file remains the stack source of truth. Build order is whatever is
+convenient; both are in-scope exemplars.
 
 Out of this exemplar: parallel sub-agents, commit-per-tool-round,
 worktrees, MCP/git/terminals (Tier A only when this bites), embeddings.

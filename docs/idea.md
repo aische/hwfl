@@ -11,9 +11,11 @@ Working name: **hwfl** (originally plm, Prose ML).
 ## North star
 
 **hwfl is the durable workflow runtime (Haskell library + CLI).** It powers
-a **workflow research lab**: author → check → run → inspect → compare →
-mutate workflow programs, with coding-agent tasks and semantic-check as
-hard benchmarks — not as the product itself.
+a **workflow research lab**: author → check → run → inspect → **compare
+orchestration variants** (multiple markdown programs on the same fixtures —
+cheap because the experiment *is* the workflow, not a second host app) →
+optionally mutate / evolve candidates. Coding-agent tasks and
+semantic-check are hard benchmarks — not the product itself.
 
 A **remote control plane** (separate repo) depends on hwfl as a library:
 Postgres for experiment / run metadata, materialized project + workspace
@@ -56,9 +58,12 @@ We want language-level ergonomics **and** document-shaped authoring.
 8. **Callable as a library** — one driver façade (check / run / step /
    resume / approve / show + run-store queries) shared by the CLI and HTTP
    frontends; FS run-store today.
-9. **Genetic / comparative workflows** — materialize candidate projects
-   (and separate workspaces), invoke nested runs, score outcomes + spans,
-   iterate; evolution logic prefers hwfl modules over host growth.
+9. **Comparative + genetic workflows** — first-class: ship N markdown
+   variants and compare on shared fixtures (spans / cost / outcome).
+   Separately: materialize candidate projects (and workspaces), invoke
+   nested runs, score, iterate / evolve; evolution logic prefers hwfl
+   modules over host growth. Comparison without mutation is already
+   research — evolve is not required to justify multiple exemplars.
 10. **Dogfood semantic analysis** — use the language to analyse its own
     projects (prompts, refs, coherence) without inventing a second DSL.
     Research track; not on the critical path.
