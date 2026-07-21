@@ -2,15 +2,12 @@
 
 Active work only. Archive completed sections to `log/archive/` weekly.
 
-## Now (P1) — runtime integrity (issues.md High #3–#5)
+## Now (P1) — runtime integrity (issues.md High #4–#5)
 
 Source review 2026-07-21 (`issues.md`). Fix in this order; do not lean
-harder on nested invoke / E11 until #3 lands. (#1 nested snapshot
-persist and #2 `meta.invoke` sandbox done.)
+harder on nested invoke / E11 until #4–#5 land. (#1 nested snapshot
+persist, #2 `meta.invoke` sandbox, #3 crash-safe store + run IDs done.)
 
-- [ ] **#3 Crash-safe store + run IDs** — atomic snapshot writes
-      (`write temp + rename`); collision-resistant `newRunId` (not
-      second-granularity). Locking deferred until multi-process lab
 - [ ] **#4 Checker holes** — reject empty `match`; check
       `confirm` / `choice` record shape; reject missing required fields
       instead of coercing to `""`
@@ -89,4 +86,5 @@ and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check
 A+B / S1–S3 / S5, `fs.patch`, lab spine, E11, coding-agent chat, compare
 mutate / next-gen, evolve-agent E23, `obs.log` non-snapshotting,
 soft-land `max_rounds`, turing-machine exemplar + zero-arg funs,
-nested snapshot outer-only persist (#1), `meta.invoke` sandbox (#2)).
+nested snapshot outer-only persist (#1), `meta.invoke` sandbox (#2),
+crash-safe store + run IDs (#3)).

@@ -83,6 +83,7 @@ import System.Directory
     doesDirectoryExist,
     doesFileExist,
     listDirectory,
+    renamePath,
   )
 import System.FilePath ((</>))
 
@@ -303,7 +304,7 @@ fsOpen ref = do
 
 fsWriteMeta :: RunStore -> RunMeta -> IO ()
 fsWriteMeta store meta = do
-  Aeson.encodeFile
+  atomicEncodeFile
     (store.storeRoot </> "meta.json")
     ( object
         [ "run_id" .= meta.rmRunId,
@@ -331,7 +332,10 @@ fsReadMeta store = do
 
 fsWriteSnapshot :: RunStore -> RunSnapshot -> IO ()
 fsWriteSnapshot store snap = do
-  Aeson.encodeFile (store.storeRoot </> "snapshot.json") (snapshotToJson snap)
+  -- Snapshot first (atomic replace), then append the transition line.
+  -- Progress is defined by snapshot; a crash after rename but before
+  -- append leaves transitions lagging, which is recoverable.
+  atomicEncodeFile (store.storeRoot </> "snapshot.json") (snapshotToJson snap)
   let line =
         Aeson.encode $
           object
@@ -342,6 +346,15 @@ fsWriteSnapshot store snap = do
             ]
   LBS.appendFile (store.storeRoot </> "transitions.jsonl") (line <> "\n")
   store.storeNotify (SeSnapshotSeq snap.rsSeq)
+
+-- | Write JSON via temp file + rename so a crash mid-encode cannot
+-- truncate an existing durable file. Same-directory rename is atomic
+-- on POSIX when replacing a regular file.
+atomicEncodeFile :: FilePath -> Aeson.Value -> IO ()
+atomicEncodeFile path value = do
+  let tmp = path <> ".tmp"
+  Aeson.encodeFile tmp value
+  renamePath tmp path
 
 fsReadSnapshot :: RunStore -> IO (Maybe RunSnapshot)
 fsReadSnapshot store = do

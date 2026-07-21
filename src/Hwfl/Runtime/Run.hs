@@ -23,6 +23,7 @@ module Hwfl.Runtime.Run
 where
 
 import Data.Aeson (object, (.=))
+import Data.ByteString qualified as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -31,6 +32,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
+import Data.Word (Word8)
+import Numeric (showHex)
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), Section (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), Slug, qnameToText)
@@ -124,7 +127,7 @@ import Hwfl.SkillCatalog
 import Hwfl.Source (Diagnostic, Pos (..), mkDiagnostic, renderDiagnostics)
 import System.Directory (doesFileExist, doesPathExist)
 import System.FilePath (takeDirectory, (</>))
-import System.IO (hPutStrLn, stderr)
+import System.IO (IOMode (..), hPutStrLn, stderr, withBinaryFile)
 
 data RunOptions = RunOptions
   { roWorkspace :: FilePath,
@@ -1204,7 +1207,25 @@ projectHashOf loaded =
           <> T.pack (show (lmBody loaded))
    in T.pack (show (T.foldl' (\h c -> h * 33 + fromEnum c) (0 :: Int) payload))
 
+-- | Collision-resistant run id: wall-clock second + 64 bits of entropy.
+-- Second-granularity alone collided when two runs started in the same second.
 newRunId :: IO Text
 newRunId = do
   now <- getCurrentTime
-  pure ("run-" <> T.pack (formatTime defaultTimeLocale "%Y%m%d-%H%M%S" now))
+  nonce <- randomHex 8
+  pure
+    ( "run-"
+        <> T.pack (formatTime defaultTimeLocale "%Y%m%d-%H%M%S" now)
+        <> "-"
+        <> nonce
+    )
+
+randomHex :: Int -> IO Text
+randomHex nbytes = do
+  bs <- withBinaryFile "/dev/urandom" ReadMode $ \h -> BS.hGet h nbytes
+  pure (T.pack (concatMap byteHex (BS.unpack bs)))
+  where
+    byteHex :: Word8 -> String
+    byteHex b =
+      let s = showHex b ""
+       in if length s == 1 then '0' : s else s
