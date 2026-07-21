@@ -6,6 +6,7 @@ module Hwfl.Runtime.Machine
     ConfirmRequest (..),
     ChoiceRequest (..),
     AskRequest (..),
+    AgentExhaustedRequest (..),
     Current (..),
     Frame (..),
     ParJoinState (..),
@@ -49,7 +50,18 @@ data PauseReason
   | PauseAwaitingConfirm ConfirmRequest
   | PauseAwaitingChoice ChoiceRequest
   | PauseAwaitingAsk AskRequest
+  | PauseAwaitingAgent AgentExhaustedRequest
   | PauseCrashRecovery
+  deriving stock (Eq, Show)
+
+-- | Emitted when an agent exhausts its round budget instead of aborting.
+-- The operator may call @extend@ with a new @extraRounds@ budget to continue.
+data AgentExhaustedRequest = AgentExhaustedRequest
+  { aerRoundsUsed :: Int,
+    aerRoundsBudget :: Int,
+    -- | Suggested bump (rounded to next-power-of-two, shown to operator).
+    aerSuggestedExtra :: Int
+  }
   deriving stock (Eq, Show)
 
 data ConfirmRequest = ConfirmRequest

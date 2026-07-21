@@ -8,6 +8,7 @@ module Hwfl.Runtime.Eval
     approveMachine,
     chooseMachine,
     replyMachine,
+    extendAgentMachine,
     evalIO,
     applyIO,
   )
@@ -171,6 +172,8 @@ resultOf m = case m.mStatus of
     Left (EvalErr (Unsupported "paused on choice; use choose"))
   MsPaused (PauseAwaitingAsk _) ->
     Left (EvalErr (Unsupported "paused on ask; use reply"))
+  MsPaused (PauseAwaitingAgent _) ->
+    Left (EvalErr (Unsupported "paused on agent budget; use extend"))
   other -> Left (EvalErr (Trap ("stopped: " <> T.pack (show other))))
 
 openApply ::
@@ -547,13 +550,15 @@ stepAgentModel ::
   IO (Either RuntimeError StepResult)
 stepAgentModel ctx mode m ag
   | ag.agRound >= ag.agMaxRounds = do
-      let err =
-            ProviderErr
-              ( "agent reached max_rounds ("
-                  <> T.pack (show ag.agMaxRounds)
-                  <> ") without terminating"
-              )
-      failAgent ctx mode m ag err
+      let req =
+            AgentExhaustedRequest
+              { aerRoundsUsed = ag.agRound,
+                aerRoundsBudget = ag.agMaxRounds,
+                aerSuggestedExtra = suggestExtraRounds ag.agMaxRounds
+              }
+          m' = m {mStatus = MsPaused (PauseAwaitingAgent req), mCurrent = CurAgent ag}
+      _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
+      pure (Right (StepResult m' True))
   | otherwise = do
       roundSid <-
         openSpan
@@ -1564,6 +1569,25 @@ replyMachine text m = case m.mStatus of
               mCurrent = CurReturn (VString text)
             }
   _ -> Left (ConfigErr "run is not awaiting input")
+
+-- | Round up to the nearest power of two ≥ 1 (used for exhausted-budget hint).
+suggestExtraRounds :: Int -> Int
+suggestExtraRounds budget = max 1 (nextPow2 budget)
+  where
+    nextPow2 n = head [p | p <- map (2 ^) [(0 :: Int) ..], p >= n]
+
+-- | Bump @agMaxRounds@ by @extraRounds@ and resume from an exhausted-budget pause.
+extendAgentMachine :: Int -> Machine -> Either RuntimeError Machine
+extendAgentMachine extra m = case m.mStatus of
+  MsPaused (PauseAwaitingAgent _) -> case m.mCurrent of
+    CurAgent ag ->
+      Right
+        m
+          { mStatus = MsRunning,
+            mCurrent = CurAgent ag {agMaxRounds = ag.agMaxRounds + extra}
+          }
+    _ -> Left (ConfigErr "run is not awaiting agent budget extension")
+  _ -> Left (ConfigErr "run is not awaiting agent budget extension")
 
 approvePar :: Bool -> ConfirmRequest -> ParJoinState -> [Frame] -> Machine -> Machine
 approvePar yes c pjs rest m =

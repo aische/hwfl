@@ -183,12 +183,12 @@ persist `active_tool_ids` / `loaded_instruction_ids`. Agent tool spans
 appear as `tool:skill_discover` / `tool:skill_load` under the enclosing
 agent round. See [skills-plan.md](../skills-plan.md).
 
-**`max_rounds` (planned soft-land):** Hitting the round budget currently
-fails the agent (`MsFailed`). Preferred: freeze the in-flight agent and
-pause so the operator can extend this call’s budget (`agMaxRounds`) and
-continue — keep `CurAgent` / transcript; wire CLI and `--interactive`.
-Secondary: structured exhausted return with `history` for chaining.
-Not a terminal abort. See [05-host-ops.md](05-host-ops.md) agent notes.
+**`max_rounds`:** Hitting the round budget pauses the agent
+(`PauseAwaitingAgent`, status `awaiting_extend`) so the operator can
+extend this call’s budget (`agMaxRounds`) via `hwfl extend` and
+continue — keep `CurAgent` / transcript. Wire CLI and `--interactive`.
+Secondary: structured exhausted return with `history` for chaining
+(deferred). See [05-host-ops.md](05-host-ops.md) agent notes.
 
 ## 7. Workspace & sandbox
 

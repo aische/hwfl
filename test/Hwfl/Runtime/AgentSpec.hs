@@ -22,11 +22,12 @@ import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Agent (buildToolSpec)
 import Hwfl.Runtime.Eval (StepMode (..))
-import Hwfl.Runtime.Machine (ChoiceRequest (..), MachineStatus (..), PauseReason (..))
+import Hwfl.Runtime.Machine (AgentExhaustedRequest (..), ChoiceRequest (..), MachineStatus (..), PauseReason (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     chooseRun,
+    extendAgentRun,
     resumeRun,
     runLoadedModule,
     emptySkillRuntime)
@@ -477,4 +478,102 @@ spec = describe "runtime agent (M7)" $ do
           case chosen of
             OutcomeCompleted (VRecord fs) _ _ ->
               lookup (Ident "text") fs `shouldBe` Just (VString "selected via tool")
+            other -> expectationFailure (show other)
+
+  it "soft-lands on max_rounds exhaustion; extend continues same agent" $
+    withSystemTempDirectory "hwfl-agent-extend" $ \dir -> do
+      writeFile (dir </> "note.txt") "extend me"
+      let path = dir </> "agent-extend.md"
+          src =
+            T.unlines
+              [ "---",
+                "name: workflows/agent-extend",
+                "inputs: {}",
+                "outputs:",
+                "  text: String",
+                "  rounds: Int",
+                "effects: [Read, Net]",
+                "---",
+                "",
+                "## system",
+                "",
+                "Use tools until done.",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun main(_): { text: String, rounds: Int } =",
+                "  let result = llm.agent(",
+                "    system = @system,",
+                "    prompt = \"read note\",",
+                "    tools = [tool(fs.read)],",
+                "    model = \"gpt-5\",",
+                "    max_rounds = 1",
+                "  )",
+                "  { text = result.text, rounds = result.rounds }",
+                "```"
+              ]
+          mock =
+            mockProviderWith $ \req ->
+              if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
+                then
+                  Right
+                    ProviderResult
+                      { prContent = "done after extend",
+                        prToolCalls = [],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishStop
+                      }
+                else
+                  Right
+                    ProviderResult
+                      { prContent = "need read",
+                        prToolCalls =
+                          [ ToolCall
+                              "c1"
+                              "fs_read"
+                              (object ["path" .= ("note.txt" :: Text)])
+                          ],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishToolCalls
+                      }
+          opts =
+            RunOptions
+              { roWorkspace = dir,
+                roProvider = mock,
+                roInputs = [],
+                roRunId = Just "extend1",
+                roEntry = path,
+                roMode = StepRun,
+                roProjectHash = Nothing,
+                roExec = Nothing,
+                roObserver = noopObserver,
+                roCost = False,
+                roModelCatalog = "model-catalog.json",
+                roSkillCatalog = fst emptySkillRuntime,
+                roSkillModules = snd emptySkillRuntime,
+                roEntryModules = mempty
+              }
+      writeFile path (T.unpack src)
+      case loadModuleText path src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          outcome <- runLoadedModule opts loaded
+          case outcome of
+            OutcomePaused (MsPaused (PauseAwaitingAgent r)) _ _ _ -> do
+              aerRoundsUsed r `shouldBe` 1
+              aerRoundsBudget r `shouldBe` 1
+              aerSuggestedExtra r `shouldBe` 1
+            other -> expectationFailure ("expected awaiting extend, got " <> show other)
+          -- bare resume must not continue the agent
+          resumed <- resumeRun dir "extend1" mock "model-catalog.json" noopObserver
+          case resumed of
+            OutcomePaused (MsPaused (PauseAwaitingAgent _)) _ _ _ -> pure ()
+            other -> expectationFailure ("resume should stay paused, got " <> show other)
+          extended <- extendAgentRun dir "extend1" 4 mock "model-catalog.json" noopObserver
+          case extended of
+            OutcomeCompleted (VRecord fs) _ _ -> do
+              lookup (Ident "text") fs `shouldBe` Just (VString "done after extend")
+              lookup (Ident "rounds") fs `shouldBe` Just (VInt 2)
             other -> expectationFailure (show other)

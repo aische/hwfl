@@ -26,6 +26,7 @@ import Hwfl.Driver
     driverApprove,
     driverCheck,
     driverChoose,
+    driverExtendAgent,
     driverReply,
     driverResume,
     driverRun,
@@ -46,7 +47,8 @@ import Hwfl.Parse.Load (loadModule)
 import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Machine
-  ( AskRequest (..),
+  ( AgentExhaustedRequest (..),
+    AskRequest (..),
     ChoiceRequest (..),
     ConfirmRequest (..),
     MachineStatus (..),
@@ -75,6 +77,7 @@ main = do
     ("approve" : rest) -> cmdApprove rest
     ("choose" : rest) -> cmdChoose rest
     ("reply" : rest) -> cmdReply rest
+    ("extend" : rest) -> cmdExtend rest
     ("show" : rest) -> cmdShow rest
     _ -> usage
 
@@ -95,6 +98,9 @@ usage = do
   hPutStrLn
     stderr
     "       hwfl reply <workspace> <run-id> --text <string> [--llm-provider mock|simple] [--dump]"
+  hPutStrLn
+    stderr
+    "       hwfl extend <workspace> <run-id> --rounds N [--llm-provider mock|simple] [--dump]"
   hPutStrLn
     stderr
     "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
@@ -280,6 +286,13 @@ cmdReply args = case parseReply args of
     provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverReply ws runId text provider catalog noopObserver
 
+cmdExtend :: [String] -> IO ()
+cmdExtend args = case parseExtend args of
+  Left msg -> dieUsage msg
+  Right (ws, runId, extra, provName, catalog, dump) -> do
+    provider <- resolveProvider False provName catalog dump
+    handleOutcome False False =<< driverExtendAgent ws runId extra provider catalog noopObserver
+
 cmdShow :: [String] -> IO ()
 cmdShow args = case parseShow args of
   Left msg -> dieUsage msg
@@ -345,6 +358,10 @@ handleOutcomeInteractive showTrace ws provider catalog observer = go
         MsPaused (PauseAwaitingAsk a) -> do
           text <- promptAsk a
           go =<< driverReply ws (storeRunId store) text provider catalog observer
+        MsPaused (PauseAwaitingAgent r) -> do
+          TIO.hPutStrLn stderr msg
+          extra <- promptExtend r
+          go =<< driverExtendAgent ws (storeRunId store) extra provider catalog observer
         _ -> do
           reportPlainFailure False 3 "runtime" "Paused" msg
           dumpTrace showTrace store
@@ -394,6 +411,29 @@ promptAsk a = do
   TIO.hPutStr stderr prompt
   hFlush stderr
   T.strip <$> readStdinLine
+
+promptExtend :: AgentExhaustedRequest -> IO Int
+promptExtend r = do
+  TIO.hPutStrLn stderr
+    ( "Agent exhausted "
+        <> T.pack (show r.aerRoundsUsed)
+        <> " of "
+        <> T.pack (show r.aerRoundsBudget)
+        <> " rounds. Enter extra rounds to add (suggested: "
+        <> T.pack (show r.aerSuggestedExtra)
+        <> "):"
+    )
+  loop
+  where
+    loop = do
+      TIO.hPutStr stderr "Extra rounds: "
+      hFlush stderr
+      line <- T.strip <$> readStdinLine
+      case reads (T.unpack line) of
+        [(n, "")] | n > 0 -> pure n
+        _ -> do
+          hPutStrLn stderr "Please enter a positive integer."
+          loop
 
 readStdinLine :: IO Text
 readStdinLine =
@@ -586,6 +626,27 @@ parseReply = go Nothing Nothing Nothing "simple" "model-catalog.json" False
         | otherwise -> case (mWs, mId) of
             (Nothing, _) -> go (Just x) mId mText prov catalog dump rest
             (Just _, Nothing) -> go mWs (Just (T.pack x)) mText prov catalog dump rest
+            _ -> Left ("unexpected argument: " <> x)
+
+parseExtend :: [String] -> Either String (FilePath, T.Text, Int, String, FilePath, Bool)
+parseExtend = go Nothing Nothing Nothing "simple" "model-catalog.json" False
+  where
+    go mWs mId mRounds prov catalog dump = \case
+      [] -> case (mWs, mId, mRounds) of
+        (Just ws, Just rid, Just n) -> Right (ws, rid, n, prov, catalog, dump)
+        (_, _, Nothing) -> Left "hwfl extend needs --rounds N"
+        _ -> Left "usage: hwfl extend <workspace> <run-id> --rounds N"
+      ("--rounds" : n : rest) -> case reads n of
+        [(i, "")] | i > 0 -> go mWs mId (Just i) prov catalog dump rest
+        _ -> Left ("--rounds must be a positive integer, got: " <> n)
+      ("--llm-provider" : p : rest) -> go mWs mId mRounds p catalog dump rest
+      ("--model-catalog" : c : rest) -> go mWs mId mRounds prov c dump rest
+      ("--dump" : rest) -> go mWs mId mRounds prov catalog True rest
+      (x : rest)
+        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
+        | otherwise -> case (mWs, mId) of
+            (Nothing, _) -> go (Just x) mId mRounds prov catalog dump rest
+            (Just _, Nothing) -> go mWs (Just (T.pack x)) mRounds prov catalog dump rest
             _ -> Left ("unexpected argument: " <> x)
 
 parseShow :: [String] -> Either String ShowOptions

@@ -11,14 +11,6 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 
 Prefer MCP / workflow modules over growing the host-op set.
 
-- [ ] Soft-land `max_rounds`: freeze the in-flight agent and extend
-      this call’s budget (pause + continue / bump `agMaxRounds`) —
-      not abort / `MsFailed`. Wire CLI + `--interactive` for that
-      gate. Optional secondary: structured exhausted return with
-      `history` for workflow chaining. Spec notes in
-      [05-host-ops.md](spec/05-host-ops.md) /
-      [06-runtime.md](spec/06-runtime.md) §6. Until then, chunk via
-      `history` across agent calls.
 - [ ] MCP client (tool provider behind `tool(f)` / host-op story)
 - [ ] Git (read-heavy host ops or MCP) — status / diff / log
 - [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot
@@ -77,4 +69,5 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check
 A+B / S1–S3 / S5, `fs.patch`, lab spine, E11, coding-agent chat, compare
-mutate / next-gen, evolve-agent E23, `obs.log` non-snapshotting).
+mutate / next-gen, evolve-agent E23, `obs.log` non-snapshotting,
+soft-land `max_rounds`).

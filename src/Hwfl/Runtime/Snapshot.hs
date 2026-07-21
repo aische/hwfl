@@ -124,6 +124,7 @@ statusText = \case
   MsPaused (PauseAwaitingConfirm _) -> "awaiting_confirm"
   MsPaused (PauseAwaitingChoice _) -> "awaiting_choice"
   MsPaused (PauseAwaitingAsk _) -> "awaiting_input"
+  MsPaused (PauseAwaitingAgent _) -> "awaiting_extend"
   MsPaused PauseCrashRecovery -> "paused"
   MsCompleted -> "completed"
   MsFailed -> "failed"
@@ -149,6 +150,10 @@ parseStatus txt pauseVal = case txt of
     Just v -> MsPaused <$> parsePauseReason v
     Nothing ->
       pure (MsPaused (PauseAwaitingAsk (AskRequest "" "" Nothing)))
+  "awaiting_extend" -> case pauseVal of
+    Just v -> MsPaused <$> parsePauseReason v
+    Nothing ->
+      pure (MsPaused (PauseAwaitingAgent (AgentExhaustedRequest 0 0 0)))
   other -> fail ("unknown status: " <> T.unpack other)
 
 parsePauseReason :: Aeson.Value -> Parser PauseReason
@@ -163,6 +168,7 @@ parsePauseReason v =
           Just "awaiting_choice" -> PauseAwaitingChoice <$> parseChoiceObject o
           Just "awaiting_input" -> PauseAwaitingAsk <$> parseAskObject o
           Just "awaiting_confirm" -> PauseAwaitingConfirm <$> parseConfirmObject o
+          Just "awaiting_extend" -> PauseAwaitingAgent <$> parseAgentExhaustedObject o
           _ ->
             case KM.lookup "options" o of
               Just _ -> PauseAwaitingChoice <$> parseChoiceObject o
@@ -215,6 +221,7 @@ pauseToJson = \case
   MsPaused (PauseAwaitingConfirm c) -> confirmToJson c
   MsPaused (PauseAwaitingChoice c) -> choiceToJson c
   MsPaused (PauseAwaitingAsk a) -> askToJson a
+  MsPaused (PauseAwaitingAgent r) -> agentExhaustedToJson r
   MsPaused PauseExplicit -> object ["reason" .= String "explicit"]
   MsPaused PauseCrashRecovery -> object ["reason" .= String "crash"]
   _ -> Null
@@ -665,6 +672,22 @@ parseAskObject o =
     <$> o .: "prompt"
     <*> (o .:? "detail" .!= "")
     <*> o .:? "branch_index"
+
+agentExhaustedToJson :: AgentExhaustedRequest -> Aeson.Value
+agentExhaustedToJson r =
+  object
+    [ "rounds_used" .= r.aerRoundsUsed,
+      "rounds_budget" .= r.aerRoundsBudget,
+      "suggested_extra" .= r.aerSuggestedExtra,
+      "reason" .= String "awaiting_extend"
+    ]
+
+parseAgentExhaustedObject :: Aeson.Object -> Parser AgentExhaustedRequest
+parseAgentExhaustedObject o =
+  AgentExhaustedRequest
+    <$> (o .:? "rounds_used" .!= 0)
+    <*> (o .:? "rounds_budget" .!= 0)
+    <*> (o .:? "suggested_extra" .!= 0)
 
 envToJson :: Env -> Aeson.Value
 envToJson env =

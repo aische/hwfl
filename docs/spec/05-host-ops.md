@@ -67,19 +67,14 @@ across calls. Do **not** encode tool turns as fake `{ role, content }`
 strings; `llm.chat_messages` stays the thin text-only path. Example:
 `examples/coding-agent-chat`.
 
-**`max_rounds` budget (today vs planned):** Today, exhausting
-`max_rounds` is a catchable `ProviderErr` that fails the agent (and
-usually the run). Workspace side effects remain, but the transcript is
-not returned to the workflow, and `hwfl resume` does not continue a
-failed run. Raising the limit by editing the module also fails resume
-(stale project hash). **Planned (preferred):** freeze the in-flight
-agent (`CurAgent` / `agHistory` kept) and pause so the operator can
-extend this call’s budget (bump `agMaxRounds`) and continue — same
-invocation, no transcript throwaway. CLI / `--interactive` must learn
-that gate (`resume` alone does not resolve human pauses today).
-**Secondary:** structured exhausted return with `history` for outer
-workflow chaining without a human gate. Until shipped, chunk with
-`history` across agent calls (see coding-agent-chat). Tracked in TASKS.
+**`max_rounds` budget:** Exhausting `max_rounds` pauses the in-flight
+agent (`PauseAwaitingAgent` / status `awaiting_extend`) instead of
+failing the run. The operator extends this call’s budget with
+`hwfl extend --rounds N` (or `--interactive`); bare `resume` does not
+resolve the gate. `CurAgent` / transcript are preserved. Secondary:
+structured exhausted return with `history` for outer workflow chaining
+(deferred). Until needed, chunk with `history` across agent calls (see
+coding-agent-chat).
 
 ### 2.1 Agent tools
 

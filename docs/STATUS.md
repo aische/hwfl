@@ -17,6 +17,10 @@ semantic-check are benchmarks / research, not the product. See
 
 ## Done recently
 
+- **Soft-land `max_rounds`** — agent freezes on budget exhaustion
+  (`PauseAwaitingAgent`); `hwfl extend --rounds N` bumps budget and
+  continues same invocation; `--interactive` prompts for extra rounds;
+  bare `resume` does not resolve the gate
 - **`obs.log` non-snapshotting** — spans/events only; no `persist` /
   `snapshot_seq`; infer accepts record `fields`
 - **Evolve-agent v2** — seeded broken `stats` fixture; operator menu
@@ -31,10 +35,9 @@ None.
 ## Next up
 
 1. Credible coding-agent exemplar: tools that call workflows (E11)
-2. Soft-land `max_rounds`: freeze in-flight agent, extend call budget
-3. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
-4. Opt-in LangSmith-style LLM transcripts
-5. Optional: sum `cost_micros` in lab fitness; semantic-check static filter
+2. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
+3. Opt-in LangSmith-style LLM transcripts
+4. Optional: sum `cost_micros` in lab fitness; semantic-check static filter
 
 ## Deferred
 
@@ -44,6 +47,7 @@ None.
 - Coding-agent Tier B (index / LSP / RAG) — measured gap only
 - `latest` / omit run-id; `lib/` elaboration; typed `--example`;
   alt `LlmProvider`; `hwfl init` / completions
+- Structured exhausted return with `history` (secondary max_rounds path)
 
 ## Open naming
 

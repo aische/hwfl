@@ -13,6 +13,7 @@ Executable name provisional: **`hwfl`**.
 | `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |
 | `hwfl choose <workspace> <run-id> --select <option>`   | Resolve multiple-choice gate                     |
 | `hwfl reply <workspace> <run-id> --text <string>`      | Resolve free-text ask gate                       |
+| `hwfl extend <workspace> <run-id> --rounds N`          | Bump agent `max_rounds` budget and continue      |
 | `hwfl show <workspace> <run-id> [flags]`                | Spans / status / redacted snapshot               |
 | `hwfl version`                                          |                                                  |
 
@@ -36,10 +37,10 @@ Executable name provisional: **`hwfl`**.
   Off by default. Distinct from `--debug` (span observer) and from
   planned span-linked transcripts ([07-observability.md](07-observability.md) §10).
 - `--interactive` (on `run`, TTY stdin only): when paused on
-  `awaiting_confirm` / `awaiting_choice` / `awaiting_input`, prompt on
-  stdin and resolve via the same APIs as `approve` / `choose` / `reply`
-  without exiting between turns. Incompatible with `--json`; refuses on
-  non-TTY stdin.
+  `awaiting_confirm` / `awaiting_choice` / `awaiting_input` /
+  `awaiting_extend`, prompt on stdin and resolve via the same APIs as
+  `approve` / `choose` / `reply` / `extend` without exiting between
+  turns. Incompatible with `--json`; refuses on non-TTY stdin.
 
 ## 2. Inputs
 

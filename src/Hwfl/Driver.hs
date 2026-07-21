@@ -23,6 +23,7 @@ module Hwfl.Driver
     driverApprove,
     driverChoose,
     driverReply,
+    driverExtendAgent,
 
     -- * Inspect
     driverShow,
@@ -99,6 +100,7 @@ import Hwfl.Runtime.Run
     approveRun,
     chooseRun,
     defaultRunTargetRequest,
+    extendAgentRun,
     resumeRun,
     replyRun,
     runTarget,
@@ -232,6 +234,9 @@ driverChoose = chooseRun
 
 driverReply :: FilePath -> Text -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
 driverReply = replyRun
+
+driverExtendAgent :: FilePath -> Text -> Int -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
+driverExtendAgent = extendAgentRun
 
 driverShow :: ShowOptions -> IO (Either Text Text)
 driverShow = showRun
