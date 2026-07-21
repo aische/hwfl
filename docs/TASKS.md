@@ -70,4 +70,4 @@ See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check
 A+B / S1–S3 / S5, `fs.patch`, lab spine, E11, coding-agent chat, compare
 mutate / next-gen, evolve-agent E23, `obs.log` non-snapshotting,
-soft-land `max_rounds`).
+soft-land `max_rounds`, turing-machine exemplar + zero-arg funs).

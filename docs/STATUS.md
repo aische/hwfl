@@ -4,9 +4,9 @@ Last updated: 2026-07-21
 
 ## Current focus
 
-**Lab loop + exemplars** — evolve-agent hardened (fixture + operators);
-next is coding-agent tools that call same-project workflows (E11).
-Control plane is **hwfl-server**.
+**Lab loop + exemplars** — evolve-agent hardened; coding-agent tools that
+call same-project workflows (E11) still next. Control plane is
+**hwfl-server**. Side exemplar: Turing-machine agent stress test.
 
 ## North star
 
@@ -17,16 +17,12 @@ semantic-check are benchmarks / research, not the product. See
 
 ## Done recently
 
-- **Soft-land `max_rounds`** — agent freezes on budget exhaustion
-  (`PauseAwaitingAgent`); `hwfl extend --rounds N` bumps budget and
-  continues same invocation; `--interactive` prompts for extra rounds;
-  bare `resume` does not resolve the gate
-- **`obs.log` non-snapshotting** — spans/events only; no `persist` /
-  `snapshot_seq`; infer accepts record `fields`
-- **Evolve-agent v2** — seeded broken `stats` fixture; operator menu
-  (`strip_warmup` / `shrink_rounds` / `drop_fs_list`); no-op patch
-  rejection; gen-rotated fallbacks so `mut-g0` ≠ `mut-g1`
-- Evolve-agent E23; compare mutate; E11; coding-agent chat; lab spine
+- **Turing-machine exemplar** — `examples/turing-machine`: workspace tape
+  (`machine/{state,head,cells}`), `tm_read` / `tm_step`, unary-add δ in
+  system prompt; `mode=selftest` proves tools; agent mode burns tokens
+- **Zero-arg funs** — `bindParams []` + `f()` on `Unit -> T` in checker
+- Soft-land `max_rounds`; `obs.log` non-snapshotting; evolve-agent v2;
+  E23 / E11 / coding-agent chat / lab spine
 
 ## Blockers
 
@@ -48,6 +44,7 @@ None.
 - `latest` / omit run-id; `lib/` elaboration; typed `--example`;
   alt `LlmProvider`; `hwfl init` / completions
 - Structured exhausted return with `history` (secondary max_rounds path)
+- TM instruction skills for more δ tables (multiply, etc.)
 
 ## Open naming
 

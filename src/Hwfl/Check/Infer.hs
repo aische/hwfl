@@ -384,7 +384,14 @@ classifyArgs args
 applyPositional :: TypeEnv -> TypeExpr -> [Expr] -> Either CheckError TypeExpr
 applyPositional env = go
   where
-    go ty [] = Right ty
+    go ty [] = case funArrow ty of
+      -- @f()@ on @Unit -> T@ is a full call (empty arg list means unit).
+      Just (domain, ret) -> do
+        domain' <- resolveType env domain
+        if typesCompatible domain' tUnit
+          then Right ret
+          else Right ty
+      Nothing -> Right ty
     go ty args = case funArrow ty of
       Just (TRecord fields, ret)
         | length args == length fields && not (null args) -> do

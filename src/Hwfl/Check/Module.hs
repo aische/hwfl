@@ -23,7 +23,7 @@ import Data.Text (Text)
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Expr (Param (..))
 import Hwfl.Ast.Module (ExampleInputs (..), Frontmatter (..), LoadedModule (..))
-import Hwfl.Ast.Name (Ident (..))
+import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
 import Hwfl.Check.Effects (EffSet, analyzeModuleEffects, checkEffectsCeiling)
 import Hwfl.Check.Env
@@ -85,6 +85,9 @@ checkDecl env = \case
 
 bindParams :: [Param] -> TypeExpr -> Either CheckError [(Ident, TypeExpr)]
 bindParams ps domain = case ps of
+  [] -> case domain of
+    TName (TypeName "Unit") -> Right []
+    _ -> Left (ExpectedRecord domain)
   [Param n _] -> Right [(n, domain)]
   _ -> case domain of
     TRecord fs
