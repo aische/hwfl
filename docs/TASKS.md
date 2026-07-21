@@ -2,7 +2,28 @@
 
 Active work only. Archive completed sections to `log/archive/` weekly.
 
-## Now (P1) — lab loop + exemplars
+## Now (P1) — runtime integrity (issues.md High #1–#5)
+
+Source review 2026-07-21 (`issues.md`). Fix in this order; do not lean
+harder on nested invoke / E11 until 1–3 land.
+
+- [ ] **#1 Nested snapshot persist** — never write a bare `BranchMachine`
+      as root `snapshot.json` (agent tools / `FrInvoke` / `par`); persist
+      only the outer machine (or a dedicated nested-store encoding)
+- [ ] **#2 `meta.invoke` sandbox** — resolve `project` / `workspace`
+      through the same containment as `fs.*` (`resolvePath` /
+      canonicalize); reject abs / `../` escape
+- [ ] **#3 Crash-safe store + run IDs** — atomic snapshot writes
+      (`write temp + rename`); collision-resistant `newRunId` (not
+      second-granularity). Locking deferred until multi-process lab
+- [ ] **#4 Checker holes** — reject empty `match`; check
+      `confirm` / `choice` record shape; reject missing required fields
+      instead of coercing to `""`
+- [ ] **#5 Agent submit / tool identity** — real schema validation for
+      `llm.agent_object` submit (beyond presence-only); uniquify
+      sanitized tool names before advertising to the provider
+
+## Next (P1) — lab loop + exemplars
 
 - [ ] Credible coding-agent exemplar: tools that call same-project
       workflows (`FrInvoke` / E11), not only host ops
@@ -42,6 +63,8 @@ Prefer MCP / workflow modules over growing the host-op set.
 - [ ] Concurrent host transitions in `par` — overlap blocking IO across
       branches; **or** run lab candidates as external parallel processes.
       See [spec/06-runtime.md](spec/06-runtime.md) §10.
+- [ ] Multi-process run-store locking (only if external parallel lab
+      processes share a run dir)
 
 ## Low priority
 
