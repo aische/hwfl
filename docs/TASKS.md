@@ -38,6 +38,20 @@ chat (human.ask + history)
 - [ ] Dogfood: resume mid-task / mid-verify; effect check on callees;
       keep instruction `skills/*`; avoid nesting agent-in-agent by default
 
+**Skills policy (open — decide at implement / lab A-B):**
+
+- **(A) Agent-driven** — planner/coder advertise `skill.discover` /
+  `skill.load`; each agent loads if it wants (closest to today’s
+  coding-agent). Default for the first cut.
+- **(B) Workflow-driven** — session module calls discover/load *outside*
+  the agent and injects instruction `content` into `system` for plan /
+  do_task; agents have no `skill.*` tools.
+
+Either way: verifier stays a non-agent workflow (no skill tools); one
+skill file can still be the stack source of truth. Both variants are
+fine later as compare/evolve genomes — not required as dual product
+surface.
+
 Out of this exemplar: parallel sub-agents, commit-per-tool-round,
 worktrees, MCP/git/terminals (Tier A only when this bites), embeddings.
 
