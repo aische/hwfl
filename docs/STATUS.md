@@ -4,10 +4,10 @@ Last updated: 2026-07-21
 
 ## Current focus
 
-**Runtime integrity (source-review High #2–#5)** — sandboxing,
-durability, and “checked ≈ safe” before leaning harder on nested
-invoke / E11. Findings live in repo-root `issues.md` (do not treat as
-spec). Control plane remains **hwfl-server**.
+**Runtime integrity (source-review High #3–#5)** — durability and
+“checked ≈ safe” before leaning harder on nested invoke / E11. Findings
+live in repo-root `issues.md` (do not treat as spec). Control plane
+remains **hwfl-server**.
 
 ## North star
 
@@ -18,6 +18,9 @@ semantic-check are benchmarks / research, not the product. See
 
 ## Done recently
 
+- **#2 `meta.invoke` sandbox** — `project` / `workspace` via `resolvePath`
+  + canonicalize (same containment as `fs.*`); abs / `../` / symlink
+  parent rejected
 - **#1 Nested snapshot persist** — `rcNestDepth` suppresses branch
   writes; agent tools / `FrInvoke` / `par` persist only the outer machine
 - Turing-machine exemplar; zero-arg funs; soft-land `max_rounds`;
@@ -29,8 +32,8 @@ None.
 
 ## Next up
 
-1. Fix High #2–#5 (`meta.invoke` sandbox → atomic store + run IDs →
-   checker holes → schema / tool-name)
+1. Fix High #3–#5 (atomic store + run IDs → checker holes → schema /
+   tool-name)
 2. Credible coding-agent exemplar: tools that call workflows (E11)
 3. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
 4. Opt-in LangSmith-style LLM transcripts
@@ -42,6 +45,8 @@ None.
 - Coding-agent Tier B; `latest` / omit run-id; `lib/`; typed `--example`
 - Structured exhausted return with `history`; TM δ skills (multiply, etc.)
 - Most Medium/Low items in `issues.md` until they bite an exemplar
+- `meta.check_project` still joins paths with raw `</>` (same class of
+  bug as #2; not yet sandboxed)
 
 ## Open naming
 

@@ -105,7 +105,14 @@ import Hwfl.Runtime.Store
     storeRunId,
     writeRunMeta,
   )
-import Hwfl.Runtime.Workspace (Workspace, newWorkspace, workspaceRoot)
+import Hwfl.Runtime.Workspace
+  ( Workspace,
+    mkdirPath,
+    newWorkspace,
+    resolveContainedPath,
+    resolvePath,
+    workspaceRoot,
+  )
 import Hwfl.SkillCatalog
   ( SkillCatalog,
     buildSkillCatalog,
@@ -115,7 +122,7 @@ import Hwfl.SkillCatalog
     skillMetaForModule,
   )
 import Hwfl.Source (Diagnostic, Pos (..), mkDiagnostic, renderDiagnostics)
-import System.Directory (doesFileExist)
+import System.Directory (doesFileExist, doesPathExist)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hPutStrLn, stderr)
 
@@ -656,38 +663,74 @@ metaInvokeHandler parentWs parentOpts args =
   case parseMetaInvokeArgs args of
     Left e -> pure (Left e)
     Right (projectRel, workspaceRel, inputs) -> do
-      let parentRoot = workspaceRoot parentWs
-          projectAbs = parentRoot </> T.unpack projectRel
-          workspaceAbs = parentRoot </> T.unpack workspaceRel
-          req =
-            ( defaultRunTargetRequest projectAbs workspaceAbs parentOpts.roProvider
-            )
-              { rtrInputs = inputs,
-                rtrModelCatalog = parentOpts.roModelCatalog,
-                rtrObserver = parentOpts.roObserver,
-                rtrCost = parentOpts.roCost,
-                rtrMode = StepRun
-              }
-      hPutStrLn
-        stderr
-        ( T.unpack $
-            "meta.invoke project=" <> projectRel <> " workspace=" <> workspaceRel
-        )
-      result <- runTarget req
-      pure $ case result of
-        Left err ->
-          Right
-            ( HostResult
-                (invokeResult False "" "error" VUnit (renderRunTargetError err))
-                ( object
-                    [ "project" .= projectRel,
-                      "workspace" .= workspaceRel,
-                      "status" .= ("error" :: Text)
-                    ]
+      resolved <- resolveMetaInvokePaths parentWs projectRel workspaceRel
+      case resolved of
+        Left e -> pure (Left e)
+        Right (projectAbs, workspaceAbs) -> do
+          let req =
+                ( defaultRunTargetRequest projectAbs workspaceAbs parentOpts.roProvider
                 )
+                  { rtrInputs = inputs,
+                    rtrModelCatalog = parentOpts.roModelCatalog,
+                    rtrObserver = parentOpts.roObserver,
+                    rtrCost = parentOpts.roCost,
+                    rtrMode = StepRun
+                  }
+          hPutStrLn
+            stderr
+            ( T.unpack $
+                "meta.invoke project=" <> projectRel <> " workspace=" <> workspaceRel
             )
-        Right outcome ->
-          Right (outcomeToInvokeResult projectRel workspaceRel outcome)
+          result <- runTarget req
+          pure $ case result of
+            Left err ->
+              Right
+                ( HostResult
+                    (invokeResult False "" "error" VUnit (renderRunTargetError err))
+                    ( object
+                        [ "project" .= projectRel,
+                          "workspace" .= workspaceRel,
+                          "status" .= ("error" :: Text)
+                        ]
+                    )
+                )
+            Right outcome ->
+              Right (outcomeToInvokeResult projectRel workspaceRel outcome)
+
+-- | Resolve @project@ / @workspace@ under the parent sandbox (same containment
+-- as @fs.*@: lexical 'resolvePath', then canonicalize). @workspace@ is created
+-- if missing so a symlink parent cannot escape before the child run starts.
+resolveMetaInvokePaths ::
+  Workspace ->
+  Text ->
+  Text ->
+  IO (Either RuntimeError (FilePath, FilePath))
+resolveMetaInvokePaths ws projectRel workspaceRel =
+  case resolvePath ws projectRel of
+    Left e -> pure (Left e)
+    Right projectLex -> do
+      projectAbs <- resolveExistingOrLexical ws projectRel projectLex
+      case projectAbs of
+        Left e -> pure (Left e)
+        Right pAbs -> do
+          mk <- mkdirPath ws workspaceRel
+          case mk of
+            Left e -> pure (Left e)
+            Right () -> do
+              w <- resolveContainedPath ws workspaceRel
+              pure $ case w of
+                Left e -> Left e
+                Right wAbs -> Right (pAbs, wAbs)
+
+-- | Missing targets keep the lexical sandbox path (so 'runTarget' can report
+-- @ok=false@); existing paths must pass canonicalize containment.
+resolveExistingOrLexical ::
+  Workspace -> Text -> FilePath -> IO (Either RuntimeError FilePath)
+resolveExistingOrLexical ws rel lexical = do
+  exists <- doesPathExist lexical
+  if not exists
+    then pure (Right lexical)
+    else resolveContainedPath ws rel
 
 parseMetaInvokeArgs ::
   [(Maybe Ident, Value)] ->
