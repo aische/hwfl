@@ -20,9 +20,9 @@ import Hwfl.Llm.Types
   )
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Parse.Load (loadModuleText)
-import Hwfl.Runtime.Agent (buildToolSpec)
+import Hwfl.Runtime.Agent (buildToolSpec, initAgentState, submitToolName, uniquifyToolNames)
 import Hwfl.Runtime.Eval (StepMode (..))
-import Hwfl.Runtime.Machine (AgentExhaustedRequest (..), ChoiceRequest (..), MachineStatus (..), PauseReason (..))
+import Hwfl.Runtime.Machine (AgentExhaustedRequest (..), AgentState (..), ChoiceRequest (..), MachineStatus (..), PauseReason (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
@@ -577,3 +577,36 @@ spec = describe "runtime agent (M7)" $ do
               lookup (Ident "text") fs `shouldBe` Just (VString "done after extend")
               lookup (Ident "rounds") fs `shouldBe` Just (VInt 2)
             other -> expectationFailure (show other)
+
+  describe "tool name uniquify (High #5)" $ do
+    it "renames duplicate sanitized names" $ do
+      let mk n =
+            ToolSpecValue
+              { tvsName = n,
+                tvsDescription = n,
+                tvsParameters = object [],
+                tvsCallee = VUnit
+              }
+          names = map (.tvsName) (uniquifyToolNames [] [mk "a_b", mk "a_b", mk "a_b"]) :: [Text]
+      names `shouldBe` ["a_b", "a_b_2", "a_b_3"]
+
+    it "reserves submit for the synthetic tool" $ do
+      let userSubmit =
+            ToolSpecValue
+              { tvsName = submitToolName,
+                tvsDescription = "user",
+                tvsParameters = object [],
+                tvsCallee = VUnit
+              }
+          ag =
+            initAgentState
+              "sys"
+              "prompt"
+              [userSubmit]
+              "model"
+              4
+              "span"
+              (Just (object ["type" .= ("object" :: Text)]))
+              []
+          names = map (.tvsName) ag.agTools :: [Text]
+      names `shouldBe` ["submit_2", "submit"]

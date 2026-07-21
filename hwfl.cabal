@@ -73,6 +73,7 @@ library
         Hwfl.Obs.Trace
         Hwfl.Obs.Observer
         Hwfl.Json.Encode
+        Hwfl.Json.Validate
         Hwfl.Project
         Hwfl.Text.Corpus
         Hwfl.Text.Markdown
@@ -153,6 +154,7 @@ test-suite hwfl-test
         Hwfl.Check.ProjectSpec
         Hwfl.Cli.JsonSpec
         Hwfl.Check.SchemaSpec
+        Hwfl.Json.ValidateSpec
         Hwfl.DriverSpec
         Hwfl.Eval.PureSpec
         Hwfl.Llm.PricingSpec

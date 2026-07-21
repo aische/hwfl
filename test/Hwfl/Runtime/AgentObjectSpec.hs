@@ -16,6 +16,7 @@ import Hwfl.Llm.Types
     ProviderResult (..),
     TokenUsage (..),
     ToolCall (..),
+    ToolResult (..),
     Turn (..),
   )
 import Hwfl.Parse.Load (loadModuleText)
@@ -190,3 +191,82 @@ spec = describe "runtime llm.agent_object" $ do
           case outcome of
             OutcomeFailed {} -> pure ()
             other -> expectationFailure ("expected failure, got " <> show other)
+
+  it "rejects mistyped submit then accepts a valid retry" $
+    withSystemTempDirectory "hwfl-agent-object-bad-submit" $ \dir -> do
+      writeFile (dir </> "note.txt") "hello"
+      let path = dir </> "agent-object.md"
+      writeFile path (T.unpack agentObjectSrc)
+      case loadModuleText path agentObjectSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = badThenGoodSubmitMock,
+                  roInputs = [],
+                  roRunId = Just "ao-bad-submit",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime,
+                  roEntryModules = mempty
+                }
+              loaded
+          case outcome of
+            OutcomeCompleted (VRecord fs) _ _ -> do
+              lookup (Ident "summary") fs `shouldBe` Just (VString "ok")
+              lookup (Ident "score") fs `shouldBe` Just (VInt 1)
+            other -> expectationFailure (show other)
+
+-- | First model turn: mistyped submit (score as string). After the decode
+-- error tool result, second turn submits a valid payload.
+badThenGoodSubmitMock :: LlmProvider
+badThenGoodSubmitMock = mockProviderWith reply
+  where
+    reply :: ChatRequest -> Either a ProviderResult
+    reply req
+      | any isDecodeError req.chatTurns =
+          Right
+            ProviderResult
+              { prContent = "retrying",
+                prToolCalls =
+                  [ ToolCall
+                      "c2"
+                      "submit"
+                      ( object
+                          [ "summary" .= ("ok" :: Text),
+                            "score" .= (1 :: Int)
+                          ]
+                      )
+                  ],
+                prUsage = Just (TokenUsage 1 1),
+                prFinishReason = FinishToolCalls
+              }
+      | otherwise =
+          Right
+            ProviderResult
+              { prContent = "bad submit",
+                prToolCalls =
+                  [ ToolCall
+                      "c1"
+                      "submit"
+                      ( object
+                          [ "summary" .= ("ok" :: Text),
+                            "score" .= ("not-an-int" :: Text)
+                          ]
+                      )
+                  ],
+                prUsage = Just (TokenUsage 1 1),
+                prFinishReason = FinishToolCalls
+              }
+    isDecodeError = \case
+      TurnTool results ->
+        any (\r -> "submit decode error" `T.isInfixOf` r.trContent) results
+      _ -> False

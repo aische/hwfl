@@ -2,17 +2,11 @@
 
 Active work only. Archive completed sections to `log/archive/` weekly.
 
-## Now (P1) — runtime integrity (issues.md High #5)
+## Now (P1) — lab loop + exemplars
 
-Source review 2026-07-21 (`issues.md`). Fix before leaning harder on
-nested invoke / E11. (#1–#4 done: nested snapshot, `meta.invoke`
-sandbox, crash-safe store + run IDs, checker holes.)
-
-- [ ] **#5 Agent submit / tool identity** — real schema validation for
-      `llm.agent_object` submit (beyond presence-only); uniquify
-      sanitized tool names before advertising to the provider
-
-## Next (P1) — lab loop + exemplars
+High #1–#5 runtime integrity done (nested snapshot, `meta.invoke`
+sandbox, crash-safe store + run IDs, checker holes, submit schema +
+tool-name uniquify).
 
 - [ ] Credible coding-agent exemplar: tools that call same-project
       workflows (`FrInvoke` / E11), not only host ops
@@ -85,4 +79,4 @@ mutate / next-gen, evolve-agent E23, `obs.log` non-snapshotting,
 soft-land `max_rounds`, turing-machine exemplar + zero-arg funs,
 nested snapshot outer-only persist (#1), `meta.invoke` sandbox (#2),
 crash-safe store + run IDs (#3), checker holes for match/confirm/choice
-(#4)).
+(#4), submit schema validation + tool-name uniquify (#5)).

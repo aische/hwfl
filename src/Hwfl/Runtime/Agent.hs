@@ -10,6 +10,7 @@ module Hwfl.Runtime.Agent
     coerceToolArgs,
     valueToJsonText,
     sanitizeToolName,
+    uniquifyToolNames,
     lookupTool,
     defaultMaxRounds,
     submitToolName,
@@ -37,6 +38,7 @@ import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Check.Schema (typeToSchema)
 import Hwfl.Eval.Value
 import Hwfl.Json.Encode (jsonToValue, valueToJsonText)
+import Hwfl.Json.Validate (validateAgainstSchema)
 import Hwfl.Llm.Types qualified as Llm
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Turn (valueToTurns)
@@ -306,6 +308,28 @@ sanitizeToolName = T.map safe
       | c == '.' || c == '/' || c == '-' = '_'
       | otherwise = c
 
+-- | Ensure tool names are unique for the provider. @reserved@ names (e.g. the
+-- synthetic @submit@ tool) are treated as already taken so user tools are
+-- renamed instead of colliding with them.
+uniquifyToolNames :: [Text] -> [ToolSpecValue] -> [ToolSpecValue]
+uniquifyToolNames reserved = go reserved
+  where
+    go _ [] = []
+    go used (ts : rest) =
+      let name = uniqueName used ts.tvsName
+          ts' = ts {tvsName = name}
+       in ts' : go (name : used) rest
+
+    uniqueName used base
+      | base `notElem` used = base
+      | otherwise =
+          head
+            [ candidate
+              | n <- [2 :: Int ..],
+                let candidate = base <> "_" <> T.pack (show n),
+                candidate `notElem` used
+            ]
+
 -- | Synthetic terminating @submit@ tool (hwfi §6.1.3).
 submitToolSpec :: Aeson.Value -> ToolSpecValue
 submitToolSpec schema =
@@ -342,21 +366,12 @@ mixesSubmit ag calls =
     Nothing -> False
     Just _ -> any isSubmitCall calls && length calls > 1
 
--- | Validate submit arguments against the schema's required fields.
--- Success returns the decoded runtime value of the arguments object.
+-- | Validate submit arguments against the full schema (types, nested shape,
+-- additionalProperties), then decode to a runtime value.
 validateSubmit :: Aeson.Value -> Aeson.Value -> Either Text Value
-validateSubmit schema args = case args of
-  Aeson.Object o -> case missing o of
-    [] -> Right (jsonToValue args)
-    ms -> Left ("missing required field(s): " <> T.intercalate ", " ms)
-  _ -> Left "arguments must be a JSON object"
-  where
-    required = case schema of
-      Aeson.Object so -> case KM.lookup "required" so of
-        Just (Aeson.Array a) -> [t' | Aeson.String t' <- V.toList a]
-        _ -> []
-      _ -> []
-    missing o = [r | r <- required, not (KM.member (Key.fromText r) o)]
+validateSubmit schema args = do
+  validateAgainstSchema schema args
+  pure (jsonToValue args)
 
 parseAgentArgs ::
   [(Maybe Ident, Value)] ->
@@ -391,9 +406,13 @@ initAgentState ::
   [Llm.Turn] ->
   AgentState
 initAgentState system prompt tools model maxRounds spanId submitSchema priorHistory =
-  let tools' = case submitSchema of
-        Just schema -> tools ++ [submitToolSpec schema]
-        Nothing -> tools
+  let reserved = case submitSchema of
+        Just _ -> [submitToolName]
+        Nothing -> []
+      toolsUniq = uniquifyToolNames reserved tools
+      tools' = case submitSchema of
+        Just schema -> toolsUniq ++ [submitToolSpec schema]
+        Nothing -> toolsUniq
    in AgentState
         { agSystem = system,
           agPrompt = prompt,
