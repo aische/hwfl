@@ -17,6 +17,8 @@ semantic-check are benchmarks / research, not the product. See
 
 ## Done recently
 
+- **`obs.log` non-snapshotting** — spans/events only; no `persist` /
+  `snapshot_seq`; infer accepts record `fields`
 - **Evolve-agent v2** — seeded broken `stats` fixture; operator menu
   (`strip_warmup` / `shrink_rounds` / `drop_fs_list`); no-op patch
   rejection; gen-rotated fallbacks so `mut-g0` ≠ `mut-g1`
@@ -36,7 +38,6 @@ None.
 
 ## Deferred
 
-- `obs.log` non-snapshotting (spec done; runtime still persists)
 - Semantic-check S4 / S6 — research; optional static fitness later
 - Skills phase D (optional writer example)
 - Concurrent `par` host IO (or external parallel lab processes)

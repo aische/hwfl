@@ -5,6 +5,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Either (isRight)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
@@ -16,7 +17,7 @@ import Hwfl.Eval.Value (HostOpId (..), Value (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Obs.Redact (hostOpenAttrs, redactJson, redactMarker, redactValue)
-import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
+import Hwfl.Obs.Span (SpanKind (..), SpanRecord (..), SpanStatus (..))
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Obs.Trace
   ( SpanNode (..),
@@ -73,6 +74,27 @@ e03Src =
     ]
 
 -- | E16 — polymorphic @obs.span@ returns the body value (not Unit).
+obsLogSrc :: Text
+obsLogSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/obs-log",
+      "inputs: {}",
+      "outputs:",
+      "  n: Int",
+      "effects: []",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { n: Int } =",
+      "  let _ = obs.log(\"info\", \"first\")",
+      "  let _ = obs.log(\"info\", \"second\")",
+      "  { n = 0 }",
+      "```"
+    ]
+
 e16Src :: Text
 e16Src =
   T.unlines
@@ -157,6 +179,57 @@ spec = describe "observability (M6)" $ do
           [1 .. 12 :: Int]
         prefix <- runCostPrefix st
         prefix `shouldBe` "$0.01 │ "
+
+  describe "obs.log (non-snapshotting)" $ do
+    it "emits spans and events without machine snapshot transitions" $
+      withSystemTempDirectory "hwfl-obs-log" $ \dir -> do
+        let path = dir </> "obs-log.md"
+        writeFile path (T.unpack obsLogSrc)
+        case loadModuleText path obsLogSrc of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            outcome <-
+              runLoadedModule
+                RunOptions
+                  { roWorkspace = dir,
+                    roProvider = mockProvider,
+                    roInputs = [],
+                    roRunId = Just "obs-log",
+                    roEntry = path,
+                    roMode = StepRun,
+                    roProjectHash = Nothing,
+                    roExec = Nothing,
+                    roObserver = noopObserver,
+                    roCost = False,
+                    roModelCatalog = "model-catalog.json",
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime,
+                    roEntryModules = mempty
+                  }
+                loaded
+            case outcome of
+              OutcomeCompleted _ store seqNo -> do
+                seqNo `shouldBe` 1
+                let runDir =
+                      dir </> ".hwfl" </> "runs" </> T.unpack (storeRunId store)
+                transitions <- readFile (runDir </> "transitions.jsonl")
+                transitions `shouldNotContain` "obs.log"
+                events <- readFile (runDir </> "events.jsonl")
+                events `shouldContain` "first"
+                events `shouldContain` "second"
+                records <- readSpanRecords store
+                let obsOpens =
+                      [ r
+                        | r <- records,
+                          r.srOp == "open",
+                          r.srName == Just "obs.log"
+                      ]
+                    closes = Map.fromList [(r.srId, r) | r <- records, r.srOp == "close"]
+                length obsOpens `shouldBe` 2
+                map (\o -> (closes Map.! o.srId).srSnapshotSeq) obsOpens
+                  `shouldBe` [Nothing, Nothing]
+              other -> expectationFailure (show other)
 
   describe "polymorphic obs.span (E16)" $ do
     it "infers obs.span(name)(fun () => e) as the type of e" $ do

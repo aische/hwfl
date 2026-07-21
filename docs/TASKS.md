@@ -29,12 +29,6 @@ Prefer MCP / workflow modules over growing the host-op set.
 
 ### Observability
 
-- [ ] `obs.log` non-snapshotting — runtime still `persist`s today; make it
-      span/event only (no machine snapshot / resume cursor), matching
-      [05-host-ops.md](spec/05-host-ops.md) §5 /
-      [07-observability.md](spec/07-observability.md) §5. Keep
-      `obs.span` region open/close non-boundary. Best-effort logs across
-      crash/resume.
 - [ ] Opt-in LangSmith-style LLM transcripts — durable messages in/out
       keyed by `span_id` (`transcripts.jsonl` or `payloads/`); spans stay
       the thin index. CLI `--trace` / run option; redact + size caps.
@@ -83,4 +77,4 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check
 A+B / S1–S3 / S5, `fs.patch`, lab spine, E11, coding-agent chat, compare
-mutate / next-gen, evolve-agent E23).
+mutate / next-gen, evolve-agent E23, `obs.log` non-snapshotting).

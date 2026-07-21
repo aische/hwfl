@@ -131,6 +131,7 @@ infer' env = \case
     | isLlmAgentObject f -> inferLlmAgentObjectApp env args
     | isObsSpan f -> inferObsSpanApp env args
     | isObsSpanPartial f -> inferObsSpanThunkApp env args
+    | isObsLog f -> inferObsLogApp env args
     | isMetaInvoke f -> inferMetaInvokeApp env args
     | isMetaReadSpans f -> inferMetaReadSpansApp env args
     | isFsCopy f -> inferFsCopyApp env args
@@ -726,6 +727,55 @@ inferObsSpanThunk env bodyE = do
       unify domain tUnit
       pure ret
     Nothing -> Left (ExpectedFunction te')
+
+-- | @obs.log(level, message, fields?)@ — @fields@ may be any record or Json.
+isObsLog :: Expr -> Bool
+isObsLog = \case
+  EProj (EVar (Ident "obs")) (Ident "log") -> True
+  _ -> False
+
+checkJsonish :: TypeEnv -> Expr -> Either CheckError ()
+checkJsonish env e = do
+  te <- infer env e
+  te' <- resolveType env te
+  case te' of
+    TRecord _ -> pure ()
+    TName (TypeName "Json") -> pure ()
+    _ ->
+      Left
+        ( TypeMismatchMsg
+            "obs.log fields must be a record or Json"
+            tJson
+            te'
+        )
+
+inferObsLogApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferObsLogApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Positional [levelE, messageE]) -> do
+    check env levelE tString
+    check env messageE tString
+    pure tUnit
+  Right (Positional [levelE, messageE, fieldsE]) -> do
+    check env levelE tString
+    check env messageE tString
+    checkJsonish env fieldsE
+    pure tUnit
+  Right (Named nes) -> do
+    levelE <- maybe (Left (MissingNamedArg (Ident "level"))) pure (lookup (Ident "level") nes)
+    messageE <- maybe (Left (MissingNamedArg (Ident "message"))) pure (lookup (Ident "message") nes)
+    check env levelE tString
+    check env messageE tString
+    for_ (lookup (Ident "fields") nes) (checkJsonish env)
+    let known = [Ident "level", Ident "message", Ident "fields"]
+    mapM_
+      ( \(n, _) ->
+          unless (n `elem` known) $
+            Left (UnknownField n (TRecord [(Ident "level", tString), (Ident "message", tString)]))
+      )
+      nes
+    pure tUnit
+  _ -> Left (ArityMismatch 2 (length args))
 
 -- | @meta.invoke({ project, workspace, inputs? })@ — @inputs@ may be any record
 -- (prelude stub uses Json which would reject concrete records).

@@ -1305,10 +1305,10 @@ doObsLog ctx mode m args = case parseObsLog args of
         SkHost
         (hostOpenAttrs HostObsLog args)
     appendEvent ctx.rcStore ctx.rcSpans level message fields
+    closeSpan ctx.rcStore ctx.rcSpans sid SsOk (object []) Nothing
     let m' = pauseIfStep mode (m {mCurrent = CurReturn VUnit})
-    seqNo <- persist ctx (Just HostObsLog) (Just VUnit) m'.mStatus (Just m')
-    closeSpan ctx.rcStore ctx.rcSpans sid SsOk (object []) (Just seqNo)
-    pure (Right (StepResult m' True))
+    -- Observability only: spans/events, no machine snapshot (spec §05 / §07).
+    pure (Right (StepResult m' False))
 
 doObsSpan ::
   RunCtx -> StepMode -> Machine -> [(Maybe Ident, Value)] -> IO (Either RuntimeError StepResult)
