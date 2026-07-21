@@ -4,7 +4,7 @@ Last updated: 2026-07-21
 
 ## Current focus
 
-**Runtime integrity (source-review High #4–#5)** — “checked ≈ safe”
+**Runtime integrity (source-review High #5)** — “checked ≈ safe”
 before leaning harder on nested invoke / E11. Findings live in repo-root
 `issues.md` (do not treat as spec). Control plane remains **hwfl-server**.
 
@@ -17,6 +17,10 @@ semantic-check are benchmarks / research, not the product. See
 
 ## Done recently
 
+- **#4 Checker holes** — empty `match` rejected in check mode;
+  `confirm` / `choice` / `human.confirm` / `human.choice` check record
+  shape (`title` required, `detail` optional, `options` for choice);
+  runtime rejects missing required fields instead of coercing to `""`
 - **#3 Crash-safe store + run IDs** — `meta.json` / `snapshot.json` via
   temp + rename; `newRunId` adds 64-bit entropy (locking still deferred)
 - **#2 `meta.invoke` sandbox** — `project` / `workspace` via `resolvePath`
@@ -33,7 +37,7 @@ None.
 
 ## Next up
 
-1. Fix High #4–#5 (checker holes → schema / tool-name)
+1. Fix High #5 (agent submit schema validation + uniquify tool names)
 2. Credible coding-agent exemplar: tools that call workflows (E11)
 3. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
 4. Opt-in LangSmith-style LLM transcripts

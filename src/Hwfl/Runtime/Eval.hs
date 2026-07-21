@@ -2466,39 +2466,55 @@ literalValue = \case
 
 confirmFromValue :: Value -> Either RuntimeError ConfirmRequest
 confirmFromValue = \case
-  VRecord fs ->
-    Right
+  VRecord fs -> do
+    title <- requireStringField (Ident "title") fs "confirm"
+    detail <- optionalStringField (Ident "detail") fs "confirm"
+    pure
       ConfirmRequest
-        { crTitle = stringField (Ident "title") fs,
-          crDetail = stringField (Ident "detail") fs,
+        { crTitle = title,
+          crDetail = detail,
           crBranchIndex = Nothing
         }
   _ -> Left (HostErr "confirm expects a record { title, detail }")
 
-stringField :: Ident -> [(Ident, Value)] -> Text
-stringField n fs = case lookup n fs of
-  Just (VString t) -> t
-  _ -> ""
+requireStringField :: Ident -> [(Ident, Value)] -> Text -> Either RuntimeError Text
+requireStringField n fs ctx = case lookup n fs of
+  Just (VString t) -> Right t
+  Just _ ->
+    Left (HostErr (ctx <> "." <> unIdent n <> " must be String"))
+  Nothing ->
+    Left (HostErr (ctx <> " requires " <> unIdent n <> ": String"))
+
+optionalStringField :: Ident -> [(Ident, Value)] -> Text -> Either RuntimeError Text
+optionalStringField n fs ctx = case lookup n fs of
+  Nothing -> Right ""
+  Just (VString t) -> Right t
+  Just _ ->
+    Left (HostErr (ctx <> "." <> unIdent n <> " must be String"))
 
 confirmArgs :: [(Maybe Ident, Value)] -> Either RuntimeError ConfirmRequest
 confirmArgs args = case lookup (Just (Ident "title")) args of
-  Just (VString title) ->
-    let detail = case lookup (Just (Ident "detail")) args of
-          Just (VString d) -> d
-          _ -> ""
-     in Right (ConfirmRequest title detail Nothing)
-  _ -> case args of
+  Just (VString title) -> do
+    detail <- case lookup (Just (Ident "detail")) args of
+      Nothing -> Right ""
+      Just (VString d) -> Right d
+      Just _ -> Left (HostErr "human.confirm.detail must be String")
+    pure (ConfirmRequest title detail Nothing)
+  Just _ -> Left (HostErr "human.confirm.title must be String")
+  Nothing -> case args of
     [(Nothing, v)] -> confirmFromValue v
     _ -> Left (HostErr "human.confirm expects title: String (and optional detail)")
 
 choiceFromValue :: Value -> Either RuntimeError ChoiceRequest
 choiceFromValue = \case
   VRecord fs -> do
+    title <- requireStringField (Ident "title") fs "choice"
+    detail <- optionalStringField (Ident "detail") fs "choice"
     opts <- optionsField fs
     pure
       ChoiceRequest
-        { chTitle = stringField (Ident "title") fs,
-          chDetail = stringField (Ident "detail") fs,
+        { chTitle = title,
+          chDetail = detail,
           chOptions = opts,
           chBranchIndex = Nothing
         }
@@ -2523,38 +2539,41 @@ choiceArgs :: [(Maybe Ident, Value)] -> Either RuntimeError ChoiceRequest
 choiceArgs args = case lookup (Just (Ident "options")) args of
   Just (VList xs) -> do
     opts <- traverse expectOptionString xs >>= nonEmptyOptions
-    let title = case lookup (Just (Ident "title")) args of
-          Just (VString t) -> t
-          _ -> ""
-        detail = case lookup (Just (Ident "detail")) args of
-          Just (VString d) -> d
-          _ -> ""
+    title <- case lookup (Just (Ident "title")) args of
+      Just (VString t) -> Right t
+      Just _ -> Left (HostErr "human.choice.title must be String")
+      Nothing -> Left (HostErr "human.choice requires title: String")
+    detail <- case lookup (Just (Ident "detail")) args of
+      Nothing -> Right ""
+      Just (VString d) -> Right d
+      Just _ -> Left (HostErr "human.choice.detail must be String")
     pure (ChoiceRequest title detail opts Nothing)
   Just _ -> Left (HostErr "human.choice options must be List<String>")
   Nothing -> case args of
     [(Nothing, v)] -> choiceFromValue v
-    _ -> Left (HostErr "human.choice expects options: List<String> (and optional title/detail)")
+    _ -> Left (HostErr "human.choice expects title: String, options: List<String> (and optional detail)")
 
 askFromValue :: Value -> Either RuntimeError AskRequest
 askFromValue = \case
-  VRecord fs -> case lookup (Ident "prompt") fs of
-    Just (VString prompt) ->
-      Right
-        AskRequest
-          { askPrompt = prompt,
-            askDetail = stringField (Ident "detail") fs,
-            askBranchIndex = Nothing
-          }
-    _ -> Left (HostErr "ask expects a record { prompt: String, detail?: String }")
+  VRecord fs -> do
+    prompt <- requireStringField (Ident "prompt") fs "ask"
+    detail <- optionalStringField (Ident "detail") fs "ask"
+    pure
+      AskRequest
+        { askPrompt = prompt,
+          askDetail = detail,
+          askBranchIndex = Nothing
+        }
   _ -> Left (HostErr "ask expects a record { prompt: String, detail?: String }")
 
 askArgs :: [(Maybe Ident, Value)] -> Either RuntimeError AskRequest
 askArgs args = case lookup (Just (Ident "prompt")) args of
-  Just (VString prompt) ->
-    let detail = case lookup (Just (Ident "detail")) args of
-          Just (VString d) -> d
-          _ -> ""
-     in Right (AskRequest prompt detail Nothing)
+  Just (VString prompt) -> do
+    detail <- case lookup (Just (Ident "detail")) args of
+      Nothing -> Right ""
+      Just (VString d) -> Right d
+      Just _ -> Left (HostErr "human.ask.detail must be String")
+    pure (AskRequest prompt detail Nothing)
   Just _ -> Left (HostErr "human.ask prompt must be String")
   Nothing -> case args of
     [(Nothing, v)] -> askFromValue v

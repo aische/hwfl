@@ -135,6 +135,8 @@ infer' env = \case
     | isMetaInvoke f -> inferMetaInvokeApp env args
     | isMetaReadSpans f -> inferMetaReadSpansApp env args
     | isFsCopy f -> inferFsCopyApp env args
+    | isHumanConfirm f -> inferHumanConfirmApp env args
+    | isHumanChoice f -> inferHumanChoiceApp env args
     | isHumanAsk f -> inferHumanAskApp env args
     | EVar (Ident n) <- f,
       Just cls <- classifyOp n ->
@@ -195,10 +197,10 @@ infer' env = \case
       mapM_ (\x -> check env x t0) rest
       pure (TList t0)
   EConfirm e -> do
-    _ <- infer env e
+    checkConfirmArg env e
     pure tBool
   EChoice e -> do
-    _ <- infer env e
+    checkChoiceArg env e
     pure tString
   ETry body errVar handler -> do
     tBody <- infer env body
@@ -261,12 +263,10 @@ check' env e want = do
         unify want' got
     EConfirm arg -> do
       unify want' tBool
-      _ <- infer env arg
-      pure ()
+      checkConfirmArg env arg
     EChoice arg -> do
       unify want' tString
-      _ <- infer env arg
-      pure ()
+      checkChoiceArg env arg
     EJoin es -> case want' of
       TList el -> mapM_ (\x -> check env x el) es
       _ -> do
@@ -296,14 +296,16 @@ inferMatch env scrut arms = case arms of
     pure t0
 
 checkMatch :: TypeEnv -> Expr -> [MatchArm] -> TypeExpr -> Either CheckError ()
-checkMatch env scrut arms want = do
-  st <- infer env scrut
-  mapM_
-    ( \(MatchArm p body) -> do
-        binds <- patternBindings env p st
-        check (extendVars binds env) body want
-    )
-    arms
+checkMatch env scrut arms want = case arms of
+  [] -> Left (CannotInfer "empty match")
+  _ -> do
+    st <- infer env scrut
+    mapM_
+      ( \(MatchArm p body) -> do
+          binds <- patternBindings env p st
+          check (extendVars binds env) body want
+      )
+      arms
 
 patternBindings :: TypeEnv -> Pattern -> TypeExpr -> Either CheckError [(Ident, TypeExpr)]
 patternBindings env p ty = do
@@ -932,6 +934,113 @@ inferFsCopyApp env args = case classifyArgs args of
     pure tUnit
   Right (Positional _) ->
     Left (TypeMismatchMsg "fs.copy requires named arguments" (TRecord []) (TRecord []))
+
+-- | @human.confirm({ title, detail? })@ or positional record; sugar @confirm@.
+isHumanConfirm :: Expr -> Bool
+isHumanConfirm = \case
+  EProj (EVar (Ident "human")) (Ident "confirm") -> True
+  _ -> False
+
+inferHumanConfirmApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferHumanConfirmApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Named nes) -> checkConfirmFields env nes
+  Right (Positional [recordExpr]) -> do
+    checkConfirmArg env recordExpr
+    pure tBool
+  Right (Positional xs) -> Left (ArityMismatch 1 (length xs))
+
+checkConfirmArg :: TypeEnv -> Expr -> Either CheckError ()
+checkConfirmArg env e = do
+  ty <- infer env e >>= resolveType env
+  case ty of
+    TRecord fields -> do
+      _ <- checkConfirmFieldTypes fields
+      pure ()
+    _ -> Left (ExpectedRecord ty)
+
+checkConfirmFields :: TypeEnv -> [(Ident, Expr)] -> Either CheckError TypeExpr
+checkConfirmFields env fields = do
+  titleE <- maybe (Left (MissingNamedArg (Ident "title"))) pure (lookup (Ident "title") fields)
+  check env titleE tString
+  case lookup (Ident "detail") fields of
+    Nothing -> pure ()
+    Just detailE -> check env detailE tString
+  rejectUnknownConfirm (map fst fields)
+  pure tBool
+
+checkConfirmFieldTypes :: [(Ident, TypeExpr)] -> Either CheckError TypeExpr
+checkConfirmFieldTypes fields = do
+  titleTy <-
+    maybe (Left (MissingField (Ident "title") (TRecord fields))) pure (lookup (Ident "title") fields)
+  unify tString titleTy
+  for_ (lookup (Ident "detail") fields) (unify tString)
+  rejectUnknownConfirm (map fst fields)
+  pure tBool
+
+rejectUnknownConfirm :: [Ident] -> Either CheckError ()
+rejectUnknownConfirm =
+  mapM_
+    ( \n ->
+        unless (n `elem` [Ident "title", Ident "detail"]) $
+          Left (UnknownField n (TRecord [(Ident "title", tString)]))
+    )
+
+-- | @human.choice({ title, options, detail? })@ or positional record; sugar @choice@.
+isHumanChoice :: Expr -> Bool
+isHumanChoice = \case
+  EProj (EVar (Ident "human")) (Ident "choice") -> True
+  _ -> False
+
+inferHumanChoiceApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferHumanChoiceApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Named nes) -> checkChoiceFields env nes
+  Right (Positional [recordExpr]) -> do
+    checkChoiceArg env recordExpr
+    pure tString
+  Right (Positional xs) -> Left (ArityMismatch 1 (length xs))
+
+checkChoiceArg :: TypeEnv -> Expr -> Either CheckError ()
+checkChoiceArg env e = do
+  ty <- infer env e >>= resolveType env
+  case ty of
+    TRecord fields -> do
+      _ <- checkChoiceFieldTypes fields
+      pure ()
+    _ -> Left (ExpectedRecord ty)
+
+checkChoiceFields :: TypeEnv -> [(Ident, Expr)] -> Either CheckError TypeExpr
+checkChoiceFields env fields = do
+  titleE <- maybe (Left (MissingNamedArg (Ident "title"))) pure (lookup (Ident "title") fields)
+  optionsE <- maybe (Left (MissingNamedArg (Ident "options"))) pure (lookup (Ident "options") fields)
+  check env titleE tString
+  check env optionsE (TList tString)
+  case lookup (Ident "detail") fields of
+    Nothing -> pure ()
+    Just detailE -> check env detailE tString
+  rejectUnknownChoice (map fst fields)
+  pure tString
+
+checkChoiceFieldTypes :: [(Ident, TypeExpr)] -> Either CheckError TypeExpr
+checkChoiceFieldTypes fields = do
+  titleTy <-
+    maybe (Left (MissingField (Ident "title") (TRecord fields))) pure (lookup (Ident "title") fields)
+  optionsTy <-
+    maybe (Left (MissingField (Ident "options") (TRecord fields))) pure (lookup (Ident "options") fields)
+  unify tString titleTy
+  unify (TList tString) optionsTy
+  for_ (lookup (Ident "detail") fields) (unify tString)
+  rejectUnknownChoice (map fst fields)
+  pure tString
+
+rejectUnknownChoice :: [Ident] -> Either CheckError ()
+rejectUnknownChoice =
+  mapM_
+    ( \n ->
+        unless (n `elem` [Ident "title", Ident "detail", Ident "options"]) $
+          Left (UnknownField n (TRecord [(Ident "title", tString), (Ident "options", TList tString)]))
+    )
 
 -- | @human.ask({ prompt, detail? })@ or named equivalent.
 isHumanAsk :: Expr -> Bool

@@ -14,7 +14,7 @@ import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
-import Hwfl.Runtime.Error (RuntimeError (..))
+import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Machine (AskRequest (..), ChoiceRequest (..), MachineStatus (..), PauseReason (..))
 import Hwfl.Runtime.Run
@@ -208,6 +208,55 @@ spec = describe "runtime par/confirm/step (M5)" $ do
                              VRecord [(Ident "text", VString "C")]
                            ]
             other -> expectationFailure (show other)
+
+  it "confirm without title fails at runtime (no empty-string coerce)" $
+    withSystemTempDirectory "hwfl-confirm-bad" $ \dir -> do
+      let src =
+            T.unlines
+              [ "---",
+                "name: workflows/confirm-bad",
+                "inputs: {}",
+                "outputs:",
+                "  ok: Bool",
+                "effects: [Human]",
+                "---",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun main(_): { ok: Bool } =",
+                "  let ok = confirm { detail = \"missing title\" }",
+                "  { ok }",
+                "```"
+              ]
+      path <- writeMod dir src
+      case loadModuleText path src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isLeft
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = mockProvider,
+                  roInputs = [],
+                  roRunId = Just "bad-confirm",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime,
+                  roEntryModules = mempty
+                }
+              loaded
+          case outcome of
+            OutcomeFailed err _ _ ->
+              renderRuntimeError err `shouldSatisfy` T.isInfixOf "requires title"
+            other -> expectationFailure ("expected failure, got " <> show other)
 
   it "confirm + approve --yes" $
     withSystemTempDirectory "hwfl-confirm" $ \dir -> do
@@ -551,3 +600,6 @@ isRight :: Either a b -> Bool
 isRight = \case
   Right _ -> True
   Left _ -> False
+
+isLeft :: Either a b -> Bool
+isLeft = not . isRight

@@ -4,11 +4,12 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Decl (ModuleBody)
-import Hwfl.Ast.Expr (Expr)
+import Hwfl.Ast.Expr (Expr (ELit, EMatch))
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Ast.Pat (Literal (..))
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
 import Hwfl.Check.Error (CheckError (..), errorRoot)
-import Hwfl.Check.Infer (infer)
+import Hwfl.Check.Infer (check, infer)
 import Hwfl.Check.Module (CheckResult (..), checkLoadedModule, checkModuleBody)
 import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Parse.Expr (parseExprText)
@@ -374,6 +375,47 @@ spec = describe "type checker" $ do
         "fun main(_): String =\n\
         \  try fs.read(\"x\").text catch (err) => err"
         `shouldSatisfy` isRight
+
+  describe "match / confirm / choice (High #4)" $ do
+    it "rejects empty match in checking mode" $
+      case check preludeTypeEnv (EMatch (ELit (LInt 1)) []) (TName (TypeName "Int")) of
+        Left err -> errorRoot err `shouldBe` CannotInfer "empty match"
+        Right _ -> expectationFailure "expected empty match rejection"
+
+    it "accepts confirm with title only" $
+      inferE "confirm { title = \"Proceed?\" }"
+        `shouldBe` Right (TName (TypeName "Bool"))
+
+    it "accepts confirm with title and detail" $
+      inferE "confirm { title = \"Proceed?\", detail = \"demo\" }"
+        `shouldBe` Right (TName (TypeName "Bool"))
+
+    it "rejects confirm without title" $
+      inferE "confirm { detail = \"demo\" }" `shouldSatisfy` isLeft
+
+    it "rejects confirm with non-record argument" $
+      inferE "confirm 1" `shouldSatisfy` isLeft
+
+    it "rejects confirm with unknown field" $
+      inferE "confirm { title = \"t\", extra = 1 }" `shouldSatisfy` isLeft
+
+    it "accepts choice with title and options" $
+      inferE "choice { title = \"Pick\", options = [\"a\", \"b\"] }"
+        `shouldBe` Right (TName (TypeName "String"))
+
+    it "rejects choice without options" $
+      inferE "choice { title = \"Pick\" }" `shouldSatisfy` isLeft
+
+    it "rejects choice without title" $
+      inferE "choice { options = [\"a\"] }" `shouldSatisfy` isLeft
+
+    it "accepts human.confirm with optional detail omitted" $
+      inferE "human.confirm({ title = \"ok\" })"
+        `shouldBe` Right (TName (TypeName "Bool"))
+
+    it "accepts human.choice with optional detail omitted" $
+      inferE "human.choice({ title = \"Pick\", options = [\"a\"] })"
+        `shouldBe` Right (TName (TypeName "String"))
 
 isRight :: Either a b -> Bool
 isRight = \case
