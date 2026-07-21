@@ -4,10 +4,11 @@ Last updated: 2026-07-21
 
 ## Current focus
 
-**Lab loop + exemplars** — High #1–#5 runtime integrity landed; next lean
-into coding-agent tools that call workflows (E11). Findings live in
-repo-root `issues.md` (do not treat as spec). Control plane remains
-**hwfl-server**.
+**Lab loop + exemplars** — High #1–#5 runtime integrity landed. Next:
+credible coding-agent shape — chat → FrInvoke coding session → typed
+plan → **serial** task loop with per-task verify (gather_context /
+verify as workflow tools). Spec in [TASKS.md](TASKS.md). Findings in
+repo-root `issues.md` (not spec). Control plane: **hwfl-server**.
 
 ## North star
 
@@ -33,7 +34,8 @@ None.
 
 ## Next up
 
-1. Credible coding-agent exemplar: tools that call workflows (E11)
+1. Credible coding-agent exemplar (chat → coding session → serial
+   plan/task/verify; gather_context + verify via FrInvoke) — see TASKS
 2. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
 3. Opt-in LangSmith-style LLM transcripts
 4. Medium/Low `issues.md` items when they bite an exemplar
