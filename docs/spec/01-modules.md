@@ -49,7 +49,8 @@ lib/                        # optional libraries
 - `env`: process env keys exposed to scripts via `env.get` / ambient
   (never provider API keys unless explicitly listed — discouraged).
 - `exec`: optional; **absent ⇒ `Exec` effect unavailable** and `exec.*`
-  rejected at check time (hwfi policy).
+  rejected at check time (hwfi policy). Planned: `runtime` / `docker`
+  fields for containerized spawn ([05-host-ops.md](05-host-ops.md) §3.1).
 - `effects.default`: default allow-set for modules that omit `effects`.
 - `skills`: optional budgets for `skill.load` (defaults apply when absent).
 - Provider keys (`OPENAI_API_KEY`, etc.) are consumed by the host gateway

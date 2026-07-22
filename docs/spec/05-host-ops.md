@@ -100,6 +100,36 @@ Confirm gate: configurable — either always `confirm` before exec, or
 policy flag in `project.json`. **Recommendation:** default confirm on for
 anything interactive; CI projects may set `exec.confirm = false`.
 
+### 3.1 Spawn backend (planned)
+
+Today `exec.run` spawns on the **host** (`Hwfl.Runtime.Exec`). That is
+operator-trust isolation (basename allowlist + env allowlist + timeout),
+not a security boundary — especially when `bash` / `python3` are allowed.
+
+**Planned:** opt-in spawn backend behind the same `exec.run` API (no new
+effect, no ML prelude change). Policy in `project.json`:
+
+| Field | Notes |
+|-------|-------|
+| `exec.runtime` | `"host"` (default) \| `"docker"` |
+| `exec.docker.image` | required when `runtime = docker`; project-chosen |
+| `exec.docker.network` | default `"none"` |
+| `exec.docker.user` | optional non-root (`uid:gid`) |
+| `exec.docker.memory` / `cpus` | optional resource caps |
+
+Docker mode: ephemeral `docker run --rm` per call; bind-mount the
+**workspace root** at a fixed workdir so `fs.*` (host) and `exec` (container)
+see the same tree. Allowlist + confirm still apply — containers limit host
+blast radius, not workspace damage. Missing Docker daemon → clear host
+error (no silent fallback to host unless a future explicit policy says so).
+
+Persistent shells (`term.*`) are separate; do not stretch one-shot
+`docker run` into a session model. Multi-tenant scheduling stays in
+**hwfl-server**; hwfl only exposes the pluggable spawn.
+
+Image choice is per-project (fat “coding” image vs slim toolchain image) —
+not a host builtin catalog.
+
 ## 4. Human (`Human`)
 
 | Op | Notes |

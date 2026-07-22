@@ -16,6 +16,13 @@ Prefer MCP / workflow modules over growing the host-op set.
 - [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot
       `exec.run`
 
+### Exec isolation (when coding-agent / untrusted spawn needs it)
+
+- [ ] Opt-in `exec.runtime` = `host` \| `docker` behind existing
+      `exec.run` — bind-mount workspace, allowlist + confirm retained.
+      Spec: [spec/05-host-ops.md](spec/05-host-ops.md) §3.1. Default stays
+      host; coding-agent examples may pin an image later. Not a new effect.
+
 ## Later (P2–P3)
 
 ### Coding-agent variants

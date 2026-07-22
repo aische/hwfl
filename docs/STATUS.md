@@ -41,6 +41,7 @@ None.
 
 ## Deferred
 
+- Opt-in Docker `exec.runtime` (spec §05 §3.1) when untrusted spawn bites
 - Multi-process run-store locking (until parallel external lab processes)
 - Semantic-check S4 / S6; skills phase D; concurrent `par` host IO
 - Coding-agent Tier B; `latest` / omit run-id; `lib/`; typed `--example`

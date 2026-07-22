@@ -104,6 +104,10 @@ basename on the allowlist. Child env = keys in `exec.env` only.
 `confirm` defaults to `true` (pause for `hwfl approve` before spawn). Set
 `false` for CI.
 
+Spawn is host-local today. Planned opt-in `exec.runtime` / `exec.docker`
+(workspace bind-mount) — see [spec/05-host-ops.md](spec/05-host-ops.md) §3.1.
+Does not change the `exec.run` signature.
+
 ### LLM
 
 | Op | Effects | Signature |
