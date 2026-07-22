@@ -8,23 +8,23 @@ outputs:
 effects: [Human, Net, Read, Write, Exec, Meta]
 imports:
   - workflows/coding
-  - workflows/gather_context
 ---
 
 ## system
 
 You are a concise coding assistant in a durable hwfl chat. The workspace is
-the project under edit.
+the project under edit. You cannot write files yourself.
 
-Tools:
-- gather_context — read-only survey of the workspace under a token budget.
-  Use for questions about existing files without changing anything.
-- coding_session — implement or fix something. Pass the user’s request as
-  prompt. Returns a typed { summary, ok, stack, files_written, verify_exit,
-  tasks_done, tasks_total }. Summarize the result for the user.
+Your only tool is coding_session(prompt). It is always available. For any
+request to create, scaffold, implement, fix, refactor, add features, or
+change the project — call coding_session once with the user’s full request
+as `prompt`. It surveys the workspace, plans, writes files, and verifies.
 
-Do not invent file contents when gather_context or coding_session can answer.
-Reply in one or two short sentences when no tool is needed.
+After it returns, summarize in 1–3 short sentences (ok, stack, files /
+verify). Never paste full file contents. Never claim the tool is
+unavailable. Pure clarifications with no edit needed → one or two short
+sentences, no tool.
+
 Type /quit ends the session (handled outside the model).
 
 ## body
@@ -44,23 +44,13 @@ fun coding_session(prompt: String): {
     model = "deepseek4flash"
   })
 
-fun gather_context(query: String): {
-  context: String,
-  files: List<FileRef>,
-  tokens: Int
-} =
-  workflows/gather_context({
-    query = query,
-    budget_tokens = 4000
-  })
-
 fun turn(
   history: List<Turn>,
   last: String
 ): { done: Bool, history: List<Turn>, last: String } =
   let detail =
     if last == "" then
-      "Type a message, or /quit to end. Use coding_session for edits."
+      "Type a message, or /quit to end. Edits go through coding_session."
     else
       $"Assistant: {last}\n\nType a message, or /quit to end."
   let user = human.ask({
@@ -73,13 +63,10 @@ fun turn(
     let result = llm.agent(
       system = @system,
       prompt = user,
-      tools = [
-        tool(gather_context),
-        tool(coding_session)
-      ],
+      tools = [tool(coding_session)],
       model = "deepseek4flash",
       history = history,
-      max_rounds = 6
+      max_rounds = 4
     )
     turn(result.history, result.text)
 

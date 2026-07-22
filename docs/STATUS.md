@@ -18,10 +18,12 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
-- **Credible coding-agent** — chat (`human.ask`) + `coding_session` /
-  `gather_context` tools; `workflows/coding` owns plan → serial
-  implement/verify; `gather_context` + `verify` as FrInvoke modules;
-  FrInvoke nest uses callee fun table (helpers work)
+- **FrInvoke sections** — callee `@section` / `schema(T)` surface installed
+  on nest (fixes chat→`coding_session` trap `unknown section: @plan-system`)
+- **Chat tools** — coding-agent chat exposes only `coding_session`
+  (survey stays inside the session)
+- **Credible coding-agent** — chat → FrInvoke `workflows/coding` → plan →
+  serial do_task/verify; FrInvoke callee fun table
 - **#5 Agent submit / tool identity** — schema validation + tool-name
   uniquify
 - **#4 Checker holes** — empty `match`; `confirm` / `choice` shape

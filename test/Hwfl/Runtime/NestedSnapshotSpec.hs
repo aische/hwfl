@@ -95,6 +95,62 @@ innerSrc =
       "```"
     ]
 
+-- | Callee uses @section; must resolve under FrInvoke (not caller sections).
+sectionCallerSrc :: Text
+sectionCallerSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/main",
+      "inputs: {}",
+      "outputs:",
+      "  msg: String",
+      "effects: []",
+      "imports:",
+      "  - workflows/greet",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { msg: String } =",
+      "  workflows/greet({})",
+      "```"
+    ]
+
+sectionCalleeSrc :: Text
+sectionCalleeSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/greet",
+      "inputs: {}",
+      "outputs:",
+      "  msg: String",
+      "effects: []",
+      "---",
+      "",
+      "## greeting",
+      "",
+      "hello-from-callee-section",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { msg: String } =",
+      "  { msg = @greeting }",
+      "```"
+    ]
+
+sectionProjectJson :: String
+sectionProjectJson =
+  unlines
+    [ "{",
+      "  \"name\": \"nested-section\",",
+      "  \"version\": \"0.1.0\",",
+      "  \"entrypoint\": \"workflows/main\",",
+      "  \"effects\": { \"default\": [], \"deny\": [] }",
+      "}"
+    ]
+
 projectJson :: String
 projectJson =
   unlines
@@ -209,6 +265,45 @@ spec = describe "nested snapshot persist (outer only)" $ do
                           </> "transitions.jsonl"
                   hosts <- transitionHosts transitions
                   [h | Just h <- hosts, h == "fs.read"] `shouldBe` []
+                other -> expectationFailure (show other)
+
+  it "FrInvoke resolves callee @section (not caller sections)" $
+    withSystemTempDirectory "hwfl-nested-section" $ \dir -> do
+      createDirectoryIfMissing True (dir </> "workflows")
+      writeFile (dir </> "project.json") sectionProjectJson
+      writeFile (dir </> "workflows" </> "main.md") (T.unpack sectionCallerSrc)
+      writeFile (dir </> "workflows" </> "greet.md") (T.unpack sectionCalleeSrc)
+      checked <- checkProject dir
+      case checked of
+        Left err -> expectationFailure (show err)
+        Right _ -> do
+          lp <- loadProjectOrFail dir
+          case Map.lookup (qname "workflows/main") lp.lpModules of
+            Nothing -> expectationFailure "missing workflows/main"
+            Just m -> do
+              outcome <-
+                runLoadedModule
+                  RunOptions
+                    { roWorkspace = dir,
+                      roProvider = mockProvider,
+                      roInputs = [],
+                      roRunId = Just "nested-section",
+                      roEntry = dir </> "workflows" </> "main.md",
+                      roMode = StepRun,
+                      roProjectHash = Nothing,
+                      roExec = Nothing,
+                      roObserver = noopObserver,
+                      roCost = False,
+                      roModelCatalog = "model-catalog.json",
+                      roSkillCatalog = fst emptySkillRuntime,
+                      roSkillModules = snd emptySkillRuntime,
+                      roEntryModules = lp.lpModules
+                    }
+                  m
+              case outcome of
+                OutcomeCompleted (VRecord fs) _ _ ->
+                  lookup (Ident "msg") fs
+                    `shouldBe` Just (VString "hello-from-callee-section")
                 other -> expectationFailure (show other)
 
 qname :: Text -> QName

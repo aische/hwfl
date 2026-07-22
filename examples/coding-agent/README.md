@@ -6,7 +6,7 @@ language owns plan → serial implement → verify. LLMs fill holes.
 ```text
 chat (human.ask + history)
   └─ tool: coding_session(prompt)     # FrInvoke → workflows/coding
-        ├─ gather_context             # read-only pre-pass
+        ├─ gather_context             # read-only pre-pass (inside session)
         ├─ plan → List<Task>          # agent_object + skill.*
         └─ for task in tasks
               ├─ do_task(task)        # agent_object + skill.* + FS
@@ -14,16 +14,16 @@ chat (human.ask + history)
                     └─ fail → one retry → stop
 ```
 
-Chat does **not** list `fs.write`. Edits go through `coding_session`.
-Planner and coder advertise `skill.discover` / `skill.load`. Verifier is a
-non-agent workflow.
+Chat advertises **only** `coding_session` (no peer read tool — that was a
+routing trap). Context survey stays inside `workflows/coding`. Planner and
+coder use `skill.*`; verifier is a non-agent workflow.
 
 ## Layout
 
 | Path | Role |
 | ---- | ---- |
 | `project.json` | Entrypoint `workflows/main`, effects, skill budgets, `exec.allow` |
-| `workflows/main.md` | Multi-turn chat; tools `gather_context` + `coding_session` |
+| `workflows/main.md` | Multi-turn chat; sole tool `coding_session` |
 | `workflows/coding.md` | Session: context → plan → serial do_task / verify |
 | `workflows/gather_context.md` | Read-only list/find/grep/read under a token budget |
 | `workflows/verify.md` | `exec.run` wrapper → `{ exit, stdout, stderr, ok }` |
@@ -36,7 +36,7 @@ Flat one-shot `llm.agent_object` (no chat / no typed task loop) lives in
 ## Skills
 
 | Skill | Tags |
-| ----- | ---- |
+| ---- | ---- |
 | `skills/python-pytest` | python, pytest |
 | `skills/react-vite` | react, typescript, vite |
 | `skills/haskell-cabal` | haskell, cabal |
@@ -50,26 +50,9 @@ cabal run hwfl -- run --interactive examples/coding-agent \
   --llm-provider simple
 ```
 
-Type at `You>`; `/quit` ends. Ask the assistant to implement something — it
-should call `coding_session`. For read-only questions it can call
-`gather_context`.
-
-## Non-interactive coding session
-
-Bypass chat and run the session entry directly:
-
-```bash
-mkdir -p /tmp/hwfl-build && rm -rf /tmp/hwfl-build/*
-cabal run hwfl -- run examples/coding-agent/workflows/coding.md \
-  --workspace /tmp/hwfl-build \
-  --input prompt='Create a tiny Python package with add(a,b) and a pytest that checks add(2,3)==5' \
-  --input model=deepseek4flash \
-  --llm-provider simple
-```
-
-TypeScript / React, Haskell, and local sandbox: same pattern with a different
-`--workspace` / prompt (see `examples/simple-coding-agent` for more prompt
-examples).
+Type at `You>`; `/quit` ends. Ask to implement something — chat should call
+`coding_session` (plans, writes, verifies). One-shot without chat: use
+`examples/simple-coding-agent`.
 
 ## Exec policy
 

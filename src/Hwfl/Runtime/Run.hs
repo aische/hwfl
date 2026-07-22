@@ -87,7 +87,8 @@ import Hwfl.Project
   )
 import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Hwfl.Runtime.Eval
-  ( RunCtx (..),
+  ( EntryModuleRuntime (..),
+    RunCtx (..),
     StepMode (..),
     approveMachine,
     chooseMachine,
@@ -808,9 +809,9 @@ buildSkillFunTables =
       SkillInstruction -> Nothing
       SkillCallable -> Just (loadRunEnv (lmBody m))
 
--- | Build env+fun tables for imported entry modules (non-skill, has @main@).
+-- | Build runtime tables for imported entry modules (non-skill, has @main@).
 -- Used to populate 'rcEntryModules' for same-project entry calls (E11).
-buildEntryFunTables :: Map QName LoadedModule -> Map QName (Env, FunTable)
+buildEntryFunTables :: Map QName LoadedModule -> Map QName EntryModuleRuntime
 buildEntryFunTables =
   Map.mapMaybeWithKey $ \_q m ->
     let fm = lmFrontmatter m
@@ -819,7 +820,15 @@ buildEntryFunTables =
           else
             let (env, funs) = loadRunEnv (lmBody m)
              in if Map.member (Ident "main") funs
-                  then Just (env, funs)
+                  then
+                    Just
+                      EntryModuleRuntime
+                        { emEnv = env,
+                          emFuns = funs,
+                          emSections = sectionMap m,
+                          emTypeEnv = loadTypeEnv m,
+                          emSchemaDocs = lmSchemaDocs m
+                        }
                   else Nothing
 
 -- | Load @exec@ policy from workspace @project.json@ when present.

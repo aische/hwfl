@@ -1,6 +1,7 @@
 -- | Frame/CEK host runtime: big-step pure crunch, small-step host/par/confirm.
 module Hwfl.Runtime.Eval
   ( RunCtx (..),
+    EntryModuleRuntime (..),
     StepMode (..),
     StepResult (..),
     stepMachine,
@@ -102,17 +103,40 @@ data RunCtx = RunCtx
     rcSkillFuns :: Map QName (Env, FunTable),
     -- | Loaded skill modules for tool schema / body rebuild.
     rcSkillModules :: Map QName LoadedModule,
-    -- | Prebuilt env+funs for callable entry modules (same-project; E11).
-    rcEntryModules :: Map QName (Env, FunTable),
+    -- | Prebuilt runtime for callable entry modules (same-project; E11).
+    rcEntryModules :: Map QName EntryModuleRuntime,
     -- | Nest depth while stepping a 'BranchMachine' (agent tool / FrInvoke / par).
     -- Snapshot writes are suppressed when > 0 so a bare branch never overwrites
     -- root @snapshot.json@; the outer wrapper persists the full machine.
     rcNestDepth :: Int
   }
 
+-- | Callee surface installed while stepping a same-project 'FrInvoke' nest:
+-- funs/env (helpers), markdown sections (@name), and schema reflection.
+data EntryModuleRuntime = EntryModuleRuntime
+  { emEnv :: Env,
+    emFuns :: FunTable,
+    emSections :: Map Slug Text,
+    emTypeEnv :: TypeEnv,
+    emSchemaDocs :: [SchemaDoc]
+  }
+  deriving stock (Show)
+
 -- | Step a nested branch under the same run store without root snapshot writes.
 nestedCtx :: RunCtx -> RunCtx
 nestedCtx ctx = ctx {rcNestDepth = ctx.rcNestDepth + 1}
+
+-- | Switch lexical module surface to the FrInvoke callee (sections + schema
+-- included — callers must not keep the caller's @rcSections@).
+withEntryModule :: EntryModuleRuntime -> RunCtx -> RunCtx
+withEntryModule em ctx =
+  ctx
+    { rcFuns = em.emFuns,
+      rcBaseEnv = em.emEnv,
+      rcSections = em.emSections,
+      rcTypeEnv = em.emTypeEnv,
+      rcSchemaDocs = em.emSchemaDocs
+    }
 
 data StepMode = StepOnce | StepRun
   deriving stock (Eq, Show)
@@ -1207,8 +1231,8 @@ doEntryInvoke ctx mode m q argv =
   case Map.lookup q ctx.rcEntryModules of
     Nothing ->
       abortOrCatch ctx mode m (HostErr ("entry module not loaded: " <> qnameToText q))
-    Just (calleeEnv, calleeFuns) ->
-      case Map.lookup (Ident "main") calleeFuns of
+    Just em ->
+      case Map.lookup (Ident "main") em.emFuns of
         Nothing ->
           abortOrCatch ctx mode m (HostErr ("entry module missing main: " <> qnameToText q))
         Just (params, body) ->
@@ -1226,7 +1250,7 @@ doEntryInvoke ctx mode m q argv =
               let nested =
                     initialMachine
                       m.mProjectHash
-                      (CurEval body (extendEnvMany binds calleeEnv))
+                      (CurEval body (extendEnvMany binds em.emEnv))
                   m' =
                     pauseIfStep
                       mode
@@ -1245,14 +1269,9 @@ stepInvoke ctx mode m = case m.mFrames of
     let bm = case bm0.mStatus of
           MsPaused PauseExplicit -> bm0 {mStatus = MsRunning}
           _ -> bm0
-        -- Nested module helpers are VTopFun lookups against rcFuns; use the
-        -- callee's table (and base env) while stepping inside this frame.
+        -- Nested module helpers / @sections / schema(T) use the callee surface.
         nestCtx = case Map.lookup q ctx.rcEntryModules of
-          Just (env, funs) ->
-            (nestedCtx ctx)
-              { rcFuns = funs,
-                rcBaseEnv = env
-              }
+          Just em -> withEntryModule em (nestedCtx ctx)
           Nothing -> nestedCtx ctx
     er <- stepMachine nestCtx StepOnce bm
     case er of
