@@ -18,14 +18,13 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
-- **Resume exec policy** — ask/reply reloads `exec.allow` from the source
-  project (not the workspace); fixes interactive `npm install` after chat
+- **Scoped gather_context** — empty workspace skips finds; non-empty
+  surveys only the stack hinted by the query (no py/hs scan on TS asks)
+- **Resume exec policy** — ask/reply reloads `exec.allow` from source project
 - **Coding-agent power** — doer has `exec.run`; stronger plan/do + react skill
 - **FrInvoke sections** — callee `@section` / `schema(T)` on nest
 - **Chat tools** — chat sole tool `coding_session`
 - **Credible coding-agent** — chat → plan → serial do_task/verify
-- **#5–#1** — submit schema, checker holes, crash-safe store, sandbox,
-  nested snapshot
 
 ## Blockers
 

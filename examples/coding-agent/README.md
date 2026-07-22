@@ -26,7 +26,7 @@ re-checks each task. Planner/coder use `skill.*`.
 | `project.json` | Entrypoint `workflows/main`, effects, skill budgets, `exec.allow` |
 | `workflows/main.md` | Multi-turn chat; sole tool `coding_session` |
 | `workflows/coding.md` | Session: context → plan → serial do_task / verify |
-| `workflows/gather_context.md` | Read-only list/find/grep/read under a token budget |
+| `workflows/gather_context.md` | Stack-scoped survey; skips finds on empty workspace |
 | `workflows/verify.md` | `exec.run` wrapper → `{ exit, stdout, stderr, ok }` |
 | `skills/*.md` | Instruction playbooks (python, react, haskell, rust) |
 | `sandbox/` | Empty dogfood workspace (optional) |
