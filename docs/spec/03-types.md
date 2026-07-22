@@ -15,7 +15,7 @@ Unit | Bool | Int | Float | String | Bytes | Json
 FileRef
 List<T>
 { f1: T1, f2: T2, … }          -- record
-Optional<T> | Option<T>        -- pick one spelling in M0; recommend Option
+Option<T>
 Result<T, E>
 ```
 

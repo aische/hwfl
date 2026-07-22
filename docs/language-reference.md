@@ -149,7 +149,7 @@ to child `main`. Returns a recoverable result (`ok` / `status`); child
 Same-project multi-workflow composition is different: import an entry
 module and call `qname(inputs)` (runs callee `main` in the **same** run via
 `FrInvoke`). No `Meta` tax. See [spec/01-modules.md](spec/01-modules.md)
-§3.2 — **planned** until E11 ships.
+§3.2.
 
 `meta.list_runs` lists run metas under `.hwfl/runs` for a workspace-relative
 root. `meta.read_spans` returns span records for one run (optional name /

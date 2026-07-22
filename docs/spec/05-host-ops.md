@@ -71,7 +71,8 @@ fields. New `prompt` appends as `TurnUser`. Workflows can own a
 multi-turn `human.ask` loop that replays tool-inclusive transcripts
 across calls. Do **not** encode tool turns as fake `{ role, content }`
 strings; `llm.chat_messages` stays the thin text-only path. Example:
-`examples/coding-agent-chat`.
+`examples/coding-agent` (chat → `coding_session`); thinner history loop
+in `examples/coding-agent-chat`.
 
 **`max_rounds` budget:** Exhausting `max_rounds` pauses the in-flight
 agent (`PauseAwaitingAgent` / status `awaiting_extend`) instead of
@@ -80,7 +81,7 @@ failing the run. The operator extends this call’s budget with
 resolve the gate. `CurAgent` / transcript are preserved. Secondary:
 structured exhausted return with `history` for outer workflow chaining
 (deferred). Until needed, chunk with `history` across agent calls (see
-coding-agent-chat).
+`examples/coding-agent` / `examples/coding-agent-chat`).
 
 ### 2.1 Agent tools
 
@@ -175,8 +176,8 @@ normal boundaries.
 | Op | Notes |
 |----|-------|
 | `meta.invoke` | nested `driverRun`: `{ project, workspace, inputs? }` → `{ ok, run_id, status, outcome, error }` (workspace-relative paths; snapshot boundary) |
-| `meta.check_module` | check one markdown module; `{ ok, error, name }` (recoverable; M8) |
-| `meta.check_project` | whole-project graph check; `{ ok, error }` (workspace-relative project root; M9) |
+| `meta.check_module` | check one markdown module; `{ ok, error, name }` (recoverable) |
+| `meta.check_project` | whole-project graph check; `{ ok, error }` (workspace-relative project root) |
 | `meta.list_runs` | list run metas under a workspace; `{ workspace }` → `{ ok, runs, error }` |
 | `meta.read_spans` | query spans for a run; `{ run_id, workspace, name_prefix?, kind?, limit? }` → `{ ok, spans, error }` |
 | `meta.read_snapshot` | redacted run snapshot Json; `{ run_id, workspace }` → `{ ok, snapshot, error }` |
@@ -267,7 +268,7 @@ Prefer migrating to `lib/*` modules once the import graph exists.
 | `text` | `normalize_token` | strip wrapping punct / backticks |
 | `text` | `is_qname` | conservative module qname (`workflows|lib|skills|tools|types|builtin` / …) |
 | `md` | `sections` | `String -> List<{ slug, title, body }>` |
-| `json` | `encode` | encodable value → JSON `String` (pure; M8 reports) |
+| `json` | `encode` | encodable value → JSON `String` (pure) |
 
 ## 8. JSON / data
 

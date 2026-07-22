@@ -17,6 +17,9 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **Docs hygiene** — root README aligned (framing, flag order, model
+  input, doc index); drop stale E11 “planned”, missing `issues.md`
+  refs, and milestone tags in author/spec surfaces
 - **Host find/grep ignores** — hidden skip; root `.gitignore`/`.ignore`
   without requiring `.git`; baseline dep/build dirs when absent; skills
   scaffold stack `.gitignore`
@@ -36,7 +39,7 @@ None.
 1. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
 2. Workflow-driven skills coding-agent variant (separate example project)
 3. Opt-in LangSmith-style LLM transcripts
-4. Medium/Low `issues.md` items when they bite an exemplar
+4. Medium/Low source-review items when they bite an exemplar
 
 ## Deferred
 
@@ -45,9 +48,9 @@ None.
 - Semantic-check S4 / S6; skills phase D; concurrent `par` host IO
 - Coding-agent Tier B; `latest` / omit run-id; `lib/`; typed `--example`
 - Structured exhausted return with `history`; TM δ skills (multiply, etc.)
-- Most Medium/Low items in `issues.md` until they bite an exemplar
-- `meta.check_project` still joins paths with raw `</>` (same class of
-  bug as #2; not yet sandboxed)
+- Most Medium/Low source-review items until they bite an exemplar
+- `meta.check_project` still joins paths with raw `</>` (not sandboxed;
+  same escape class as the fixed `meta.invoke` path)
 - Nested ignore files; `fs.find`/`fs.grep` ignore opt-out flag
 
 ## Open naming

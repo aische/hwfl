@@ -254,5 +254,6 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | `examples/evolve-agent` | Lab: evolve coding-agent genomes on a fixed task |
 | `examples/semantic-check` | Multi-layer review workflow |
 
-The coding-agent lists `skill.discover` / `skill.load` explicitly and loads
-stack instruction skills (python / react / haskell / rust) mid-loop.
+The coding session (`workflows/coding`) lists `skill.discover` /
+`skill.load` and loads stack instruction skills (python / react /
+haskell / rust) mid-loop; chat only exposes `coding_session`.

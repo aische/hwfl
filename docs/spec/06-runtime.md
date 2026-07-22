@@ -134,7 +134,7 @@ Semantics:
 - Cap concurrent **active** branches at `N` (default 4).
 - Result order = input order.
 
-**Current implementation (M5):** cooperative pool — up to `N` branch
+**Current implementation:** cooperative pool — up to `N` branch
 machines may be active, but the driver runs **one branch transition**
 at a time. Blocking host ops (LLM HTTP, `fs.read`, …) therefore do not
 overlap across branches. Confirm freeze, ordered slots, and resume of
@@ -230,7 +230,7 @@ Three schedulers stack on top of each other:
 | GHC lightweight threads | `async` / `forkIO` at host boundaries (if adopted) |
 | OS capabilities (`-N`) | Only needed for CPU-bound overlap; I/O-bound `par` usually needs layer 2 only |
 
-M5 deliberately shipped layer 1 only (cooperative stepping).
+v0 ships layer 1 only (cooperative stepping).
 
 ### 10.2 Recommended approach
 

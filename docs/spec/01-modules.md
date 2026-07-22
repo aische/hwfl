@@ -160,7 +160,7 @@ Two different mechanisms — do not conflate them:
 
 | Mechanism | Scope | What happens |
 |-----------|--------|--------------|
-| **Same-project call** (E11 / `FrInvoke`) | Imported entry module in this project | Nested evaluation in the **same** run; typed `outputs` |
+| **Same-project call** (`FrInvoke`) | Imported entry module in this project | Nested evaluation in the **same** run; typed `outputs` |
 | **`meta.invoke`** | Nested project / `.md` under a workspace path | Separate child **run** + `run_id` ([05-host-ops.md](05-host-ops.md) §6) |
 
 ### 3.1 Imports
@@ -169,7 +169,7 @@ Two different mechanisms — do not conflate them:
   imports **[defer]**).
 - Circular imports are rejected at check time.
 - **Libraries** (`lib/*`, non-entry modules): import + call exported
-  `fun`s (runtime linking / qname elaboration — separate from E11).
+  `fun`s (runtime linking / qname elaboration — separate from entry call).
 - **Entry modules** (`workflows/*` and other modules with frontmatter
   `inputs` / `outputs` + `main`): import + call **`main` only** via the
   sugar below. Cross-module helpers belong in `lib/`, not on workflow

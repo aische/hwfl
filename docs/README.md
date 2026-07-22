@@ -1,6 +1,7 @@
-# New project documentation pack
+# Documentation
 
-Provisional working name: **hwfl** (Haskell workflow language - although it looks more like ML, but implemented in Haskell)
+Provisional working name: **hwfl** (Haskell workflow language — ML-shaped
+surface, Haskell implementation).
 
 **North star:** durable workflow **runtime library** (+ CLI), aimed at a
 **workflow research lab** (check / run / compare / mutate) and a
@@ -44,7 +45,7 @@ Start sessions from [STATUS.md](STATUS.md) and [TASKS.md](TASKS.md).
 | [09-cli.md](spec/09-cli.md)                     | Command-line interface                      |
 | [10-acceptance.md](spec/10-acceptance.md)       | Acceptance criteria & milestones            |
 | [11-grammar.ebnf](spec/11-grammar.ebnf)         | Concrete grammar sketch                     |
-| [12-example-suite.md](spec/12-example-suite.md) | 20 design programs + contracts              |
+| [12-example-suite.md](spec/12-example-suite.md) | Design oracle (E01–E23) + contracts         |
 
 ## Documentation workflow
 
