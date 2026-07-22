@@ -18,13 +18,15 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **gather_context noise filter** — drop `node_modules`/`dist`/lockfiles
+  from finds; cap merge; skip weak grep needles (post-`npm install`
+  crunch trap)
 - **Scoped gather_context** — empty workspace skips finds; non-empty
-  surveys only the stack hinted by the query (no py/hs scan on TS asks)
+  surveys only the stack hinted by the query
 - **Resume exec policy** — ask/reply reloads `exec.allow` from source project
 - **Coding-agent power** — doer has `exec.run`; stronger plan/do + react skill
 - **FrInvoke sections** — callee `@section` / `schema(T)` on nest
 - **Chat tools** — chat sole tool `coding_session`
-- **Credible coding-agent** — chat → plan → serial do_task/verify
 
 ## Blockers
 
@@ -47,6 +49,7 @@ None.
 - Most Medium/Low items in `issues.md` until they bite an exemplar
 - `meta.check_project` still joins paths with raw `</>` (same class of
   bug as #2; not yet sandboxed)
+- Host-level `fs.find` / `fs.grep` ignore defaults (today: workflow filter)
 
 ## Open naming
 

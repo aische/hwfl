@@ -15,12 +15,11 @@ effects: [Read]
 Read-only workspace pre-pass under a token budget. Skips deep finds when the
 workspace is empty (greenfield). When non-empty, scopes `fs.find` globs to the
 stack hinted by the query (typescript/react, python, haskell, rust) instead of
-scanning every language. No writes, no agent loop.
+scanning every language. Drops dependency / build trees (`node_modules`,
+`dist`, `target`, …) from find hits and caps candidates so post-install
+workspaces do not blow the pure-crunch limit. No writes, no agent loop.
 
 ```hwfl
-fun has_dot_hwfl(p: FileRef): Bool =
-  text.starts_with($"{p}", ".hwfl/")
-
 fun is_noise_name(name: String): Bool =
   name == ".hwfl"
     || name == ".DS_Store"
@@ -28,7 +27,23 @@ fun is_noise_name(name: String): Bool =
     || name == "node_modules"
     || name == "dist"
     || name == "target"
+    || name == ".git"
     || text.starts_with(name, ".")
+
+fun path_has_seg(s: String, seg: String): Bool =
+  text.contains($"/{s}/", $"/{seg}/")
+
+fun is_noise_path(p: FileRef): Bool =
+  let s = $"{p}"
+  path_has_seg(s, "node_modules")
+    || path_has_seg(s, "dist")
+    || path_has_seg(s, "target")
+    || path_has_seg(s, ".vite")
+    || path_has_seg(s, ".git")
+    || path_has_seg(s, ".hwfl")
+    || path_has_seg(s, "package-lock.json")
+    || path_has_seg(s, "yarn.lock")
+    || path_has_seg(s, "pnpm-lock.yaml")
 
 fun count_signal(
   entries: List<{ name: String, kind: String }>,
@@ -48,7 +63,8 @@ fun merge_unique(
   n: Int
 ): List<FileRef> =
   if i >= n then acc
-  else if has_dot_hwfl(xs[i]) then
+  else if list.length(acc) >= 40 then acc
+  else if is_noise_path(xs[i]) then
     merge_unique(acc, xs, i + 1, n)
   else if has_path(acc, xs[i], 0, list.length(acc)) then
     merge_unique(acc, xs, i + 1, n)
@@ -73,15 +89,18 @@ fun format_hits(
   hits: List<{ file: String, line: Int, text: String }>,
   i: Int,
   n: Int,
-  limit: Int
+  limit: Int,
+  written: Int
 ): String =
   if i >= n then ""
-  else if i >= limit then ""
+  else if written >= limit then ""
+  else if is_noise_path(hits[i].file) then
+    format_hits(hits, i + 1, n, limit, written)
   else
     let line = $"{hits[i].file}:{hits[i].line}: {hits[i].text}"
-    if i == n - 1 then line
-    else if i == limit - 1 then line
-    else $"{line}\n{format_hits(hits, i + 1, n, limit)}"
+    let rest = format_hits(hits, i + 1, n, limit, written + 1)
+    if rest == "" then line
+    else $"{line}\n{rest}"
 
 fun take_paths(xs: List<FileRef>, k: Int, i: Int): List<FileRef> =
   if i >= k then []
@@ -174,7 +193,8 @@ fun find_ts(): List<FileRef> =
 fun find_python(): List<FileRef> =
   let py = fs.find(glob = "**/*.py")
   let toml = fs.find(glob = "**/*.toml")
-  merge_unique(py, toml, 0, list.length(toml))
+  let m0 = merge_unique([], py, 0, list.length(py))
+  merge_unique(m0, toml, 0, list.length(toml))
 
 fun find_haskell(): List<FileRef> =
   let hs = fs.find(glob = "**/*.hs")
@@ -187,7 +207,8 @@ fun find_haskell(): List<FileRef> =
 fun find_rust(): List<FileRef> =
   let rs = fs.find(glob = "**/*.rs")
   let toml = fs.find(glob = "**/*.toml")
-  merge_unique(rs, toml, 0, list.length(toml))
+  let m0 = merge_unique([], rs, 0, list.length(rs))
+  merge_unique(m0, toml, 0, list.length(toml))
 
 fun find_unknown(): List<FileRef> =
   let json = fs.find(glob = "**/*.json")
@@ -211,6 +232,11 @@ fun stack_label(q: String): String =
   else if wants_rust(q) then "rust"
   else "unknown"
 
+fun pick_needle(words: List<String>, i: Int, n: Int): String =
+  if i >= n then ""
+  else if text.metrics(words[i]).chars >= 4 then words[i]
+  else pick_needle(words, i + 1, n)
+
 fun pack_context(
   query: String,
   listing: String,
@@ -220,15 +246,12 @@ fun pack_context(
 ): { context: String, files: List<FileRef>, tokens: Int } =
   let capped = take_paths(candidates, 40, 0)
   let words = text.words(query)
-  let needle =
-    if list.length(words) == 0 then ""
-    else if list.length(words) == 1 then words[0]
-    else words[1]
+  let needle = pick_needle(words, 0, list.length(words))
   let hits: List<{ file: String, line: Int, text: String }> =
     if needle == "" then []
     else if list.length(capped) == 0 then []
     else fs.grep(pattern = needle, glob = "")
-  let hit_block = format_hits(hits, 0, list.length(hits), 12)
+  let hit_block = format_hits(hits, 0, list.length(hits), 12, 0)
   let header =
     $"Query: {query}\nStack hint: {stack}\nRoot listing: {listing}\n"
   let grep_block =
