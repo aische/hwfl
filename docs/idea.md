@@ -58,12 +58,14 @@ We want language-level ergonomics **and** document-shaped authoring.
 8. **Callable as a library** — one driver façade (check / run / step /
    resume / approve / show + run-store queries) shared by the CLI and HTTP
    frontends; FS run-store today.
-9. **Comparative + genetic workflows** — first-class: ship N markdown
-   variants and compare on shared fixtures (spans / cost / outcome).
-   Separately: materialize candidate projects (and workspaces), invoke
-   nested runs, score, iterate / evolve; evolution logic prefers hwfl
-   modules over host growth. Comparison without mutation is already
-   research — evolve is not required to justify multiple exemplars.
+9. **Comparative + genetic workflows** — first-class: ship N **separate
+   example projects** (distinct trees; accept duplication until `lib/`)
+   and compare on shared fixtures (spans / cost / outcome). Not one
+   workflow with a mode switch. Separately: materialize candidate
+   projects (and workspaces), invoke nested runs, score, iterate /
+   evolve; evolution logic prefers hwfl modules over host growth.
+   Comparison without mutation is already research — evolve is not
+   required to justify multiple exemplars.
 10. **Dogfood semantic analysis** — use the language to analyse its own
     projects (prompts, refs, coherence) without inventing a second DSL.
     Research track; not on the critical path.

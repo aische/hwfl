@@ -6,10 +6,10 @@ Last updated: 2026-07-22
 
 **Lab loop + exemplars** — High #1–#5 runtime integrity landed. Next:
 credible coding-agent shape — chat → FrInvoke coding session → typed
-plan → **serial** task loop with per-task verify; ship **skills A and B**
-as comparable example workflows (research), not one locked policy. Spec
-in [TASKS.md](TASKS.md). Findings in `issues.md` (not spec). Control
-plane: **hwfl-server**.
+plan → **serial** task loop with per-task verify; ship skills **(A)** and
+**(B)** as **two separate example projects** (no in-workflow mode
+switch). Spec in [TASKS.md](TASKS.md). Findings in `issues.md` (not
+spec). Control plane: **hwfl-server**.
 
 ## North star
 
@@ -36,8 +36,8 @@ None.
 
 ## Next up
 
-1. Credible coding-agent exemplars (shared chat/session/task loop;
-   skills A + B as head-to-head variants) — see TASKS
+1. Credible coding-agent: two separate example projects (skills A vs
+   workflow-driven B); shared shape, no mode switch — see TASKS
 2. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
 3. Opt-in LangSmith-style LLM transcripts
 4. Medium/Low `issues.md` items when they bite an exemplar

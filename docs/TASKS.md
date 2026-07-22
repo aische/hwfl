@@ -38,24 +38,28 @@ chat (human.ask + history)
 - [ ] Dogfood: resume mid-task / mid-verify; effect check on callees;
       keep instruction `skills/*`; avoid nesting agent-in-agent by default
 
-**Skills policy — comparative research variants (not a product fork):**
+**Skills policy — two separate example projects (not a switch):**
 
-Ship **both** as example workflows (sibling projects or modules) and run
-them on the same task fixtures — head-to-head via check/run/spans/cost/
-`ok`. That comparison *is* the research use of hwfl (cheap markdown
-variants vs two host programs). Genetic evolve is a separate lab mode
-that can sit on top later.
+Ship **(A)** and **(B)** as **distinct example projects** (each with its
+own `project.json` / workflows / skills copy). Run them on the same task
+fixtures — head-to-head via check/run/spans/cost/`ok`. That comparison
+*is* the research use of hwfl (two markdown programs vs two host apps).
+Genetic evolve is a separate lab mode that can sit on top later.
 
-- **(A) Agent-driven** — planner/coder advertise `skill.discover` /
-  `skill.load`; each agent loads if it wants (closest to today’s
-  coding-agent).
-- **(B) Workflow-driven** — session module calls discover/load *outside*
-  the agent and injects instruction `content` into `system` for plan /
-  do_task; agents have no `skill.*` tools.
+**Do not** put both policies in one workflow behind a mode/input flag.
+Accept duplication until `lib/` exists — shared shape, separate trees.
 
-Either way: verifier stays a non-agent workflow (no skill tools); one
-skill file remains the stack source of truth. Build order is whatever is
-convenient; both are in-scope exemplars.
+- **(A) Agent-driven** — e.g. `examples/coding-agent-skills` (name TBD):
+  planner/coder advertise `skill.discover` / `skill.load`; each agent
+  loads if it wants (closest to today’s coding-agent).
+- **(B) Workflow-driven** — e.g. `examples/coding-agent-wf-skills`
+  (name TBD): session module calls discover/load *outside* the agent and
+  injects instruction `content` into `system` for plan / do_task; agents
+  have no `skill.*` tools.
+
+Either way: verifier stays a non-agent workflow (no skill tools); each
+project keeps its own `skills/*` (same content is fine). Build order is
+whatever is convenient; both are in-scope exemplars.
 
 Out of this exemplar: parallel sub-agents, commit-per-tool-round,
 worktrees, MCP/git/terminals (Tier A only when this bites), embeddings.
