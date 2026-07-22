@@ -1245,7 +1245,16 @@ stepInvoke ctx mode m = case m.mFrames of
     let bm = case bm0.mStatus of
           MsPaused PauseExplicit -> bm0 {mStatus = MsRunning}
           _ -> bm0
-    er <- stepMachine (nestedCtx ctx) StepOnce bm
+        -- Nested module helpers are VTopFun lookups against rcFuns; use the
+        -- callee's table (and base env) while stepping inside this frame.
+        nestCtx = case Map.lookup q ctx.rcEntryModules of
+          Just (env, funs) ->
+            (nestedCtx ctx)
+              { rcFuns = funs,
+                rcBaseEnv = env
+              }
+          Nothing -> nestedCtx ctx
+    er <- stepMachine nestCtx StepOnce bm
     case er of
       Left e -> abortOrCatch ctx mode m e
       Right sr ->

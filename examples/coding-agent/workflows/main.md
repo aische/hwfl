@@ -1,105 +1,89 @@
 ---
 name: workflows/main
-inputs:
-    prompt: String
-    model: String
+inputs: {}
 outputs:
-    summary: String
-    ok: Bool
-    stack: String
-    files_written: List<String>
-    verify_exit: Int
-    rounds: Int
-effects: [Read, Write, Net, Exec, Meta]
-examples:
-  - name: todo-vite
-    inputs:
-      model: deepseek4flash
-      prompt: write a typescript/vite/react project with a todo app
+  done: Bool
+  turns: Int
+  last: String
+effects: [Human, Net, Read, Write, Exec, Meta]
+imports:
+  - workflows/coding
+  - workflows/gather_context
 ---
 
 ## system
 
-You are a universal coding agent. The workspace may be empty or already contain
-a project. Implement what the user asks: create from scratch, extend, or fix
-failing tests.
+You are a concise coding assistant in a durable hwfl chat. The workspace is
+the project under edit.
 
-Workflow:
-1. Infer the stack from the prompt and workspace. When unsure, inspect with
-   fs_list / fs_find first.
-2. skill_discover for the stack (e.g. query "python", "react", "haskell",
-   "rust"), then skill_load the best matching instruction skill before writing
-   files. Do not guess stack conventions when a skill exists.
-3. Plan the minimal file set.
-4. Create or update files with fs_write / fs_patch / fs_edit (parent dirs are
-   created by fs_write — no mkdir). Prefer fs_patch for multi-site edits:
-   each hunk.old must match exactly once; failed patches leave the file
-   unchanged. Use fs_edit only for intentional replace-all.
-5. Verify with exec_run using the skill's recommended commands. Read
-   stdout/stderr, edit, re-run until green or stuck after a few honest tries.
-6. Call submit alone with the structured result. Never mix submit with other
-   tools in the same round.
+Tools:
+- gather_context — read-only survey of the workspace under a token budget.
+  Use for questions about existing files without changing anything.
+- coding_session — implement or fix something. Pass the user’s request as
+  prompt. Returns a typed { summary, ok, stack, files_written, verify_exit,
+  tasks_done, tasks_total }. Summarize the result for the user.
 
-Constraints:
-- Stay inside the workspace (paths are workspace-relative).
-- Prefer small complete trees over interactive scaffolding / heavy network.
-- ok=true only when verification exited 0 (or the prompt asked for files only
-  and you wrote them without a failing check).
-- files_written = paths you created or materially changed.
-- stack = short label ("python", "typescript-react", "haskell", "rust", …).
-
-## schema Result
-
-- summary: One-paragraph description of what you built or fixed.
-- ok: True when the requested outcome is met and verification succeeded (or was not required).
-- stack: Short label for the chosen language/toolchain.
-- files_written: Workspace-relative paths created or substantially edited.
-- verify_exit: Exit code of the last verification command, or 0 if none was run.
+Do not invent file contents when gather_context or coding_session can answer.
+Reply in one or two short sentences when no tool is needed.
+Type /quit ends the session (handled outside the model).
 
 ## body
 
 ```hwfl
-type Result = {
-  summary: String,
-  ok: Bool,
-  stack: String,
-  files_written: List<String>,
-  verify_exit: Int
-}
-
-fun main(inputs: { prompt: String, model: String }): {
+fun coding_session(prompt: String): {
   summary: String,
   ok: Bool,
   stack: String,
   files_written: List<String>,
   verify_exit: Int,
-  rounds: Int
+  tasks_done: Int,
+  tasks_total: Int
 } =
-  let result = llm.agent_object(
-    system = @system,
-    prompt = inputs.prompt,
-    tools = [
-      tool(skill.discover),
-      tool(skill.load),
-      tool(fs.list),
-      tool(fs.find),
-      tool(fs.read),
-      tool(fs.write),
-      tool(fs.edit),
-      tool(fs.patch),
-      tool(fs.grep),
-      tool(exec.run)
-    ],
-    schema = schema(Result),
-    model = inputs.model,
-    max_rounds = 32
-  )
-  {
-    summary = result.value.summary,
-    ok = result.value.ok,
-    stack = result.value.stack,
-    files_written = result.value.files_written,
-    verify_exit = result.value.verify_exit,
-    rounds = result.rounds
-  }
+  workflows/coding({
+    prompt = prompt,
+    model = "deepseek4flash"
+  })
+
+fun gather_context(query: String): {
+  context: String,
+  files: List<FileRef>,
+  tokens: Int
+} =
+  workflows/gather_context({
+    query = query,
+    budget_tokens = 4000
+  })
+
+fun turn(
+  history: List<Turn>,
+  last: String
+): { done: Bool, history: List<Turn>, last: String } =
+  let detail =
+    if last == "" then
+      "Type a message, or /quit to end. Use coding_session for edits."
+    else
+      $"Assistant: {last}\n\nType a message, or /quit to end."
+  let user = human.ask({
+    prompt = "You>",
+    detail = detail
+  })
+  if user == "/quit" then
+    { done = true, history = history, last = last }
+  else
+    let result = llm.agent(
+      system = @system,
+      prompt = user,
+      tools = [
+        tool(gather_context),
+        tool(coding_session)
+      ],
+      model = "deepseek4flash",
+      history = history,
+      max_rounds = 6
+    )
+    turn(result.history, result.text)
+
+fun main(_): { done: Bool, turns: Int, last: String } =
+  let r = turn([], "")
+  { done = r.done, turns = list.length(r.history), last = r.last }
 ```

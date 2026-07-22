@@ -172,6 +172,7 @@ test-suite hwfl-test
         Hwfl.Runtime.AgentObjectSpec
         Hwfl.Runtime.ChatSpec
         Hwfl.Runtime.CodingAgentSpec
+        Hwfl.Runtime.SimpleCodingAgentSpec
         Hwfl.Runtime.CompareSpec
         Hwfl.Runtime.ConcurrentSpec
         Hwfl.Runtime.NestedSnapshotSpec

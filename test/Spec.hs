@@ -24,6 +24,7 @@ import Hwfl.Runtime.AgentObjectSpec
 import Hwfl.Runtime.AgentSpec
 import Hwfl.Runtime.ChatSpec
 import Hwfl.Runtime.CodingAgentSpec
+import Hwfl.Runtime.SimpleCodingAgentSpec
 import Hwfl.Runtime.CompareSpec
 import Hwfl.Runtime.EvolveAgentSpec
 import Hwfl.Runtime.ConcurrentSpec
@@ -82,5 +83,6 @@ main = hspec $ do
   Hwfl.Runtime.SemanticCheckSpec.spec
   Hwfl.Text.CorpusSpec.spec
   Hwfl.Runtime.CodingAgentSpec.spec
+  Hwfl.Runtime.SimpleCodingAgentSpec.spec
   Hwfl.Runtime.CompareSpec.spec
   Hwfl.Runtime.EvolveAgentSpec.spec

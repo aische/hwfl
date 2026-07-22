@@ -247,7 +247,8 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | Doc / example | When |
 | ------------- | ---- |
 | [language-reference.md](language-reference.md) | Keywords, types, prelude, host ops |
-| `examples/coding-agent` | Full agent loop + stack skills over a workspace |
+| `examples/coding-agent` | Credible chat → coding session → serial task/verify |
+| `examples/simple-coding-agent` | Flat `llm.agent_object` + stack skills |
 | `examples/skills` | Minimal `skill.discover` / `skill.load` demo |
 | `examples/compare` | Lab: compare → mutate genomes → next generation |
 | `examples/evolve-agent` | Lab: evolve coding-agent genomes on a fixed task |

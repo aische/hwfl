@@ -171,10 +171,12 @@ Fixture: `test/fixtures/semantic-target`.
 
 ## E21 — Universal coding agent **A** **H**
 
-**Shipped:** `examples/coding-agent` — `llm.agent_object` with FS +
-`exec.run` tools. Inputs `prompt` / `model`; workspace may be empty or an
-existing tree. Creates/edits files and runs allowlisted toolchain commands
-(python/npm/cabal/…). Fixture: `test/Hwfl/Runtime/CodingAgentSpec.hs`.
+**Shipped:** `examples/coding-agent` — credible skill-driven shape: chat
+(`human.ask`) → `coding_session` / `gather_context` tools (`FrInvoke`) →
+typed plan → serial do_task / `workflows/verify`. Planner and coder use
+`skill.*`; verifier is non-agent. Flat one-shot agent kept as
+`examples/simple-coding-agent`. Fixture: `test/Hwfl/Runtime/CodingAgentSpec.hs`
+(plus `SimpleCodingAgentSpec`).
 
 ## E22 — Local compare / genetic lab **H**
 

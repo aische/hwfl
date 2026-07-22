@@ -1,8 +1,9 @@
 module Hwfl.Runtime.CodingAgentSpec (spec) where
 
 import Data.Aeson (object, (.=))
-import Data.Either (isRight)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -10,10 +11,8 @@ import Hwfl.Ast.Module (LoadedModule)
 import Hwfl.Ast.Name (Ident (..), QName (..))
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Check.Project (CheckProjectResult (..), checkProject)
-import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
-import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
   ( ChatRequest (..),
@@ -23,7 +22,7 @@ import Hwfl.Llm.Types
     ToolCall (..),
     Turn (..),
   )
-import Hwfl.Parse.Load (loadModule)
+import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Project (LoadedProject (..), ProjectConfig (..), loadProject)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
@@ -40,101 +39,125 @@ import Test.Hspec
 projectRoot :: FilePath
 projectRoot = "examples/coding-agent"
 
-modulePath :: FilePath
-modulePath = projectRoot </> "workflows" </> "main.md"
+codingPath :: FilePath
+codingPath = projectRoot </> "workflows" </> "coding.md"
 
--- | Scripted agent: discover+load python skill → list → write → exec → submit.
-codingAgentMock :: LlmProvider
-codingAgentMock = mockProviderWith reply
+-- | Distinguishes planner vs coder by system prompt; scripts both to submit.
+codingSessionMock :: LlmProvider
+codingSessionMock = mockProviderWith reply
   where
     reply :: ChatRequest -> Either a ProviderResult
     reply req =
-      let n = length (filter isToolTurn req.chatTurns)
-          hasPythonSkill =
-            maybe False (T.isInfixOf "Loaded skill: skills/python-pytest") req.chatSystem
-       in Right $ case n of
-            0 ->
-              needTools
-                [ ToolCall
-                    "c0"
-                    "skill_discover"
-                    ( object
-                        [ "query" .= ("python" :: Text),
-                          "kinds" .= (["instruction"] :: [Text]),
-                          "limit" .= (5 :: Int)
-                        ]
-                    ),
-                  ToolCall
-                    "c1"
-                    "skill_load"
-                    (object ["id" .= ("skills/python-pytest" :: Text)])
-                ]
-            1
-              | hasPythonSkill ->
-                  needTools
-                    [ ToolCall "c2" "fs_list" (object ["path" .= ("." :: Text)])
-                    ]
-              | otherwise ->
-                  needTools
-                    [ ToolCall "c2" "fs_list" (object ["path" .= ("." :: Text)])
-                    ]
-            2 ->
-              needTools
-                [ ToolCall
-                    "c3"
-                    "fs_write"
-                    ( object
-                        [ "path" .= ("add.py" :: Text),
-                          "text" .= ("def add(a, b):\n    return a + b\n" :: Text)
-                        ]
-                    ),
-                  ToolCall
-                    "c4"
-                    "fs_write"
-                    ( object
-                        [ "path" .= ("test_add.py" :: Text),
-                          "text"
-                            .= ( "from add import add\n\ndef test_add():\n    assert add(2, 3) == 5\n"
-                                   :: Text
-                               )
-                        ]
-                    )
-                ]
-            3 ->
-              needTools
-                [ ToolCall
-                    "c5"
-                    "exec_run"
-                    ( object
-                        [ "program" .= ("python3" :: Text),
-                          "args" .= (["-c", "from add import add; assert add(2,3)==5"] :: [Text]),
-                          "stdin" .= ("" :: Text)
-                        ]
-                    )
-                ]
-            _ ->
-              ProviderResult
-                { prContent = "done",
-                  prToolCalls =
-                    [ ToolCall
-                        "c6"
-                        "submit"
-                        ( object
-                            [ "summary" .= ("Created add.py and test_add.py" :: Text),
-                              "ok" .= True,
-                              "stack" .= ("python" :: Text),
-                              "files_written" .= (["add.py", "test_add.py"] :: [Text]),
-                              "verify_exit" .= (0 :: Int)
-                            ]
-                        )
-                    ],
-                  prUsage = Just (TokenUsage 1 1),
-                  prFinishReason = FinishToolCalls
-                }
+      let sys = fromMaybe "" req.chatSystem
+          n = length (filter isToolTurn req.chatTurns)
+          planning = T.isInfixOf "planner for a coding session" sys
+       in Right $
+            if planning
+              then planReply n
+              else doReply n sys
+
+    planReply n = case n of
+      0 ->
+        needTools
+          [ ToolCall
+              "p0"
+              "skill_discover"
+              ( object
+                  [ "query" .= ("python" :: Text),
+                    "kinds" .= (["instruction"] :: [Text]),
+                    "limit" .= (5 :: Int)
+                  ]
+              ),
+            ToolCall
+              "p1"
+              "skill_load"
+              (object ["id" .= ("skills/python-pytest" :: Text)])
+          ]
+      _ ->
+        submit
+          [ ToolCall
+              "p2"
+              "submit"
+              ( object
+                  [ "stack" .= ("python" :: Text),
+                    "summary" .= ("One-task python add helper" :: Text),
+                    "tasks"
+                      .= [ object
+                             [ "id" .= ("t1" :: Text),
+                               "title" .= ("add helper" :: Text),
+                               "detail" .= ("Write add.py and a tiny check" :: Text),
+                               "verify_program" .= ("python3" :: Text),
+                               "verify_args"
+                                 .= (["-c", "from add import add; assert add(2,3)==5"] :: [Text])
+                             ]
+                         ]
+                  ]
+              )
+          ]
+
+    doReply n sys = case n of
+      0 ->
+        needTools
+          [ ToolCall
+              "d0"
+              "skill_discover"
+              ( object
+                  [ "query" .= ("python" :: Text),
+                    "kinds" .= (["instruction"] :: [Text]),
+                    "limit" .= (3 :: Int)
+                  ]
+              ),
+            ToolCall
+              "d1"
+              "skill_load"
+              (object ["id" .= ("skills/python-pytest" :: Text)])
+          ]
+      1
+        | T.isInfixOf "Loaded skill: skills/python-pytest" sys ->
+            needTools
+              [ ToolCall
+                  "d2"
+                  "fs_write"
+                  ( object
+                      [ "path" .= ("add.py" :: Text),
+                        "text" .= ("def add(a, b):\n    return a + b\n" :: Text)
+                      ]
+                  )
+              ]
+        | otherwise ->
+            needTools
+              [ ToolCall
+                  "d2"
+                  "fs_write"
+                  ( object
+                      [ "path" .= ("add.py" :: Text),
+                        "text" .= ("def add(a, b):\n    return a + b\n" :: Text)
+                      ]
+                  )
+              ]
+      _ ->
+        submit
+          [ ToolCall
+              "d3"
+              "submit"
+              ( object
+                  [ "summary" .= ("Wrote add.py" :: Text),
+                    "files_written" .= (["add.py"] :: [Text])
+                  ]
+              )
+          ]
 
     needTools calls =
       ProviderResult
         { prContent = "working",
+          prToolCalls = calls,
+          prUsage = Just (TokenUsage 1 1),
+          prFinishReason = FinishToolCalls
+        }
+
+    submit calls =
+      ProviderResult
+        { prContent = "done",
           prToolCalls = calls,
           prUsage = Just (TokenUsage 1 1),
           prFinishReason = FinishToolCalls
@@ -155,41 +178,46 @@ spec = describe "coding-agent example" $ do
         Map.member (qname "skills/python-pytest") cpr.cprSkillCatalog.scEntries
           `shouldBe` True
 
-  it "type-checks the entry module" $ do
-    loaded <- loadModule modulePath
-    case loaded of
-      Left diags -> expectationFailure (show diags)
-      Right m -> checkLoadedModule m `shouldSatisfy` isRight
+  it "type-checks chat and coding entry modules via project check" $ do
+    result <- checkProject projectRoot
+    case result of
+      Left err -> expectationFailure (show err)
+      Right cpr -> do
+        Set.member (qname "workflows/main") cpr.cprChecked `shouldBe` True
+        Set.member (qname "workflows/coding") cpr.cprChecked `shouldBe` True
+        Set.member (qname "workflows/gather_context") cpr.cprChecked `shouldBe` True
+        Set.member (qname "workflows/verify") cpr.cprChecked `shouldBe` True
 
-  it "builds a tiny Python project after loading the python skill (mock LLM)" $
+  it "runs workflows/coding: plan → do_task → verify (mock LLM)" $
     withSystemTempDirectory "hwfl-coding-agent" $ \tmp -> do
       result <- checkProject projectRoot
       case result of
         Left err -> expectationFailure (show err)
         Right cpr -> do
           lp <- loadProjectOrFail projectRoot
-          case Map.lookup (qname "workflows/main") lp.lpModules of
-            Nothing -> expectationFailure "missing entry module"
+          case Map.lookup (qname "workflows/coding") lp.lpModules of
+            Nothing -> expectationFailure "missing workflows/coding"
             Just m -> do
               outcome <-
                 runLoadedModule
                   RunOptions
                     { roWorkspace = tmp,
-                      roProvider = codingAgentMock,
+                      roProvider = codingSessionMock,
                       roInputs =
                         [ (Ident "prompt", VString "Create add(a,b) with a test"),
                           (Ident "model", VString "gpt-5")
                         ],
-                      roRunId = Just "coding-agent",
-                      roEntry = modulePath,
+                      roRunId = Just "coding-session",
+                      roEntry = codingPath,
                       roMode = StepRun,
                       roProjectHash = Nothing,
                       roExec = lp.lpConfig.pcExec,
                       roObserver = noopObserver,
                       roCost = False,
-                    roModelCatalog = "model-catalog.json",
+                      roModelCatalog = "model-catalog.json",
                       roSkillCatalog = cpr.cprSkillCatalog,
-                      roSkillModules = callableSkills lp, roEntryModules = mempty
+                      roSkillModules = callableSkills lp,
+                      roEntryModules = lp.lpModules
                     }
                   m
               case outcome of
@@ -197,11 +225,9 @@ spec = describe "coding-agent example" $ do
                   lookup (Ident "ok") fs `shouldBe` Just (VBool True)
                   lookup (Ident "stack") fs `shouldBe` Just (VString "python")
                   lookup (Ident "verify_exit") fs `shouldBe` Just (VInt 0)
-                  case lookup (Ident "files_written") fs of
-                    Just (VList xs) -> length xs `shouldBe` 2
-                    other -> expectationFailure ("files_written: " <> show other)
+                  lookup (Ident "tasks_done") fs `shouldBe` Just (VInt 1)
+                  lookup (Ident "tasks_total") fs `shouldBe` Just (VInt 1)
                   doesFileExist (tmp </> "add.py") `shouldReturn` True
-                  doesFileExist (tmp </> "test_add.py") `shouldReturn` True
                   src <- TIO.readFile (tmp </> "add.py")
                   src `shouldSatisfy` T.isInfixOf "return a + b"
                 other -> expectationFailure ("expected completed run, got: " <> show other)
