@@ -2,23 +2,28 @@
 
 Active work only. Archive completed sections to `log/archive/` weekly.
 
-## Now (P1) — lab loop + exemplars
+## Now (P1) — exemplars
 
 High #1–#5 runtime integrity done (nested snapshot, `meta.invoke`
 sandbox, crash-safe store + run IDs, checker holes, submit schema +
 tool-name uniquify).
 
-### Credible coding-agent exemplar
+### Credible coding-agent (skill-driven)
 
-Target shape (extend `examples/coding-agent` / chat; language owns the
-loop, LLMs fill holes). **Serial** task iteration — not `par` / worktrees.
+Extend / replace `examples/coding-agent` (and chat as needed). Language
+owns the loop; LLMs fill holes. **Serial** task iteration — not `par` /
+worktrees.
+
+**Skills:** planner and coder advertise `skill.discover` / `skill.load`
+and load instruction skills when useful. Verifier is a non-agent
+workflow (no `skill.*` tools).
 
 ```text
 chat (human.ask + history)
   └─ tool: coding_session(prompt)     # FrInvoke → workflows/coding
         ├─ plan → List<Task>          # llm.object (typed)
         └─ for task in tasks          # workflow for / recursive fun
-              ├─ do_task(task)        # agent_object or focused workflow
+              ├─ do_task(task)        # agent_object (+ skill.* tools)
               └─ verify(task)         # FrInvoke workflow / exec wrapper
                     └─ fail → retry same task / replan rest / stop
 ```
@@ -38,31 +43,9 @@ chat (human.ask + history)
 - [ ] Dogfood: resume mid-task / mid-verify; effect check on callees;
       keep instruction `skills/*`; avoid nesting agent-in-agent by default
 
-**Skills policy — two separate example projects (not a switch):**
-
-Ship **(A)** and **(B)** as **distinct example projects** (each with its
-own `project.json` / workflows / skills copy). Run them on the same task
-fixtures — head-to-head via check/run/spans/cost/`ok`. That comparison
-*is* the research use of hwfl (two markdown programs vs two host apps).
-Genetic evolve is a separate lab mode that can sit on top later.
-
-**Do not** put both policies in one workflow behind a mode/input flag.
-Accept duplication until `lib/` exists — shared shape, separate trees.
-
-- **(A) Agent-driven** — e.g. `examples/coding-agent-skills` (name TBD):
-  planner/coder advertise `skill.discover` / `skill.load`; each agent
-  loads if it wants (closest to today’s coding-agent).
-- **(B) Workflow-driven** — e.g. `examples/coding-agent-wf-skills`
-  (name TBD): session module calls discover/load *outside* the agent and
-  injects instruction `content` into `system` for plan / do_task; agents
-  have no `skill.*` tools.
-
-Either way: verifier stays a non-agent workflow (no skill tools); each
-project keeps its own `skills/*` (same content is fine). Build order is
-whatever is convenient; both are in-scope exemplars.
-
 Out of this exemplar: parallel sub-agents, commit-per-tool-round,
-worktrees, MCP/git/terminals (Tier A only when this bites), embeddings.
+worktrees, MCP/git/terminals (Tier A only when this bites), embeddings,
+workflow-driven skills injection (separate later task).
 
 ## Next (P1–P2) — agent substrate
 
@@ -74,6 +57,14 @@ Prefer MCP / workflow modules over growing the host-op set.
       `exec.run`
 
 ## Later (P2–P3)
+
+### Coding-agent variants
+
+- [ ] Workflow-driven skills variant of the credible coding-agent —
+      **separate example project** (not a mode switch). Session module
+      loads skills outside the agent and injects instruction `content`
+      into `system` for plan / do_task; agents have no `skill.*` tools.
+      Duplication OK until `lib/`.
 
 ### Observability
 
@@ -110,7 +101,7 @@ Prefer MCP / workflow modules over growing the host-op set.
 
 ## Future / nice-to-have (coding-agent Tier B)
 
-Delay until a measured lab / coding-agent gap.
+Delay until a measured coding-agent gap.
 
 - [ ] Codebase index (embeddings and/or tree-sitter + ripgrep)
 - [ ] LSP bridge; project rules/hooks skills; auto context assembly;

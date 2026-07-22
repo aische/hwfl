@@ -4,20 +4,17 @@ Last updated: 2026-07-22
 
 ## Current focus
 
-**Lab loop + exemplars** — High #1–#5 runtime integrity landed. Next:
-credible coding-agent shape — chat → FrInvoke coding session → typed
-plan → **serial** task loop with per-task verify; ship skills **(A)** and
-**(B)** as **two separate example projects** (no in-workflow mode
-switch). Spec in [TASKS.md](TASKS.md). Findings in `issues.md` (not
-spec). Control plane: **hwfl-server**.
+**Exemplars** — High #1–#5 runtime integrity landed. Next: credible
+**skill-driven** coding-agent (chat → FrInvoke coding session → typed
+plan → serial task/verify; `skill.*` on planner/coder). Spec in
+[TASKS.md](TASKS.md). Findings in `issues.md` (not spec). Control plane:
+**hwfl-server**.
 
 ## North star
 
-hwfl = durable workflow **runtime library**. Toward a **workflow research
-lab**: author multiple markdown variants cheaply, compare on the same
-fixtures (spans / cost / `ok`); genetic mutate/evolve is a related but
-separate mode. Coding-agent and semantic-check are benchmarks / research,
-not the product. See [idea.md](idea.md).
+hwfl = durable workflow **runtime library** (language + interpreter).
+Coding-agent and semantic-check are benchmarks / dogfood, not the
+product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
@@ -36,14 +33,14 @@ None.
 
 ## Next up
 
-1. Credible coding-agent: two separate example projects (skills A vs
-   workflow-driven B); shared shape, no mode switch — see TASKS
+1. Credible skill-driven coding-agent exemplar — see TASKS
 2. Tier A agent ops (MCP, git, terminals) when the exemplar needs them
 3. Opt-in LangSmith-style LLM transcripts
 4. Medium/Low `issues.md` items when they bite an exemplar
 
 ## Deferred
 
+- Workflow-driven skills coding-agent variant (separate example project)
 - Multi-process run-store locking (until parallel external lab processes)
 - Semantic-check S4 / S6; skills phase D; concurrent `par` host IO
 - Coding-agent Tier B; `latest` / omit run-id; `lib/`; typed `--example`
