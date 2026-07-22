@@ -1,9 +1,11 @@
 module Hwfl.Runtime.HostOpsSpec (spec) where
 
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hwfl.Ast.Name (Ident (..))
+import Hwfl.Ast.Name (Ident (..), QName (..))
 import Hwfl.Check.Module (checkLoadedModule)
+import Hwfl.Check.Project (checkProject)
 import Hwfl.Driver
   ( DriverRunRequest (..),
     defaultDriverRunRequest,
@@ -14,14 +16,16 @@ import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
-import Hwfl.Project (ExecPolicy (..))
+import Hwfl.Project (ExecPolicy (..), LoadedProject (..), ProjectConfig (..), loadProject, projectHashForModules)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Machine (MachineStatus (..), PauseReason (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
+    emptySkillRuntime,
+    replyRun,
     runLoadedModule,
-    emptySkillRuntime)
+  )
 import Hwfl.Runtime.Workspace
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))
@@ -96,13 +100,54 @@ denySrc =
 allowEcho :: Maybe ExecPolicy
 allowEcho =
   Just
-    ExecPolicy
+      ExecPolicy
       { execAllow = ["echo"],
         execEnv = ["PATH"],
         execTimeoutMs = Just 5000,
         execMaxOutputBytes = Just 65536,
         execConfirm = False
       }
+
+-- | Ask then exec — used to prove resume reloads exec from the *source* project.
+askThenExecSrc :: Text
+askThenExecSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/main",
+      "inputs: {}",
+      "outputs:",
+      "  code: Int",
+      "  out: String",
+      "effects: [Human, Exec]",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { code: Int, out: String } =",
+      "  let _ = human.ask({ prompt = \"go?\", detail = \"reply to continue\" })",
+      "  let r = exec.run(program = \"echo\", args = [\"hi\"], stdin = \"\")",
+      "  { code = r.exit_code, out = r.stdout }",
+      "```"
+    ]
+
+askThenExecProjectJson :: String
+askThenExecProjectJson =
+  unlines
+    [ "{",
+      "  \"name\": \"exec-resume\",",
+      "  \"version\": \"0.1.0\",",
+      "  \"entrypoint\": \"workflows/main\",",
+      "  \"effects\": { \"default\": [\"Human\", \"Exec\"], \"deny\": [] },",
+      "  \"exec\": {",
+      "    \"allow\": [\"echo\"],",
+      "    \"env\": [\"PATH\"],",
+      "    \"timeout_ms\": 5000,",
+      "    \"max_output_bytes\": 65536,",
+      "    \"confirm\": false",
+      "  }",
+      "}"
+    ]
 
 fsSliceRemoveSrc :: Text
 fsSliceRemoveSrc =
@@ -363,6 +408,57 @@ spec = describe "host ops P0 (exec + fs)" $ do
             outcome <- runLoadedModule opts loaded
             outcome `shouldSatisfy` isFailed
 
+    it "keeps source-project exec.allow after ask/reply when workspace has no project.json" $
+      withSystemTempDirectory "hwfl-exec-resume" $ \dir -> do
+        let proj = dir </> "proj"
+            ws = dir </> "ws"
+            entry = proj </> "workflows" </> "main.md"
+        createDirectoryIfMissing True (proj </> "workflows")
+        createDirectoryIfMissing True ws
+        writeFile (proj </> "project.json") askThenExecProjectJson
+        writeFile entry (T.unpack askThenExecSrc)
+        checked <- checkProject proj
+        case checked of
+          Left err -> expectationFailure (show err)
+          Right _ -> do
+            lp <- loadProjectOrFail proj
+            case Map.lookup (QName [Ident "workflows", Ident "main"]) lp.lpModules of
+              Nothing -> expectationFailure "missing workflows/main"
+              Just loaded -> do
+                o0 <-
+                  runLoadedModule
+                    RunOptions
+                      { roWorkspace = ws,
+                        roProvider = mockProvider,
+                        roInputs = [],
+                        roRunId = Just "exec-resume",
+                        roEntry = entry,
+                        roMode = StepRun,
+                        roProjectHash = Just (projectHashForModules lp.lpModules),
+                        roExec = lp.lpConfig.pcExec,
+                        roObserver = noopObserver,
+                        roCost = False,
+                        roModelCatalog = "model-catalog.json",
+                        roSkillCatalog = fst emptySkillRuntime,
+                        roSkillModules = snd emptySkillRuntime,
+                        roEntryModules = lp.lpModules
+                      }
+                    loaded
+                case o0 of
+                  OutcomePaused (MsPaused (PauseAwaitingAsk _)) _ _ _ -> do
+                    doesFileExist (ws </> "project.json") `shouldReturn` False
+                    o1 <-
+                      replyRun ws "exec-resume" "go" mockProvider "model-catalog.json" noopObserver
+                    case o1 of
+                      OutcomeCompleted (VRecord fs) _ _ -> do
+                        lookup (Ident "code") fs `shouldBe` Just (VInt 0)
+                        case lookup (Ident "out") fs of
+                          Just (VString s) -> T.strip s `shouldBe` "hi"
+                          other -> expectationFailure (show other)
+                      other ->
+                        expectationFailure ("expected completed after reply, got: " <> show other)
+                  other -> expectationFailure ("expected ask pause, got: " <> show other)
+
     it "pauses when exec.confirm is true; approve runs the command" $
       withSystemTempDirectory "hwfl-exec-confirm" $ \dir -> do
         writeFile
@@ -570,3 +666,10 @@ isFailed :: RunOutcome -> Bool
 isFailed = \case
   OutcomeFailed {} -> True
   _ -> False
+
+loadProjectOrFail :: FilePath -> IO LoadedProject
+loadProjectOrFail path = do
+  result <- loadProject path
+  case result of
+    Left err -> fail (T.unpack err)
+    Right lp -> pure lp

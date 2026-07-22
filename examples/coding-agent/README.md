@@ -9,14 +9,15 @@ chat (human.ask + history)
         ├─ gather_context             # read-only pre-pass (inside session)
         ├─ plan → List<Task>          # agent_object + skill.*
         └─ for task in tasks
-              ├─ do_task(task)        # agent_object + skill.* + FS
+              ├─ do_task(task)        # agent_object + skill.* + FS + exec
               └─ verify(task)         # FrInvoke → workflows/verify
                     └─ fail → one retry → stop
 ```
 
-Chat advertises **only** `coding_session` (no peer read tool — that was a
-routing trap). Context survey stays inside `workflows/coding`. Planner and
-coder use `skill.*`; verifier is a non-agent workflow.
+Chat advertises **only** `coding_session` (no peer read tool). Context survey
+stays inside `workflows/coding`. Planner loads skills and emits install/build
+gates; the doer has FS + `exec.run` (so it can `npm install`); outer verify
+re-checks each task. Planner/coder use `skill.*`.
 
 ## Layout
 

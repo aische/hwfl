@@ -18,17 +18,14 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
-- **FrInvoke sections** — callee `@section` / `schema(T)` surface installed
-  on nest (fixes chat→`coding_session` trap `unknown section: @plan-system`)
-- **Chat tools** — coding-agent chat exposes only `coding_session`
-  (survey stays inside the session)
-- **Credible coding-agent** — chat → FrInvoke `workflows/coding` → plan →
-  serial do_task/verify; FrInvoke callee fun table
-- **#5 Agent submit / tool identity** — schema validation + tool-name
-  uniquify
-- **#4 Checker holes** — empty `match`; `confirm` / `choice` shape
-- **#3 Crash-safe store + run IDs**
-- **#2 `meta.invoke` sandbox** / **#1 Nested snapshot persist**
+- **Resume exec policy** — ask/reply reloads `exec.allow` from the source
+  project (not the workspace); fixes interactive `npm install` after chat
+- **Coding-agent power** — doer has `exec.run`; stronger plan/do + react skill
+- **FrInvoke sections** — callee `@section` / `schema(T)` on nest
+- **Chat tools** — chat sole tool `coding_session`
+- **Credible coding-agent** — chat → plan → serial do_task/verify
+- **#5–#1** — submit schema, checker holes, crash-safe store, sandbox,
+  nested snapshot
 
 ## Blockers
 

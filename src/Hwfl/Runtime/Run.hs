@@ -584,11 +584,11 @@ mkCtx ::
   SkillCatalog ->
   Map QName LoadedModule ->
   Map QName LoadedModule ->
+  Maybe ExecPolicy ->
   FilePath ->
   IO RunCtx
-mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods entryMods modelCatalog = do
+mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods entryMods execPol modelCatalog = do
   ws <- newWorkspace wsRoot
-  execPol <- loadExecPolicy wsRoot
   let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
       typeEnv = loadTypeEnv loaded
       baseEnv = withRunCtx runId started baseEnv0
@@ -882,7 +882,8 @@ loadExisting workspace runId provider catalogPath observer = do
           Right loaded -> do
             -- Project runs store projectHashForModules; lone modules store
             -- projectHashOf. Resolve the same way on resume/approve.
-            (hash, catalog, skillMods, entryMods) <- resolveResumeProject meta.rmEntry loaded root
+            (hash, catalog, skillMods, entryMods, execPol) <-
+              resolveResumeProject meta.rmEntry loaded root
             if hash /= snap.rsProjectHash
               then pure (Left (ConfigErr "stale project: hash mismatch"))
               else do
@@ -906,29 +907,44 @@ loadExisting workspace runId provider catalogPath observer = do
                     catalog
                     skillMods
                     entryMods
+                    execPol
                     catalogPath
                 pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 
--- | Match the hash / skill tables used at start for project vs lone-module runs.
+-- | Match the hash / skill tables / exec policy used at start for project vs
+-- lone-module runs. Exec must come from the *source* project (entry path), not
+-- the workspace — interactive ask/reply would otherwise drop @exec.allow@.
 resolveResumeProject ::
   FilePath ->
   LoadedModule ->
   FilePath ->
-  IO (Text, SkillCatalog, Map QName LoadedModule, Map QName LoadedModule)
+  IO
+    ( Text,
+      SkillCatalog,
+      Map QName LoadedModule,
+      Map QName LoadedModule,
+      Maybe ExecPolicy
+    )
 resolveResumeProject entryPath loaded workspaceRoot = do
   mProjectRoot <- findProjectRoot entryPath
   case mProjectRoot of
     Just projectRoot -> do
       lpE <- loadProject projectRoot
       (catalog, skillMods) <- loadSkillRuntime projectRoot
-      let (hash, entryMods) = case lpE of
-            Right lp -> (projectHashForModules lp.lpModules, lp.lpModules)
-            Left _ -> (projectHashOf loaded, Map.empty)
-      pure (hash, catalog, skillMods, entryMods)
+      let (hash, entryMods, execPol) = case lpE of
+            Right lp ->
+              ( projectHashForModules lp.lpModules,
+                lp.lpModules,
+                lp.lpConfig.pcExec
+              )
+            Left _ -> (projectHashOf loaded, Map.empty, Nothing)
+      pure (hash, catalog, skillMods, entryMods, execPol)
     Nothing -> do
       (catalog, skillMods) <- loadSkillRuntime workspaceRoot
-      pure (projectHashOf loaded, catalog, skillMods, Map.empty)
+      -- Lone module: fall back to workspace project.json if present.
+      execPol <- loadExecPolicy workspaceRoot
+      pure (projectHashOf loaded, catalog, skillMods, Map.empty, execPol)
 
 findProjectRoot :: FilePath -> IO (Maybe FilePath)
 findProjectRoot start = go start (32 :: Int)

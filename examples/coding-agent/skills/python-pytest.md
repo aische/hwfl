@@ -23,6 +23,8 @@ Or `python3 -m pytest -q` when pytest is available.
 
 Rules:
 
-- No network installs unless the prompt requires a third-party library.
+- Install third-party libs with `pip install …` only when the prompt needs
+  them (allowlisted `pip` / `pip3`). Prefer stdlib otherwise.
 - Keep modules importable from the workspace root (cwd = workspace).
-- On failure, read stderr, edit with fs_edit, re-run the same verify command.
+- On failure, read stderr, edit with fs_edit / fs_patch, re-run the same
+  verify command.

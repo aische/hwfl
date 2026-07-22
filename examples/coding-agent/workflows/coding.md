@@ -19,25 +19,59 @@ imports:
 
 ## plan-system
 
-You are the planner for a coding session. Produce a short ordered task list.
-Use skill_discover / skill_load when stack conventions affect the plan or
-verify commands (pytest layout, cabal test, npm build, …).
+You are the planner for a coding session. Your job is a short, complete task
+list the implementer can finish one task at a time. You do not write files.
 
-Each task must be small enough for one implement→verify cycle. Set
-verify_program to an allowlisted basename (python3, npm, cabal, cargo, …)
-and verify_args to a concrete argv. Prefer non-interactive checks.
+Before submit you MUST:
+1. skill_discover for the stack (react/vite, python, haskell, rust, …)
+2. skill_load the best matching instruction skill
+3. Base verify commands and file layout on that skill
+
+Planning rules:
+- Prefer 2–4 tasks. Each task must leave the workspace in a verifiable state.
+- task.detail must list concrete files to create/edit (paths + what goes in them).
+- verify_program is an allowlisted basename (npm, python3, cabal, cargo, …).
+  verify_args is a concrete argv list. Empty verify_program only if no check
+  is possible yet (avoid that for scaffold/build).
+- Node / React / Vite / TypeScript projects:
+  - Hand-write the minimal tree (package.json, vite.config, tsconfigs,
+    index.html, src/…). Do not rely on interactive `npm create`.
+  - Include an early task whose verify is `npm` + `["install"]` after
+    package.json exists (deps must be installed — never skip).
+  - Final gate: `npm` + `["run", "build"]` (or the skill’s verify).
+  - Feature work (canvas, UI, …) can be in the scaffold task or a follow-up
+    before the build gate.
+- Python: prefer `python3` + `["-c", "…"]` or pytest per skill.
+- Haskell / Rust: use the skill’s cabal/cargo verify.
+- Never invent package versions that contradict the loaded skill; follow it.
 
 Call submit alone with the Plan. Never mix submit with other tools.
 
 ## do-system
 
-You implement exactly one coding task in the workspace. Discover/load stack
-skills when useful, then create or edit files with fs_write / fs_patch /
-fs_edit. Prefer fs_patch for multi-site edits (each hunk.old must match
-exactly once).
+You implement exactly one coding task in the workspace. Verification also
+runs outside this agent after you submit — still make the task green yourself
+when you can (install deps, run the same check).
 
-Do not call submit until the task’s files are in place. Verification runs
-outside this agent — focus on implementation. Stay workspace-relative.
+Required workflow:
+1. skill_discover / skill_load for the stack if not already loaded.
+2. Read existing files you will edit (fs_list / fs_read).
+3. Create or update files with fs_write / fs_patch / fs_edit. Parent dirs are
+   created by fs_write. Prefer fs_patch for multi-site edits (each hunk.old
+   must match exactly once).
+4. Write complete, working code — no stubs, no “TODO: implement”, no
+   placeholders that fail typecheck/build.
+5. If you added or changed package.json / lockfile needs: exec_run
+   program=npm args=["install"] (or the stack’s install). Wait for exit 0.
+6. If the task’s verify gate is given, run it with exec_run before submit
+   when feasible. On failure: read stderr, fix files, re-run (a few honest
+   tries), then submit.
+7. Call submit alone with TaskDone. Never mix submit with other tools.
+
+Constraints:
+- Stay workspace-relative.
+- Prefer the skill’s layout and verify commands over improvising.
+- files_written = paths you created or materially changed this task.
 
 ## schema Plan
 
@@ -94,19 +128,30 @@ fun join_summaries(xs: List<String>, i: Int, n: Int): String =
   else if i == n - 1 then xs[i]
   else $"{xs[i]} | {join_summaries(xs, i + 1, n)}"
 
+fun join_args(xs: List<String>, i: Int, n: Int): String =
+  if i >= n then ""
+  else if i == n - 1 then xs[i]
+  else $"{xs[i]} {join_args(xs, i + 1, n)}"
+
 fun do_task(
   item: Task,
   prompt: String,
   context: String,
   model: String,
+  stack: String,
   feedback: String
 ): TaskDone =
   let extra =
     if feedback == "" then ""
     else $"\n\nPrevious verify failed:\n{feedback}\nFix the failure."
+  let gate =
+    if item.verify_program == "" then
+      "No outer verify gate for this task."
+    else
+      $"Outer verify gate after you submit: {item.verify_program} {join_args(item.verify_args, 0, list.length(item.verify_args))}\nRun the same command with exec_run before submit when you can (especially npm install / npm run build)."
   let result = llm.agent_object(
     system = @do-system,
-    prompt = $"User request:\n{prompt}\n\nWorkspace context:\n{context}\n\nTask {item.id}: {item.title}\n{item.detail}{extra}",
+    prompt = $"User request:\n{prompt}\n\nStack: {stack}\n\nWorkspace context:\n{context}\n\nTask {item.id}: {item.title}\n{item.detail}\n\n{gate}{extra}",
     tools = [
       tool(skill.discover),
       tool(skill.load),
@@ -116,11 +161,12 @@ fun do_task(
       tool(fs.write),
       tool(fs.edit),
       tool(fs.patch),
-      tool(fs.grep)
+      tool(fs.grep),
+      tool(exec.run)
     ],
     schema = schema(TaskDone),
     model = model,
-    max_rounds = 24
+    max_rounds = 32
   )
   result.value
 
@@ -170,7 +216,7 @@ fun run_tasks(
     }
   else
     let item = tasks[i]
-    let done0 = do_task(item, prompt, context, model, "")
+    let done0 = do_task(item, prompt, context, model, stack, "")
     let v0 = verify_task(item)
     if v0.ok then
       run_tasks(
@@ -187,7 +233,7 @@ fun run_tasks(
       )
     else
       let fb = $"exit={v0.exit}\nstdout:\n{v0.stdout}\nstderr:\n{v0.stderr}"
-      let done1 = do_task(item, prompt, context, model, fb)
+      let done1 = do_task(item, prompt, context, model, stack, fb)
       let v1 = verify_task(item)
       if v1.ok then
         run_tasks(
@@ -247,7 +293,7 @@ fun main(inputs: { prompt: String, model: String }): {
     ],
     schema = schema(Plan),
     model = inputs.model,
-    max_rounds = 8
+    max_rounds = 10
   )
   let plan = planned.value
   let n = list.length(plan.tasks)

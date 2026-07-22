@@ -2,36 +2,141 @@
 name: skills/react-vite
 skill:
   kind: instruction
-  summary: "Minimal Vite React+TypeScript app layout and verify commands"
+  summary: "Vite React+TypeScript scaffold, npm install, and build verify"
   tags: [react, typescript, vite, npm]
 ---
 
 # React / Vite / TypeScript
 
-Prefer a **hand-written minimal tree** over `npm create vite` when the goal is
-a tiny Hello page that builds (avoids interactive scaffolding and network).
+Hand-write a **complete minimal tree** in the workspace root (no nested app
+folder unless the user asks). Do **not** use interactive `npm create vite`.
+Always install deps before build.
 
-Suggested files:
+## Required files
 
-- `package.json` — `react`, `react-dom`, `vite`, `@vitejs/plugin-react`,
-  `typescript`; scripts: `"dev"`, `"build"`, `"preview"`
-- `vite.config.ts` — `@vitejs/plugin-react`
-- `tsconfig.json` / `tsconfig.app.json` — strict enough for Vite
-- `index.html` — mounts `#root`
-- `src/main.tsx`, `src/App.tsx` — Hello page
+### `package.json`
 
-Verify:
+Use this shape (adjust `name` / title only if needed):
+
+```json
+{
+  "name": "app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.11"
+  }
+}
+```
+
+### `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}
+```
+
+Note: `"noEmit": true` with `"build": "tsc && vite build"` — if `tsc` errors
+on noEmit, use `"build": "vite build"` only, or set `"noEmit": false` and
+`"outDir": "dist-types"`. Simplest reliable gate: `"build": "vite build"`
+after a clean `tsc --noEmit` via `npx tsc --noEmit` when debugging. Default
+prefer `"build": "vite build"` for demos so install+build is the gate.
+
+**Recommended scripts for this agent:**
+
+```json
+"scripts": {
+  "dev": "vite",
+  "build": "vite build",
+  "preview": "vite preview"
+}
+```
+
+### `vite.config.ts`
+
+```ts
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+})
+```
+
+### `index.html`
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+### `src/vite-env.d.ts`
+
+```ts
+/// <reference types="vite/client" />
+```
+
+### `src/main.tsx`, `src/App.tsx`, CSS
+
+Mount `App` under `#root` with `React.StrictMode`. Implement the user’s UI
+fully in TypeScript (e.g. canvas drawing, color/brush, clear, PNG export) —
+no stub components, no missing imports.
+
+## Verify (required order)
 
 ```bash
 npm install
 npm run build
 ```
 
-If the prompt allows tests, a single Vitest or `npm run build` as the gate is
-enough. Prefer build-only when network/time is tight.
+Plan these as separate tasks or one scaffold task that installs then a final
+build task. **Never** run `npm run build` before a successful `npm install`.
 
 Rules:
 
+- Always `npm install` after writing/updating `package.json`.
 - Stay workspace-relative; never write outside the workspace.
-- Prefer TypeScript over plain JS unless the prompt says otherwise.
-- On TypeScript errors, fix with fs_edit and re-run `npm run build`.
+- Prefer TypeScript. Fix Vite/TS errors with fs_edit / fs_patch and re-run.
+- Write files with fs_write — do not tell the user to create them manually.
