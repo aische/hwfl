@@ -14,8 +14,8 @@ opens/closes a **span**.
 | `fs.write` | Write | `(path: FileRef, text: String) -> ()` |
 | `fs.list` | Read | `(path: FileRef) -> List<{ name: String, kind: String }>` |
 | `fs.read_slice` | Read | `(path, start_line, end_line) -> { text: String }` |
-| `fs.find` | Read | `(glob: String) -> List<FileRef>` |
-| `fs.grep` | Read | `(pattern, glob?) -> List<Hit>` |
+| `fs.find` | Read | `(glob: String) -> List<FileRef>` — skips hidden; root `.gitignore` / `.ignore` (no `.git` required); baseline dependency/build dirs when neither file exists |
+| `fs.grep` | Read | `(pattern, glob?) -> List<Hit>` — same ignore rules as `fs.find` |
 | `fs.edit` | Write | `(path, old, new) -> { ok: Bool }` |
 | `fs.patch` | Write | `(path, hunks: List<{old, new}>) -> { ok, applied, error }` — unique multi-hunk; atomic |
 | `fs.mkdir` | Write | `(path: FileRef) -> ()` — create dir and parents |
@@ -27,6 +27,12 @@ opens/closes a **span**.
 
 All paths constrained to the **workspace sandbox** (hwfi containment
 rules). Symlink escape is a hard failure.
+
+`fs.find` / `fs.grep` ignore policy (v1): hidden path segments are always
+skipped; workspace-root `.gitignore` and `.ignore` are applied even when
+`.git` is absent; if both are missing or empty, a small built-in baseline
+(`node_modules/`, `dist/`, `dist-newstyle/`, `target/`, …) applies. Nested
+ignore files and opt-out flags are deferred.
 
 Bytes variants: **[defer]** or ship thin `fs.read_bytes` if required.
 

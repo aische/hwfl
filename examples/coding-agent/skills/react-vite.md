@@ -14,6 +14,19 @@ Always install deps before build.
 
 ## Required files
 
+Write `.gitignore` **before** `npm install` so later `fs.find` / context
+surveys skip `node_modules` and build output.
+
+### `.gitignore`
+
+```
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+```
+
 ### `package.json`
 
 Use this shape (adjust `name` / title only if needed):

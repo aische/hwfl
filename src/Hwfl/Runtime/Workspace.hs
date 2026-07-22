@@ -30,6 +30,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
 import Hwfl.Runtime.Error (RuntimeError (..))
+import Hwfl.Runtime.Ignore (IgnoreSet, isIgnored, loadIgnoreSet)
 import System.Directory
   ( canonicalizePath,
     copyFile,
@@ -181,12 +182,15 @@ writeTextFile ws rel content = do
 
 -- | Find workspace-relative files matching a simple glob.
 -- Supported: @**/*.ext@ (recursive) and @*.ext@ (workspace root only).
+-- Skips hidden paths and respects root @.gitignore@ / @.ignore@ (or a
+-- built-in baseline when neither is present). See 'Hwfl.Runtime.Ignore'.
 findFiles :: Workspace -> Text -> IO (Either RuntimeError [Text])
 findFiles ws glob = case parseGlob glob of
   Left e -> pure (Left e)
   Right pat -> do
     let root = workspaceRoot ws
-    paths <- try (walk root "" pat) :: IO (Either IOException [FilePath])
+    ign <- loadIgnoreSet root
+    paths <- try (walk ign root "" pat) :: IO (Either IOException [FilePath])
     pure $ case paths of
       Left ex -> Left (HostErr ("fs.find failed: " <> T.pack (show ex)))
       Right ps -> Right (map T.pack ps)
@@ -202,23 +206,31 @@ parseGlob g = case T.stripPrefix "**/*" g of
     Just ext | not (T.null ext) && T.head ext == '.' -> Right (GlobRootExt (T.unpack ext))
     _ -> Left (HostErr ("fs.find: unsupported glob (use **/*.md or *.md): " <> g))
 
-walk :: FilePath -> FilePath -> GlobPat -> IO [FilePath]
-walk absRoot relDir pat = do
+walk :: IgnoreSet -> FilePath -> FilePath -> GlobPat -> IO [FilePath]
+walk ign absRoot relDir pat = do
   let absDir = if null relDir then absRoot else absRoot </> relDir
   names <- listDirectory absDir
-  concat <$> traverse (one absRoot relDir pat) names
+  concat <$> traverse (one ign absRoot relDir pat) names
 
-one :: FilePath -> FilePath -> GlobPat -> FilePath -> IO [FilePath]
-one absRoot relDir pat name = do
+one :: IgnoreSet -> FilePath -> FilePath -> GlobPat -> FilePath -> IO [FilePath]
+one ign absRoot relDir pat name = do
   let rel = if null relDir then name else relDir </> name
       absPath = absRoot </> rel
   isDir <- doesDirectoryExist absPath
   if isDir
-    then case pat of
-      GlobRecursiveExt _ -> walk absRoot rel pat
-      GlobRootExt _ -> pure []
+    then
+      if isIgnored ign rel True
+        then pure []
+        else case pat of
+          GlobRecursiveExt _ -> walk ign absRoot rel pat
+          GlobRootExt _ -> pure []
     else
-      pure ([rel | matchPat pat name])
+      pure
+        ( [ rel
+            | not (isIgnored ign rel False),
+              matchPat pat name
+          ]
+        )
 
 matchPat :: GlobPat -> FilePath -> Bool
 matchPat pat name = case pat of
@@ -620,7 +632,7 @@ binarySniffBytes = 8000
 
 -- | Regex-search workspace files. @glob@ empty ⇒ all text files under the
 -- workspace root; otherwise the same globs as 'findFiles' (@**\/*.ext@ / @*.ext@).
--- Hits are @(file, 1-based line, line text)@.
+-- Uses the same ignore policy as 'findFiles'. Hits are @(file, 1-based line, line text)@.
 grepFiles :: Workspace -> Text -> Text -> IO (Either RuntimeError [(Text, Int, Text)])
 grepFiles ws pattern glob = case compileRegex pattern of
   Left e -> pure (Left e)
@@ -676,29 +688,29 @@ isBinaryOrBig path = do
 
 listAllTextFiles :: Workspace -> IO (Either RuntimeError [Text])
 listAllTextFiles ws = do
-  paths <- try (walkAll (workspaceRoot ws) "") :: IO (Either IOException [FilePath])
+  let root = workspaceRoot ws
+  ign <- loadIgnoreSet root
+  paths <- try (walkAll ign root "") :: IO (Either IOException [FilePath])
   pure $ case paths of
     Left ex -> Left (HostErr ("fs.grep walk failed: " <> T.pack (show ex)))
     Right ps -> Right (map T.pack (sort ps))
 
-walkAll :: FilePath -> FilePath -> IO [FilePath]
-walkAll absRoot relDir = do
+walkAll :: IgnoreSet -> FilePath -> FilePath -> IO [FilePath]
+walkAll ign absRoot relDir = do
   let absDir = if null relDir then absRoot else absRoot </> relDir
   names <- listDirectory absDir
-  concat <$> traverse (oneFile absRoot relDir) names
+  concat <$> traverse (oneFile ign absRoot relDir) names
 
-oneFile :: FilePath -> FilePath -> FilePath -> IO [FilePath]
-oneFile absRoot relDir name
-  | "." `T.isPrefixOf` T.pack name && name /= "." && name /= ".." = pure []
-  | otherwise = do
-      let rel = if null relDir then name else relDir </> name
-          absPath = absRoot </> rel
-      isDir <- doesDirectoryExist absPath
-      if isDir
-        then
-          if name == ".hwfl"
-            then pure []
-            else walkAll absRoot rel
-        else do
-          isFile <- doesFileExist absPath
-          pure ([rel | isFile])
+oneFile :: IgnoreSet -> FilePath -> FilePath -> FilePath -> IO [FilePath]
+oneFile ign absRoot relDir name = do
+  let rel = if null relDir then name else relDir </> name
+      absPath = absRoot </> rel
+  isDir <- doesDirectoryExist absPath
+  if isDir
+    then
+      if isIgnored ign rel True
+        then pure []
+        else walkAll ign absRoot rel
+    else do
+      isFile <- doesFileExist absPath
+      pure ([rel | isFile && not (isIgnored ign rel False)])

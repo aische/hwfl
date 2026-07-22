@@ -10,6 +10,20 @@ skill:
 
 Prefer a small library package with an in-tree test suite.
 
+Write `.gitignore` early (before `cabal build` / `cabal test`):
+
+```
+dist-newstyle/
+dist/
+.cabal-sandbox/
+cabal.sandbox.config
+*.o
+*.hi
+*.chi
+*.chs.h
+.DS_Store
+```
+
 Suggested layout:
 
 - `mylib.cabal` (or project-named `.cabal`) — `library` + `test-suite`

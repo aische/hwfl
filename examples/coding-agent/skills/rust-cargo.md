@@ -8,7 +8,18 @@ skill:
 
 # Rust / Cargo
 
-Prefer a tiny crate:
+Prefer a tiny crate. Write `.gitignore` early:
+
+```
+/target/
+Cargo.lock
+.DS_Store
+```
+
+(Keep `Cargo.lock` for binaries if the prompt wants reproducible builds;
+omit that line then.)
+
+Layout:
 
 - `Cargo.toml` — package name + edition 2021
 - `src/lib.rs` — e.g. `pub fn add(a: i32, b: i32) -> i32`

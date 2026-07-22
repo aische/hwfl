@@ -91,6 +91,7 @@ library
         Hwfl.Runtime.Eval
         Hwfl.Runtime.Exec
         Hwfl.Runtime.Host
+        Hwfl.Runtime.Ignore
         Hwfl.Runtime.Machine
         Hwfl.Runtime.Run
         Hwfl.Runtime.Snapshot

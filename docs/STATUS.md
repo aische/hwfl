@@ -5,10 +5,9 @@ Last updated: 2026-07-22
 ## Current focus
 
 **Exemplars** — Credible **skill-driven** coding-agent shipped
-(`examples/coding-agent`: chat → FrInvoke coding session → typed plan →
-serial do_task/verify; `skill.*` on planner/coder). Next: Tier A agent
-ops when the exemplar needs them, or the workflow-driven skills variant.
-Control plane: **hwfl-server**.
+(`examples/coding-agent`). Next: Tier A agent ops when the exemplar
+needs them, or the workflow-driven skills variant. Control plane:
+**hwfl-server**.
 
 ## North star
 
@@ -18,11 +17,11 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
-- **gather_context noise filter** — drop `node_modules`/`dist`/lockfiles
-  from finds; cap merge; skip weak grep needles (post-`npm install`
-  crunch trap)
-- **Scoped gather_context** — empty workspace skips finds; non-empty
-  surveys only the stack hinted by the query
+- **Host find/grep ignores** — hidden skip; root `.gitignore`/`.ignore`
+  without requiring `.git`; baseline dep/build dirs when absent; skills
+  scaffold stack `.gitignore`
+- **gather_context** — stack-scoped finds; lockfile drop + caps; relies
+  on host for `node_modules`/build trees
 - **Resume exec policy** — ask/reply reloads `exec.allow` from source project
 - **Coding-agent power** — doer has `exec.run`; stronger plan/do + react skill
 - **FrInvoke sections** — callee `@section` / `schema(T)` on nest
@@ -49,7 +48,7 @@ None.
 - Most Medium/Low items in `issues.md` until they bite an exemplar
 - `meta.check_project` still joins paths with raw `</>` (same class of
   bug as #2; not yet sandboxed)
-- Host-level `fs.find` / `fs.grep` ignore defaults (today: workflow filter)
+- Nested ignore files; `fs.find`/`fs.grep` ignore opt-out flag
 
 ## Open naming
 

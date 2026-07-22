@@ -254,6 +254,41 @@ spec = describe "host ops P0 (exec + fs)" $ do
           Left e -> expectationFailure (show e)
           Right hits -> length hits `shouldBe` 2
 
+    it "fs.find skips node_modules via baseline when no gitignore" $
+      withSystemTempDirectory "hwfl-find-baseline" $ \dir -> do
+        ws <- newWorkspace dir
+        createDirectoryIfMissing True (dir </> "node_modules" </> "pkg")
+        createDirectoryIfMissing True (dir </> "src")
+        _ <- writeTextFile ws "node_modules/pkg/index.ts" "export {}"
+        _ <- writeTextFile ws "src/App.tsx" "export default 1"
+        hits <- findFiles ws "**/*.ts"
+        case hits of
+          Left e -> expectationFailure (show e)
+          Right paths -> do
+            paths `shouldBe` []
+        hits2 <- findFiles ws "**/*.tsx"
+        case hits2 of
+          Left e -> expectationFailure (show e)
+          Right paths -> paths `shouldBe` ["src/App.tsx"]
+
+    it "fs.find respects .gitignore without a .git directory" $
+      withSystemTempDirectory "hwfl-find-gi" $ \dir -> do
+        ws <- newWorkspace dir
+        _ <- writeTextFile ws ".gitignore" "build/\n*.log\n"
+        createDirectoryIfMissing True (dir </> "build")
+        createDirectoryIfMissing True (dir </> "src")
+        _ <- writeTextFile ws "build/out.ts" "x"
+        _ <- writeTextFile ws "src/main.ts" "y"
+        _ <- writeTextFile ws "src/noise.log" "z"
+        hits <- findFiles ws "**/*.ts"
+        case hits of
+          Left e -> expectationFailure (show e)
+          Right paths -> paths `shouldBe` ["src/main.ts"]
+        grep <- grepFiles ws "y" ""
+        case grep of
+          Left e -> expectationFailure (show e)
+          Right ghits -> map (\(f, _, _) -> f) ghits `shouldBe` ["src/main.ts"]
+
     it "patches unique multi-hunk edits atomically" $
       withSystemTempDirectory "hwfl-patch" $ \dir -> do
         ws <- newWorkspace dir

@@ -8,7 +8,21 @@ skill:
 
 # Python / pytest
 
-Prefer a flat tree for demos (no packaging boilerplate unless asked):
+Prefer a flat tree for demos (no packaging boilerplate unless asked).
+
+Write `.gitignore` early:
+
+```
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+```
+
+Layout:
 
 - `add.py` (or a short package name) with pure functions
 - `test_add.py` importing the module and asserting with plain `assert`

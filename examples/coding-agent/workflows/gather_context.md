@@ -15,9 +15,10 @@ effects: [Read]
 Read-only workspace pre-pass under a token budget. Skips deep finds when the
 workspace is empty (greenfield). When non-empty, scopes `fs.find` globs to the
 stack hinted by the query (typescript/react, python, haskell, rust) instead of
-scanning every language. Drops dependency / build trees (`node_modules`,
-`dist`, `target`, …) from find hits and caps candidates so post-install
-workspaces do not blow the pure-crunch limit. No writes, no agent loop.
+scanning every language. Dependency / build trees are excluded by the host
+(`fs.find` / `fs.grep` honor `.gitignore` / `.ignore`, with a baseline when
+absent). This workflow still drops lockfiles from the packed context, caps
+candidates, and skips weak grep needles. No writes, no agent loop.
 
 ```hwfl
 fun is_noise_name(name: String): Bool =
@@ -35,13 +36,7 @@ fun path_has_seg(s: String, seg: String): Bool =
 
 fun is_noise_path(p: FileRef): Bool =
   let s = $"{p}"
-  path_has_seg(s, "node_modules")
-    || path_has_seg(s, "dist")
-    || path_has_seg(s, "target")
-    || path_has_seg(s, ".vite")
-    || path_has_seg(s, ".git")
-    || path_has_seg(s, ".hwfl")
-    || path_has_seg(s, "package-lock.json")
+  path_has_seg(s, "package-lock.json")
     || path_has_seg(s, "yarn.lock")
     || path_has_seg(s, "pnpm-lock.yaml")
 

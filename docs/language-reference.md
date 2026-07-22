@@ -69,11 +69,11 @@ Each call is a transition (snapshot + span) unless noted.
 |----|---------|-----------|
 | `fs.read` | Read | `(path: FileRef) -> { text: String }` |
 | `fs.write` | Write | `{ path: FileRef, text: String } -> ()` |
-| `fs.find` | Read | `{ glob: String } -> List<FileRef>` (`**/*.ext` / `*.ext`; agent-tool eligible) |
 | `fs.list` | Read | `(path: FileRef) -> List<{ name: String, kind: String }>` |
+| `fs.find` | Read | `{ glob: String } -> List<FileRef>` (`**/*.ext` / `*.ext`; agent-tool eligible). Skips hidden paths; honors workspace-root `.gitignore` / `.ignore` (no `.git` required); built-in dependency/build baseline when neither file exists. |
+| `fs.grep` | Read | `{ pattern: String, glob?: String } -> List<{ file, line, text }>` — empty `glob` = whole workspace; same ignore rules as `fs.find` |
 | `fs.edit` | Write | `{ path, old, new } -> { ok: Bool }` (literal replace-all; `ok` iff ≥1 hit) |
 | `fs.patch` | Write | `{ path, hunks: List<{ old, new }> } -> { ok, applied, error }` (each `old` unique after prior hunks; atomic) |
-| `fs.grep` | Read | `{ pattern, glob } -> List<{ file, line, text }>` (empty `glob` = whole workspace) |
 | `fs.mkdir` | Write | `(path: FileRef) -> ()` (creates parents) |
 | `fs.copy` | Write | `{ src, dst, overwrite?, exclude? } -> ()` (file or recursive tree; `exclude` = path prefixes under the tree root) |
 | `fs.move` | Write | `{ src, dst } -> ()` (fails if `dst` exists) |
