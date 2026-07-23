@@ -68,12 +68,10 @@ import Hwfl.Runtime.Workspace
     removePath,
     resolvePath,
     statPath,
-    workspaceRoot,
     writeTextFile,
   )
 import Hwfl.SkillCatalog (SkillCatalog)
 import Hwfl.Source (renderDiagnostics)
-import System.FilePath ((</>))
 
 -- | Effectful dependencies for host ops (workspace + provider + exec policy).
 data HostEnv = HostEnv
@@ -557,27 +555,28 @@ doExecRun env args = case env.heExec of
 doMetaCheckProject :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doMetaCheckProject env args = case fileRefArg args of
   Left e -> pure (Left e)
-  Right rel -> do
-    let root = workspaceRoot env.heWorkspace </> T.unpack rel
-    env.heLog ("meta.check_project " <> rel)
-    result <- checkProject root
-    pure $
-      Right
-        ( HostResult
-            ( case result of
-                Left err ->
-                  VRecord
-                    [ (Ident "ok", VBool False),
-                      (Ident "error", VString (renderProjectCheckError err))
-                    ]
-                Right _ ->
-                  VRecord
-                    [ (Ident "ok", VBool True),
-                      (Ident "error", VString "")
-                    ]
-            )
-            (object ["root" .= rel])
-        )
+  Right rel -> case resolvePath env.heWorkspace rel of
+    Left e -> pure (Left e)
+    Right root -> do
+      env.heLog ("meta.check_project " <> rel)
+      result <- checkProject root
+      pure $
+        Right
+          ( HostResult
+              ( case result of
+                  Left err ->
+                    VRecord
+                      [ (Ident "ok", VBool False),
+                        (Ident "error", VString (renderProjectCheckError err))
+                      ]
+                  Right _ ->
+                    VRecord
+                      [ (Ident "ok", VBool True),
+                        (Ident "error", VString "")
+                      ]
+              )
+              (object ["root" .= rel])
+          )
 
 doMetaCheckModule :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doMetaCheckModule env args = case fileRefArg args of

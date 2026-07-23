@@ -9,7 +9,7 @@ directory and is executed with `--workspace` pointed at the project to scan.
 
 | Layer | What |
 | ----- | ---- |
-| 0 | Module-tree `meta.check_module` → structural findings |
+| 0 | `meta.check_project` when `project.json` exists; else per-file `meta.check_module` → structural findings |
 | 1 | Prose qnames via `text.is_qname` + catalog |
 | 2 | Entropy info; **within-slice quoted sentence redundancy** (cap 16) |
 | 2b | Speech-act heuristics on agent/system sections |

@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 ## Current focus
 
@@ -17,18 +17,20 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **Semantic-check layer 0** — `meta.check_project(".")` when
+  `project.json` exists (import-graph aware); per-file
+  `meta.check_module` fallback for loose trees; path-based catalog
+- **`meta.check_project` sandbox** — paths via `resolvePath` (same class
+  as `meta.invoke`); fixes `"."` → `workspace/.` discovery breakage
 - **Docs hygiene** — root README aligned (framing, flag order, model
   input, doc index); drop stale E11 “planned”, missing `issues.md`
   refs, and milestone tags in author/spec surfaces
 - **Host find/grep ignores** — hidden skip; root `.gitignore`/`.ignore`
-  without requiring `.git`; baseline dep/build dirs when absent; skills
-  scaffold stack `.gitignore`
-- **gather_context** — stack-scoped finds; lockfile drop + caps; relies
-  on host for `node_modules`/build trees
-- **Resume exec policy** — ask/reply reloads `exec.allow` from source project
-- **Coding-agent power** — doer has `exec.run`; stronger plan/do + react skill
-- **FrInvoke sections** — callee `@section` / `schema(T)` on nest
-- **Chat tools** — chat sole tool `coding_session`
+  without requiring `.git`; baseline dep/build dirs when absent
+- **gather_context** — stack-scoped finds; lockfile drop + caps
+- **Resume exec policy** — ask/reply reloads `exec.allow` from source
+- **Coding-agent** — doer `exec.run`; FrInvoke sections; chat
+  `coding_session`
 
 ## Blockers
 
@@ -49,8 +51,6 @@ None.
 - Coding-agent Tier B; `latest` / omit run-id; `lib/`; typed `--example`
 - Structured exhausted return with `history`; TM δ skills (multiply, etc.)
 - Most Medium/Low source-review items until they bite an exemplar
-- `meta.check_project` still joins paths with raw `</>` (not sandboxed;
-  same escape class as the fixed `meta.invoke` path)
 - Nested ignore files; `fs.find`/`fs.grep` ignore opt-out flag
 
 ## Open naming

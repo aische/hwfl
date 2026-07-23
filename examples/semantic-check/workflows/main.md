@@ -18,6 +18,10 @@ optional same-run layer 3 pragmatic via `llm.object`). Workspace is the target
 project. Scans module trees only (`workflows/`, `skills/`, `lib/`, `types/`) —
 not README or other docs.
 
+Layer 0 structural: `meta.check_project(".")` when `project.json` exists
+(import graph aware); otherwise per-file `meta.check_module` for loose
+module trees. Catalog names come from module paths, not check rows.
+
 Deterministic: structural / prose qnames / entropy info / **within-slice
 quoted sentence redundancy** (capped) / **prose↔code contracts** (dead
 `@section`, effect/tool gaps, schema field vs `outputs:`, skill `exec.run`
@@ -228,9 +232,22 @@ fun structural_from(rows: List<CheckRow>, i: Int, n: Int): List<Finding> =
         rest
       )
 
-fun catalog_names(rows: List<CheckRow>, i: Int, n: Int): List<String> =
+fun path_catalog_names(paths: List<FileRef>, i: Int, n: Int): List<String> =
   if i >= n then []
-  else list.concat([rows[i].name], catalog_names(rows, i + 1, n))
+  else list.concat([path_to_qname($"{paths[i]}")], path_catalog_names(paths, i + 1, n))
+
+fun structural_project(): List<Finding> =
+  let r = meta.check_project(".")
+  if r.ok then []
+  else
+    [{
+      severity = "error",
+      category = "structural",
+      file = "project.json",
+      claim = "Project failed check",
+      evidence = r.error,
+      suggestion = "Fix parse or type errors reported by meta.check_project"
+    }]
 
 fun entry_findings(entry: String, names: List<String>): List<Finding> =
   if has_string(names, entry, 0, list.length(names)) then []
@@ -1087,6 +1104,8 @@ fun proposition_findings(ps: List<PropRow>): List<Finding> =
 
 fun empty_findings(_: Unit): List<Finding> = []
 
+fun empty_rows(_: Unit): List<CheckRow> = []
+
 fun empty_obligations(_: Unit): List<OblRow> = []
 
 fun empty_propositions(_: Unit): List<PropRow> = []
@@ -1434,9 +1453,14 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
   let all_md = fs.find(glob = "**/*.md")
   let paths = filter_module_paths(all_md, 0, list.length(all_md))
   let npaths = list.length(paths)
-  let rows = check_paths(paths, 0, npaths)
-  let names = catalog_names(rows, 0, list.length(rows))
-  let structural = structural_from(rows, 0, list.length(rows))
+  let names = path_catalog_names(paths, 0, npaths)
+  let has_project = fs.exists("project.json")
+  let rows =
+    if has_project then empty_rows(())
+    else check_paths(paths, 0, npaths)
+  let structural =
+    if has_project then structural_project()
+    else structural_from(rows, 0, list.length(rows))
   let entry = entry_findings(inputs.entry, names)
   let prose = prose_all(paths, names, 0, npaths)
   let slices0 = slices_all(paths, 0, npaths)
@@ -1464,7 +1488,9 @@ fun main(inputs): { report_path: String, ok: Bool, finding_count: Int } =
   let graph = obligation_graph_findings(pack.obligations, names)
   let props = proposition_findings(pack.propositions)
   let pragmatic = list.concat(pack.findings, list.concat(graph, props))
-  let okv = all_ok(rows, 0, list.length(rows))
+  let okv =
+    if has_project then list.length(structural) == 0
+    else all_ok(rows, 0, list.length(rows))
   let report_obj = {
     schema = "semantic-report/v1",
     mode = inputs.mode,
