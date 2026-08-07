@@ -147,6 +147,8 @@ For `n > 2^62`, `2^63` overflows `Int` to `minBound` (negative); no element ever
 
 - **Impact:** The type checker promises `Int`/valid calls for programs that crash at runtime — checker soundness hole on ordinary author input.
 - **Fix:** Align `applyPositional`/`applyNamed` with `bindParams`, or reject the divergent shapes at check time.
+- **Remaining:** same-family residuals tracked as **M-19** (host ops still
+  named-only, whole-record → multi-param, syntactic-only Unit/record packing).
 
 ### H-7 — Unsanitized run-id is joined into a filesystem path (library API)
 
@@ -295,6 +297,47 @@ Span status is inferred by prefix-matching tool result text (`"tool error"`, `"t
 
 Any whitespace/prose edit to a module changes the hash and blocks resume with `ConfigErr "stale project: hash mismatch"` — safe, but a comment edit bricks an otherwise valid resume.
 
+### M-19 — H-6 residuals: checker still accepts some runtime-failing call shapes
+
+- **Location:** `src/Hwfl/Check/Infer.hs` (`applyPositional` / `applyNamed`);
+  `src/Hwfl/Eval/Pure.hs` (`isUnitParam`, `recordParamFields`); host parsers in
+  `src/Hwfl/Runtime/Host.hs` (`parseMoveArgs`, `parseExecArgs`, …)
+- **Verification:** `[Reported]` — post-fix review of H-6 (2026-08). Core
+  H-6 cases are fixed; these are the leftover divergences.
+
+1. **Host ops / named-only parsers** — Host ops skip `bindParams` and keep raw
+   argv. The checker still field-zips any record-domain call, but several
+   drivers only read named fields. **`fs.write` was fixed**; remaining examples
+   include `fs.move` (`parseMoveArgs`) and `exec.run` (`program` / `args`
+   named-only). `fs.copy` already rejects positionals in Infer; `fs.edit` /
+   `grep` / `patch` / `read_slice` already accept positionals. Same class as
+   the original `fs.write("a.txt", "hi")` hole.
+2. **Whole-record call to a multi-parameter function** — `fun (a: Int, b: Int)`
+   and `fun (r: {a: Int, b: Int})` share one `TypeExpr`. `f({a=1, b=2})`
+   typechecks via the record domain, but multi-param `bindParams` still sees
+   one value and arity-traps. H-6 closed unpacked→packed for a single record
+   parameter; it did not close packed→multi-param. Fix options: reject the
+   packed shape at check time when the callee is known to be multi-param, or
+   unpack a lone record into multi-param bindings at runtime (needs callable
+   shape beyond `TypeExpr`, or consistent reject-both / accept-both policy).
+3. **Syntactic-only Unit / record packing** — `isUnitParam` /
+   `recordParamFields` match only inline `TName "Unit"` and `TRecord`, not
+   aliases the checker has already resolved. `fun (x: U)` / `fun (r: MyRec)`
+   can therefore typecheck field-zip / empty calls that runtime still treats
+   as arity errors. Related: empty-call Unit injection accepts bare `_` or an
+   explicit `Unit` annotation, but not a bare named param `fun (x) => …`
+   checked as `Unit -> T` (common `fun ()` / `fun (_)` thunks are fine).
+
+Also missing end-to-end coverage for the fixed paths (`fs.write` positionals,
+`(fun () => …)()`), beyond checker / `bindParams` unit tests.
+
+- **Impact:** Narrower than H-6, but still checker-promised calls that trap —
+  especially positional `fs.move` / `exec.run` and aliased record parameters.
+- **Fix:** Teach remaining host parsers the positional forms the checker
+  already allows (or reject those forms in Infer, as `fs.copy` does); pick an
+  explicit packed-vs-multi-param policy; resolve or erase aliases in `Param`
+  metadata before `bindParams`.
+
 ---
 
 ## Low
@@ -350,7 +393,9 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 3. ~~**Leaf-level `O_NOFOLLOW`/`lstat`** on write/copy targets (fixes H-1).~~ **Done** — H-1 retracted; the real fix was check-before-create on parent chains (H-1a).
 4. ~~**Sanitize run-id** (single path component) + existence check before reuse (H-7).~~ **Done** — validation in the store, create-only start path.
 5. **`nextPow2`** — `ceiling (logBase 2 …)` or bounded search (H-5).
-6. **Align `applyPositional`/`applyNamed` with `bindParams`** or reject divergent shapes at check time (H-6, M-1).
+6. ~~**Align `applyPositional`/`applyNamed` with `bindParams`** (H-6).~~ **Done**
+   for empty/`Unit` calls, single-record packing, and `fs.write` positionals.
+   Residuals are **M-19**; schema validation remains **M-1**.
 7. Redaction hardening (M-2), then the resource-exhaustion cluster (M-8), then the rest.
 
 ---

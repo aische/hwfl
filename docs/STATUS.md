@@ -18,7 +18,9 @@ product. Broader lab framing in [idea.md](idea.md).
 
 - **H-6 fixed** — Empty application rejects non-`Unit` domains; runtime
   supplies the omitted Unit argument and packs positional/named fields for one
-  record parameter. `fs.write` accepts its checked positional form
+  record parameter. `fs.write` accepts its checked positional form. Residuals
+  filed as **M-19** (other named-only host ops, packed→multi-param, alias /
+  bare-Unit packing)
 - **H-2 fixed** — Synchronous exceptions are contained at three boundaries
   (run loop, host op, LLM provider) via `Hwfl.Exception.trySync`; async
   exceptions and `ExitCode` still propagate. A crash inside a step closes the
@@ -50,7 +52,7 @@ None.
 ## Next up
 
 1. P0 High: H-3/H-4 JSON/float → H-5 `nextPow2`
-2. P1 Medium: M-1, M-5, M-13, M-14, M-2/M-11b, M-7
+2. P1 Medium: M-1, M-19, M-5, M-13, M-14, M-2/M-11b, M-7
 3. Remaining Medium + selected Lows (see TASKS)
 4. Then Tier A agent ops (MCP, git, terminals) / skills variant
 
