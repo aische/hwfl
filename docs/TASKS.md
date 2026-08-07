@@ -7,9 +7,9 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 ## Now (P0) — security / crash / trust
 
-Order matters; do not skip ahead of H-1 / H-7 / H-2.
+Order matters; do not skip ahead of H-7 / H-2.
 
-- [ ] **H-1** — Leaf `lstat` / `O_NOFOLLOW` on `fs.write` / `fs.copy` targets
+- [x] **H-1** — Leaf `lstat` / `O_NOFOLLOW` on `fs.write` / `fs.copy` targets
       (dangling-symlink sandbox escape). Touches L-24.
 - [ ] **H-7** — Sanitize run-id (single path component); reject reuse unless
       explicit
@@ -58,7 +58,7 @@ Order matters; do not skip ahead of H-1 / H-7 / H-2.
 
 ### Remaining Low (hygiene; fix opportunistically)
 
-- [ ] **L-1–L-4, L-7–L-13, L-15, L-17–L-18, L-20–L-25** — spans, snapshot
+- [ ] **L-1–L-4, L-7–L-13, L-15, L-17–L-18, L-20–L-23, L-25** — spans, snapshot
       parse, fsync, slugs, CLI, variants, ignore/glob, etc. See report.
 
 ### Agent substrate (after bug pass)
@@ -105,6 +105,9 @@ other product; hwfl stays the orchestration kernel. Control plane /
 Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
+
+- **H-1** / **L-24** — `O_NOFOLLOW` write/copy destinations; dangling-symlink
+  `pathExists` / `removePath` (2026-08)
 
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check

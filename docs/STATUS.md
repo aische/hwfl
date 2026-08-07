@@ -16,15 +16,16 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **H-1 / L-24** — `O_NOFOLLOW` on `fs.write` / `fs.copy` destinations;
+  dangling-symlink `pathExists` / `removePath`; regression tests
 - **Source review** — Full `src/Hwfl/**` read-only review; findings in
-  [BUG_REPORT.md](BUG_REPORT.md) (none fixed yet)
+  [BUG_REPORT.md](BUG_REPORT.md)
 - **Semantic-check layer 0** — `meta.check_project(".")` when
   `project.json` exists; path-based catalog; sandbox via `resolvePath`
 - **Host find/grep ignores** — hidden skip; root `.gitignore`/`.ignore`;
   baseline dep/build dirs
 - **Coding-agent** — skill-driven exemplar; doer `exec.run`; FrInvoke;
   chat `coding_session`
-- **Resume exec policy** — ask/reply reloads `exec.allow` from source
 
 ## Blockers
 
@@ -32,8 +33,8 @@ None.
 
 ## Next up
 
-1. P0 High: H-1 sandbox write/copy → H-7 run-id → H-2 exception barrier
-   → H-6 checker ↔ runtime → H-3/H-4 JSON/float → H-5 `nextPow2`
+1. P0 High: H-7 run-id → H-2 exception barrier → H-6 checker ↔ runtime
+   → H-3/H-4 JSON/float → H-5 `nextPow2`
 2. P1 Medium: M-1, M-5, M-13, M-14, M-2/M-11b, M-7
 3. Remaining Medium + selected Lows (see TASKS)
 4. Then Tier A agent ops (MCP, git, terminals) / skills variant

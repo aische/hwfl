@@ -25,24 +25,13 @@ Each finding carries a **Verification** tag:
 
 ### H-1 — Sandbox escape: `fs.write` / `fs.copy` follow symlinks out of the workspace
 
-- **Location:** `src/Hwfl/Runtime/Workspace.hs:171-177` (`writeTextFile`), `:424-425` (`copyOneFile`)
-- **Verification:** `[Verified]`
+- **Location:** `src/Hwfl/Runtime/Workspace.hs` (`writeTextFile`, `copyOneFile`)
+- **Verification:** `[Verified]` → **Fixed** (2026-08-07)
 
-`writeTextFile` validates the _parent_ directory by canonicalization, then checks the leaf only via `canonicalizePath target`:
+`writeTextFile` validated the _parent_ directory by canonicalization, then checked the leaf only via `canonicalizePath target`. `canonicalizePath` **throws** on a dangling symlink (POSIX `realpath` ENOENT), so the fallback ran `BS.writeFile target` — which follows the link. `copyOneFile` had no leaf check at all.
 
-```haskell
-leafCheck <- try (canonicalizePath target) :: IO (Either IOException FilePath)
-case leafCheck of
-  Right leafCanon | not (isPathUnderRoot (workspaceRoot ws) leafCanon) ->
-      pure (Left (SandboxErr "path escapes the workspace root"))
-  _ -> do
-    result <- try (BS.writeFile target (encodeUtf8 content)) ...
-```
-
-`canonicalizePath` **throws** on a dangling symlink (POSIX `realpath` ENOENT), so the `_ ->` fallback runs `BS.writeFile target` — which follows the link. A workflow (or repo content) that creates `link -> /tmp/x` and then `fs.write("link", …)` writes **outside the workspace**. `copyOneFile` is worse: it canonicalizes only the parent and calls `copyFile srcAbs target` with **no leaf check at all**; `copyPath`'s pre-check uses `doesPathExist` (follows symlinks), so even `overwrite=True` never removes a dangling link first.
-
-- **Impact:** Arbitrary file write/copy outside the sandbox — the core security boundary of the runtime. Contents are limited to what the workflow can produce, but location and overwrite are attacker/author controlled.
-- **Fix:** Leaf-level `lstat`-based symlink rejection or `O_NOFOLLOW` open for write/copy targets. Shared root cause: "canonicalize failed ⇒ treat as new path".
+- **Impact:** Arbitrary file write/copy outside the sandbox.
+- **Fix applied:** Leaf destinations opened with `O_NOFOLLOW` (`writeBytesNoFollow` / `copyFileNoFollow`); symlink open failures mapped to `SandboxErr`. `pathExists` treats leaf symlinks as existing dirents (parent containment only); `removePath` unlinks dangling leaves so `overwrite=True` copy can replace them (also closes L-24).
 
 ### H-2 — No exception containment in the run loop; any IO/pure exception kills the process
 
@@ -278,7 +267,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 | L-21 | `Runtime/Ignore.hs:168-181`                                  | `globMatch` naive backtracking (`any (go ps) (tails xs)`) — exponential on many-`*` rules vs long paths.                                                                               |
 | L-22 | `Workspace.hs:232-238`                                       | `matchPat` compares extensions case-sensitively; `**/*.MD` misses `foo.md` on macOS, finds it on Linux — host-FS-dependent behavior.                                                   |
 | L-23 | `Obs/Stream.hs:86-110`                                       | `appendText` read-modify-write not atomic; concurrent `onChunk` calls could drop text (single-threaded in practice).                                                                   |
-| L-24 | `Workspace.hs:171-177`                                       | TOCTOU on write: `canonicalizePath`→`writeFile` check/use window; no `O_NOFOLLOW`. Also `removePath` cannot delete a dangling symlink.                                                 |
+| L-24 | `Workspace.hs` write/copy/remove                               | **Fixed** with H-1: `O_NOFOLLOW` destinations; dangling symlink `removePath` / `pathExists`.                                                                                            |
 | L-25 | `Parse/Section.hs:55-58,66-70`                               | `headings !! j` comprehension + fence rescan are O(n²) on large prose modules.                                                                                                         |
 
 ---
@@ -301,7 +290,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 
 1. **Exception barrier** at the run-loop boundary + `try` around `llmChat` (fixes H-2; converts H-3/H-4 from crashes into `RuntimeError`s).
 2. **`jsonToValue` via `Scientific`** — coefficient/exponent to `Integer`/`Double`, trap non-finite (fixes H-3, half of H-4).
-3. **Leaf-level `O_NOFOLLOW`/`lstat`** on write/copy targets (fixes H-1).
+3. ~~**Leaf-level `O_NOFOLLOW`/`lstat`** on write/copy targets (fixes H-1).~~ **Done.**
 4. **Sanitize run-id** (single path component) + existence check before reuse (H-7).
 5. **`nextPow2`** — `ceiling (logBase 2 …)` or bounded search (H-5).
 6. **Align `applyPositional`/`applyNamed` with `bindParams`** or reject divergent shapes at check time (H-6, M-1).
