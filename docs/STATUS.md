@@ -16,6 +16,9 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **H-5 + L-19 fixed** — Agent-budget suggestions use bounded power-of-two
+  growth and stop at `Int` headroom; source/snapshot budgets and extensions
+  reject invalid or overflowing values
 - **H-3 fixed** — JSON numbers decode via `Scientific`; exact integral values
   remain arbitrary-precision `VInt`s, and fractional values outside `Double`'s
   finite range become normal conversion errors rather than crashes
@@ -57,10 +60,9 @@ None.
 
 ## Next up
 
-1. P0 High: H-5 `nextPow2`
-2. P1 Medium: M-1, M-19, M-5, M-13, M-14, M-2/M-11b, M-7
-3. Remaining Medium + selected Lows (see TASKS)
-4. Then Tier A agent ops (MCP, git, terminals) / skills variant
+1. P1 Medium: M-1, M-19, M-5, M-13, M-14, M-2/M-11b, M-7
+2. Remaining Medium + selected Lows (see TASKS)
+3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 
 ## Deferred
 

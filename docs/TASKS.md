@@ -22,8 +22,8 @@ Order matters; do not skip ahead of H-6.
       overflowing fractional `Double`s rejected
 - [x] **H-4** — Reject non-finite floats at literal/arithmetic construction
       and JSON/render boundaries
-- [ ] **H-5** + **L-19** — Bounded `nextPow2`; fix `max_rounds` /
-      `agMaxRounds + extra` wrap
+- [x] **H-5** + **L-19** — Bounded `nextPow2`; validate source/snapshot
+      `max_rounds`; reject non-positive and overflowing extensions
 
 ## Next (P1) — correctness / adjacent security
 
@@ -113,6 +113,8 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **H-5** + **L-19** — Bounded agent-budget suggestion; source and snapshot
+  `max_rounds` validation; checked extension arithmetic (2026-08)
 - **H-3** — JSON `Scientific` decode keeps all integral values as arbitrary-
   precision `VInt`; non-integral values that cannot be represented by a finite
   `Double` return conversion errors through LLM, agent-tool, and meta-read

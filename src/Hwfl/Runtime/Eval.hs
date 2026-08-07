@@ -10,6 +10,7 @@ module Hwfl.Runtime.Eval
     chooseMachine,
     replyMachine,
     extendAgentMachine,
+    suggestExtraRounds,
     evalIO,
     applyIO,
   )
@@ -1663,22 +1664,45 @@ replyMachine text m = case m.mStatus of
             }
   _ -> Left (ConfigErr "run is not awaiting input")
 
--- | Round up to the nearest power of two ≥ 1 (used for exhausted-budget hint).
+-- | Suggest an extension that rounds the budget up geometrically without
+-- overflowing the maximum representable round count.
 suggestExtraRounds :: Int -> Int
-suggestExtraRounds budget = max 1 (nextPow2 budget)
+suggestExtraRounds budget
+  | headroom <= 0 = 0
+  | otherwise = min headroom (nextPow2 budget)
   where
-    nextPow2 n = head [p | p <- map (2 ^) [(0 :: Int) ..], p >= n]
+    headroom
+      | budget <= 0 = maxBound
+      | otherwise = maxBound - budget
+
+-- | Round up to the nearest power of two, saturating at 'maxBound'.
+nextPow2 :: Int -> Int
+nextPow2 n
+  | n <= 1 = 1
+  | otherwise = go 1
+  where
+    go p
+      | p >= n = p
+      | p > maxBound `div` 2 = maxBound
+      | otherwise = go (p * 2)
 
 -- | Bump @agMaxRounds@ by @extraRounds@ and resume from an exhausted-budget pause.
 extendAgentMachine :: Int -> Machine -> Either RuntimeError Machine
 extendAgentMachine extra m = case m.mStatus of
   MsPaused (PauseAwaitingAgent _) -> case m.mCurrent of
-    CurAgent ag ->
-      Right
-        m
-          { mStatus = MsRunning,
-            mCurrent = CurAgent ag {agMaxRounds = ag.agMaxRounds + extra}
-          }
+    CurAgent ag
+      | ag.agMaxRounds <= 0 ->
+          Left (ConfigErr "agent round budget must be positive")
+      | extra <= 0 ->
+          Left (ConfigErr "agent round extension must be positive")
+      | extra > maxBound - ag.agMaxRounds ->
+          Left (ConfigErr "agent round extension exceeds the maximum round budget")
+      | otherwise ->
+          Right
+            m
+              { mStatus = MsRunning,
+                mCurrent = CurAgent ag {agMaxRounds = ag.agMaxRounds + extra}
+              }
     _ -> Left (ConfigErr "run is not awaiting agent budget extension")
   _ -> Left (ConfigErr "run is not awaiting agent budget extension")
 

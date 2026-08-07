@@ -132,7 +132,7 @@ Every JSON number funnels through `Double`. An integer ≥ 2⁵³ (`900719925474
 ### H-5 — `nextPow2` non-termination (DoS) on large budget values
 
 - **Location:** `src/Hwfl/Runtime/Eval.hs:1610-1613` (`suggestExtraRounds`/`nextPow2`); reachable via snapshot `max_rounds`/`round` (`Snapshot.hs:341-347`) and `extendAgentMachine` wrap (`Eval.hs:1616-1624`)
-- **Verification:** `[Verified]`
+- **Verification:** `[Verified]`; **fixed 2026-08-07**
 
 ```haskell
 nextPow2 n = head [p | p <- map (2 ^) [(0 :: Int) ..], p >= n]
@@ -141,7 +141,12 @@ nextPow2 n = head [p | p <- map (2 ^) [(0 :: Int) ..], p >= n]
 For `n > 2^62`, `2^63` overflows `Int` to `minBound` (negative); no element ever satisfies `p >= n`, so `head` scans the infinite list **forever**. `suggestExtraRounds` is called whenever an agent exhausts its budget. A crafted snapshot with `"max_rounds": 9223372036854775807` (or `--rounds` extension that wraps `agMaxRounds + extra` into that range) **hangs the single-threaded run loop**.
 
 - **Impact:** DoS via crafted run state or a large config value.
-- **Fix:** `ceiling (logBase 2 …)` or a bounded search with overflow check.
+- **Fix applied:** `nextPow2` now uses a bounded doubling search that saturates
+  instead of wrapping. Exhaustion suggestions are capped to the remaining
+  `Int` headroom (zero when no extension is representable), and extension
+  rejects zero/negative values and checked-addition overflow. Source
+  `max_rounds` rejects values outside positive `Int`; snapshot decoding rejects
+  non-positive agent budgets and round counters.
 
 ### H-6 — Checker/runtime divergence: accepted programs trap at runtime
 

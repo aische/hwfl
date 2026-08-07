@@ -1,7 +1,9 @@
 module Hwfl.Runtime.AgentSpec (spec) where
 
 import Data.Aeson (object, (.=))
-import Data.Either (isRight)
+import Data.Aeson qualified as Aeson
+import Data.Aeson.KeyMap qualified as KM
+import Data.Either (isLeft, isRight)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..))
@@ -20,9 +22,10 @@ import Hwfl.Llm.Types
   )
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Parse.Load (loadModuleText)
-import Hwfl.Runtime.Agent (buildToolSpec, initAgentState, submitToolName, uniquifyToolNames)
-import Hwfl.Runtime.Eval (StepMode (..))
-import Hwfl.Runtime.Machine (AgentExhaustedRequest (..), AgentState (..), ChoiceRequest (..), MachineStatus (..), PauseReason (..))
+import Hwfl.Runtime.Agent (buildToolSpec, initAgentState, parseAgentArgs, submitToolName, uniquifyToolNames)
+import Hwfl.Runtime.Eval (StepMode (..), extendAgentMachine, suggestExtraRounds)
+import Hwfl.Runtime.Machine (AgentExhaustedRequest (..), AgentState (..), ChoiceRequest (..), Current (..), Machine (..), MachineStatus (..), PauseReason (..), initialMachine)
+import Hwfl.Runtime.Snapshot (machineFromJson, machineToJson)
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
@@ -112,6 +115,23 @@ userTurns req = [t | TurnUser t <- req.chatTurns]
 isVTurn :: Value -> Bool
 isVTurn VTurn {} = True
 isVTurn _ = False
+
+setSnapshotAgentMaxRounds :: Int -> Aeson.Value -> Aeson.Value
+setSnapshotAgentMaxRounds rounds = \case
+  Aeson.Object machine ->
+    case KM.lookup "current" machine of
+      Just (Aeson.Object current) ->
+        case KM.lookup "agent" current of
+          Just (Aeson.Object agent) ->
+            Aeson.Object
+              ( KM.insert
+                  "current"
+                  (Aeson.Object (KM.insert "agent" (Aeson.Object (KM.insert "max_rounds" (Aeson.toJSON rounds) agent)) current))
+                  machine
+              )
+          _ -> error "expected agent current"
+      _ -> error "expected machine current"
+  _ -> error "expected machine object"
 
 spec :: Spec
 spec = describe "runtime agent (M7)" $ do
@@ -577,6 +597,37 @@ spec = describe "runtime agent (M7)" $ do
               lookup (Ident "text") fs `shouldBe` Just (VString "done after extend")
               lookup (Ident "rounds") fs `shouldBe` Just (VInt 2)
             other -> expectationFailure (show other)
+
+  describe "agent round budget bounds" $ do
+    it "terminates and reports no further extension at the Int limit" $
+      suggestExtraRounds maxBound `shouldBe` 0
+
+    it "rejects max_rounds values that do not fit Int" $ do
+      let args =
+            [ (Just (Ident "system"), VString "system"),
+              (Just (Ident "prompt"), VString "prompt"),
+              (Just (Ident "tools"), VList []),
+              (Just (Ident "model"), VString "model"),
+              (Just (Ident "max_rounds"), VInt (toInteger (maxBound :: Int) + 1))
+            ]
+      parseAgentArgs args `shouldSatisfy` isLeft
+
+    it "rejects a snapshot with a non-positive max_rounds" $ do
+      let ag = initAgentState "system" "prompt" [] "model" 1 "span" Nothing []
+          machine = initialMachine "project" (CurAgent ag)
+          broken = setSnapshotAgentMaxRounds 0 (machineToJson machine)
+      machineFromJson broken `shouldSatisfy` isLeft
+
+    it "rejects non-positive and overflowing round extensions" $ do
+      let ag = initAgentState "system" "prompt" [] "model" maxBound "span" Nothing []
+          exhausted =
+            (initialMachine "project" (CurAgent ag))
+              { mStatus =
+                  MsPaused
+                    (PauseAwaitingAgent (AgentExhaustedRequest maxBound maxBound 0))
+              }
+      extendAgentMachine 0 exhausted `shouldSatisfy` isLeft
+      extendAgentMachine 1 exhausted `shouldSatisfy` isLeft
 
   describe "tool name uniquify (High #5)" $ do
     it "renames duplicate sanitized names" $ do

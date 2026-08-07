@@ -14,6 +14,7 @@ module Hwfl.Runtime.Snapshot
 where
 
 import Control.Applicative ((<|>))
+import Control.Monad (unless)
 import Data.Aeson (Value (..), object, withObject, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
@@ -302,24 +303,46 @@ agentToJson ag =
         Just s -> ["submit_schema" .= s]
 
 parseAgent :: Aeson.Value -> Parser AgentState
-parseAgent = withObject "AgentState" $ \o ->
-  AgentState
-    <$> o .: "system"
-    <*> o .: "prompt"
-    <*> o .: "model"
-    <*> o .: "max_rounds"
-    <*> (o .: "tools" >>= mapM parseToolSpec)
-    <*> o .:? "submit_schema"
-    <*> (o .: "history" >>= mapM parseTurn)
-    <*> o .: "round"
-    <*> (o .:? "tool_round" >>= traverse parseToolRound)
-    <*> o .: "span_id"
-    <*> o .:? "round_span_id"
-    <*> (o .:? "baseline_tools" >>= maybe (o .: "tools" >>= mapM parseToolSpec) (mapM parseToolSpec))
-    <*> o .:? "active_tool_ids" .!= []
-    <*> o .:? "loaded_instruction_ids" .!= []
-    <*> o .:? "instruction_chars" .!= 0
-    <*> o .:? "round_close_attrs"
+parseAgent = withObject "AgentState" $ \o -> do
+  system <- o .: "system"
+  prompt <- o .: "prompt"
+  model <- o .: "model"
+  maxRounds <- o .: "max_rounds"
+  unless (maxRounds > 0) $
+    fail "agent max_rounds must be positive"
+  tools <- o .: "tools" >>= mapM parseToolSpec
+  submitSchema <- o .:? "submit_schema"
+  history <- o .: "history" >>= mapM parseTurn
+  roundNo <- o .: "round"
+  unless (roundNo >= 0) $
+    fail "agent round must be non-negative"
+  toolRound <- o .:? "tool_round" >>= traverse parseToolRound
+  spanId <- o .: "span_id"
+  roundSpanId <- o .:? "round_span_id"
+  baselineTools <- o .:? "baseline_tools" >>= maybe (o .: "tools" >>= mapM parseToolSpec) (mapM parseToolSpec)
+  activeToolIds <- o .:? "active_tool_ids" .!= []
+  loadedInstructionIds <- o .:? "loaded_instruction_ids" .!= []
+  instructionChars <- o .:? "instruction_chars" .!= 0
+  roundCloseAttrs <- o .:? "round_close_attrs"
+  pure
+    AgentState
+      { agSystem = system,
+        agPrompt = prompt,
+        agModel = model,
+        agMaxRounds = maxRounds,
+        agTools = tools,
+        agSubmitSchema = submitSchema,
+        agHistory = history,
+        agRound = roundNo,
+        agToolRound = toolRound,
+        agSpanId = spanId,
+        agRoundSpanId = roundSpanId,
+        agBaselineTools = baselineTools,
+        agActiveToolIds = activeToolIds,
+        agLoadedInstructionIds = loadedInstructionIds,
+        agInstructionChars = instructionChars,
+        agRoundCloseAttrs = roundCloseAttrs
+      }
 
 toolRoundToJson :: ToolRound -> Aeson.Value
 toolRoundToJson tr =

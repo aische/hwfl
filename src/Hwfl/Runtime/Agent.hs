@@ -382,9 +382,18 @@ parseAgentArgs args = do
   model <- expectString (Ident "model") args
   tools <- expectTools args
   history <- expectHistory args
-  let maxR = case lookupNamed (Ident "max_rounds") args of
-        Just (VInt n) | n > 0 -> fromIntegral n
-        _ -> defaultMaxRounds
+  maxR <- case lookupNamed (Ident "max_rounds") args of
+    Nothing -> Right defaultMaxRounds
+    Just (VInt n)
+      | n > 0 && n <= toInteger (maxBound :: Int) -> Right (fromInteger n)
+      | otherwise ->
+          Left
+            ( ConfigErr
+                ( "max_rounds must be between 1 and "
+                    <> T.pack (show (maxBound :: Int))
+                )
+            )
+    Just _ -> Right defaultMaxRounds
   pure (system, prompt, tools, model, maxR, history)
 
 parseAgentObjectArgs ::
