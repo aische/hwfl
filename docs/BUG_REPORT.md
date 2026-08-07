@@ -217,10 +217,16 @@ Skill markdown bodies are concatenated into the system prompt each round, and sk
 
 ### M-5 — `fs.find`/`fs.grep` descend directory symlinks without canonicalization or cycle checks
 
-- **Location:** `src/Hwfl/Runtime/Workspace.hs:209-226` (`walk`/`one`), `:699-713` (`walkAll`)
-- **Verification:** `[Reported]`
+- **Location:** `src/Hwfl/Runtime/Workspace.hs` (`walkFiles`)
+- **Verification:** **Fixed** (2026-08-07)
 
-`doesDirectoryExist` follows symlinks, then `walk` recurses. A workspace symlink `up -> ..` or `abs -> /` makes `fs.find` walk the parent or entire filesystem and **return out-of-workspace filenames** (extension-matched); a self-referential link recurses until ENAMETOOLONG, aborting the op. File _content_ stays guarded (`grepOne` re-validates via `resolveContainedPath`).
+The shared walker now classifies each entry with `lstat` semantics before
+testing whether it is a directory, so directory symlinks are leaves and are
+never descended. Each real directory is canonicalized and checked below the
+canonical workspace root before listing; a visited-canonical-directory set
+also terminates any future alias cycle. Regression coverage verifies external,
+internal-alias, and self-loop directory links for both `fs.find` and
+glob-less `fs.grep`.
 
 ### M-6 — `exec.run` resource handling: output fully buffered, timeout kills only the direct child
 

@@ -27,7 +27,7 @@ import Hwfl.Runtime.Run
     runLoadedModule,
   )
 import Hwfl.Runtime.Workspace
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
+import System.Directory (createDirectoryIfMissing, createDirectoryLink, doesDirectoryExist, doesFileExist)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -294,6 +294,25 @@ spec = describe "host ops P0 (exec + fs)" $ do
         case grep of
           Left e -> expectationFailure (show e)
           Right ghits -> map (\(f, _, _) -> f) ghits `shouldBe` ["src/main.ts"]
+
+    it "does not descend directory symlinks while finding or grepping" $
+      withSystemTempDirectory "hwfl-find-links" $ \dir ->
+        withSystemTempDirectory "hwfl-find-outside" $ \outside -> do
+          ws <- newWorkspace dir
+          writeFile (outside </> "escaped.txt") "outside-secret"
+          createDirectoryIfMissing True (dir </> "src")
+          _ <- writeTextFile ws "src/inside.txt" "inside-secret"
+          createDirectoryLink outside (dir </> "escape")
+          createDirectoryLink (dir </> "src") (dir </> "alias")
+          createDirectoryLink dir (dir </> "loop")
+
+          found <- findFiles ws "**/*.txt"
+          found `shouldBe` Right ["src/inside.txt"]
+
+          grepped <- grepFiles ws "secret" ""
+          case grepped of
+            Left e -> expectationFailure (show e)
+            Right hits -> hits `shouldBe` [("src/inside.txt", 1, "inside-secret")]
 
     it "patches unique multi-hunk edits atomically" $
       withSystemTempDirectory "hwfl-patch" $ \dir -> do

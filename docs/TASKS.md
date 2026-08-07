@@ -29,8 +29,6 @@ Order matters; do not skip ahead of H-6.
 
 - [x] **M-1** — `llm.object` validates provider JSON against schema before
       converting it to a runtime value
-- [ ] **M-5** — `fs.find` / `fs.grep`: no directory-symlink descent; cycle /
-      containment checks
 - [ ] **M-13** — Persist failed machine; keep meta/snapshot status aligned
 - [ ] **M-14** — `text.split_sentences` must keep the final sentence
 - [ ] **M-2** + **M-11(b)** — Redaction hardening; re-wrap `TSecret` model
@@ -110,6 +108,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-5** — Shared `fs.find` / `fs.grep` traversal refuses directory-symlink
+  descent, verifies canonical directory containment, and tracks visited
+  canonical directories to prevent cycles (2026-08)
 - **M-19** — Record-domain host calls normalize packed records; `fs.move` /
   `exec.run` accept checked positionals; lone records unpack to multi-parameter
   functions; runtime parameters resolve aliases; bare singleton parameters are

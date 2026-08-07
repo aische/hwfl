@@ -16,6 +16,8 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **M-5 fixed** — Shared filesystem traversal refuses directory-symlink
+  descent; every listed directory has canonical containment and cycle checks
 - **M-19 fixed** — Record-domain host calls normalize packed records and accept
   checked positionals; multi-parameter functions unpack lone records; runtime
   parameters resolve aliases and bare singleton parameters are Unit thunks
@@ -66,7 +68,7 @@ None.
 
 ## Next up
 
-1. P1 Medium: M-5, M-13, M-14, M-2/M-11b, M-7
+1. P1 Medium: M-13, M-14, M-2/M-11b, M-7
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 

@@ -38,9 +38,11 @@ module Hwfl.Runtime.Workspace
 where
 
 import Control.Exception (IOException, bracketOnError, finally, onException, try)
+import Control.Monad (foldM)
 import Data.Bits ((.&.))
 import Data.ByteString qualified as BS
 import Data.List (sort)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
@@ -391,12 +393,17 @@ findFiles :: Workspace -> Text -> IO (Either RuntimeError [Text])
 findFiles ws glob = case parseGlob glob of
   Left e -> pure (Left e)
   Right pat -> do
-    let root = workspaceRoot ws
-    ign <- loadIgnoreSet root
-    paths <- try (walk ign root "" pat) :: IO (Either IOException [FilePath])
-    pure $ case paths of
-      Left ex -> Left (HostErr ("fs.find failed: " <> T.pack (show ex)))
-      Right ps -> Right (map T.pack ps)
+    ign <- loadIgnoreSet (workspaceRoot ws)
+    paths <-
+      walkFiles
+        ws
+        ign
+        (\_ -> case pat of
+            GlobRecursiveExt _ -> True
+            GlobRootExt _ -> False
+        )
+        (\name -> pure (matchPat pat name))
+    pure (map T.pack <$> paths)
 
 data GlobPat
   = GlobRecursiveExt String
@@ -409,31 +416,62 @@ parseGlob g = case T.stripPrefix "**/*" g of
     Just ext | not (T.null ext) && T.head ext == '.' -> Right (GlobRootExt (T.unpack ext))
     _ -> Left (HostErr ("fs.find: unsupported glob (use **/*.md or *.md): " <> g))
 
-walk :: IgnoreSet -> FilePath -> FilePath -> GlobPat -> IO [FilePath]
-walk ign absRoot relDir pat = do
-  let absDir = if null relDir then absRoot else absRoot </> relDir
-  names <- listDirectory absDir
-  concat <$> traverse (one ign absRoot relDir pat) names
+-- | Enumerate files below the workspace without following directory symlinks.
+-- Each directory is canonicalised and checked before listing; the visited set
+-- makes an alias cycle harmless even if a future traversal mechanism admits
+-- one. Symlinked files remain leaves so their contents still go through the
+-- normal per-file containment check in 'grepOne'.
+walkFiles :: Workspace -> IgnoreSet -> (FilePath -> Bool) -> (FilePath -> IO Bool) -> IO (Either RuntimeError [FilePath])
+walkFiles ws ign descend includeLeaf = go Set.empty ""
+  where
+    root = workspaceRoot ws
 
-one :: IgnoreSet -> FilePath -> FilePath -> GlobPat -> FilePath -> IO [FilePath]
-one ign absRoot relDir pat name = do
-  let rel = if null relDir then name else relDir </> name
-      absPath = absRoot </> rel
-  isDir <- doesDirectoryExist absPath
-  if isDir
-    then
-      if isIgnored ign rel True
-        then pure []
-        else case pat of
-          GlobRecursiveExt _ -> walk ign absRoot rel pat
-          GlobRootExt _ -> pure []
-    else
-      pure
-        ( [ rel
-            | not (isIgnored ign rel False),
-              matchPat pat name
-          ]
-        )
+    go seen relDir = do
+      let absDir = if null relDir then root else root </> relDir
+      canonE <- try (canonicalizePath absDir) :: IO (Either IOException FilePath)
+      case canonE of
+        Left ex -> pure (Left (HostErr ("workspace walk failed: " <> T.pack (show ex))))
+        Right canon
+          | not (isPathUnderRoot root canon) ->
+              pure (Left (SandboxErr ("workspace walk escapes root: " <> T.pack relDir)))
+          | Set.member canon seen -> pure (Right [])
+          | otherwise -> do
+              namesE <- try (listDirectory canon) :: IO (Either IOException [FilePath])
+              case namesE of
+                Left ex -> pure (Left (HostErr ("workspace walk failed: " <> T.pack (show ex))))
+                Right names -> foldM (visit (Set.insert canon seen) relDir) (Right []) names
+
+    visit _ _ (Left e) _ = pure (Left e)
+    visit seen relDir (Right acc) name = do
+      let rel = if null relDir then name else relDir </> name
+          absPath = root </> rel
+      linkE <- try (pathIsSymbolicLink absPath) :: IO (Either IOException Bool)
+      case linkE of
+        Left ex -> pure (Left (HostErr ("workspace walk failed: " <> T.pack (show ex))))
+        Right True -> do
+          isFileE <- try (doesFileExist absPath) :: IO (Either IOException Bool)
+          case isFileE of
+            Left ex -> pure (Left (HostErr ("workspace walk failed: " <> T.pack (show ex))))
+            Right isFile
+              | isFile -> addLeaf acc rel name
+              | otherwise -> pure (Right acc)
+        Right False -> do
+          isDirE <- try (doesDirectoryExist absPath) :: IO (Either IOException Bool)
+          case isDirE of
+            Left ex -> pure (Left (HostErr ("workspace walk failed: " <> T.pack (show ex))))
+            Right True
+              | isIgnored ign rel True -> pure (Right acc)
+              | not (descend rel) -> pure (Right acc)
+              | otherwise -> do
+                  children <- go seen rel
+                  pure ((acc <>) <$> children)
+            Right False -> addLeaf acc rel name
+
+    addLeaf acc rel name
+      | isIgnored ign rel False = pure (Right acc)
+      | otherwise = do
+          include <- includeLeaf name
+          pure (Right (if include then acc <> [rel] else acc))
 
 matchPat :: GlobPat -> FilePath -> Bool
 matchPat pat name = case pat of
@@ -888,27 +926,5 @@ listAllTextFiles :: Workspace -> IO (Either RuntimeError [Text])
 listAllTextFiles ws = do
   let root = workspaceRoot ws
   ign <- loadIgnoreSet root
-  paths <- try (walkAll ign root "") :: IO (Either IOException [FilePath])
-  pure $ case paths of
-    Left ex -> Left (HostErr ("fs.grep walk failed: " <> T.pack (show ex)))
-    Right ps -> Right (map T.pack (sort ps))
-
-walkAll :: IgnoreSet -> FilePath -> FilePath -> IO [FilePath]
-walkAll ign absRoot relDir = do
-  let absDir = if null relDir then absRoot else absRoot </> relDir
-  names <- listDirectory absDir
-  concat <$> traverse (oneFile ign absRoot relDir) names
-
-oneFile :: IgnoreSet -> FilePath -> FilePath -> FilePath -> IO [FilePath]
-oneFile ign absRoot relDir name = do
-  let rel = if null relDir then name else relDir </> name
-      absPath = absRoot </> rel
-  isDir <- doesDirectoryExist absPath
-  if isDir
-    then
-      if isIgnored ign rel True
-        then pure []
-        else walkAll ign absRoot rel
-    else do
-      isFile <- doesFileExist absPath
-      pure ([rel | isFile && not (isIgnored ign rel False)])
+  paths <- walkFiles ws ign (const True) (\_ -> pure True)
+  pure (map T.pack . sort <$> paths)
