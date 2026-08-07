@@ -27,6 +27,7 @@ import Hwfl.Runtime.CodingAgentSpec
 import Hwfl.Runtime.SimpleCodingAgentSpec
 import Hwfl.Runtime.CompareSpec
 import Hwfl.Runtime.EvolveAgentSpec
+import Hwfl.Runtime.ExceptionSpec
 import Hwfl.Runtime.ConcurrentSpec
 import Hwfl.Runtime.NestedSnapshotSpec
 import Hwfl.Runtime.HostOpsSpec
@@ -67,6 +68,7 @@ main = hspec $ do
   Hwfl.Runtime.RunSpec.spec
   Hwfl.Runtime.StoreSpec.spec
   Hwfl.Runtime.TrySpec.spec
+  Hwfl.Runtime.ExceptionSpec.spec
   Hwfl.Runtime.ConcurrentSpec.spec
   Hwfl.Runtime.NestedSnapshotSpec.spec
   Hwfl.Runtime.ChatSpec.spec

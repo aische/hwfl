@@ -23,9 +23,10 @@ import Hwfl.Check.Error (renderCheckError)
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Check.Project (checkProject, renderProjectCheckError)
 import Hwfl.Eval.Value
+import Hwfl.Exception (describeException, trySync)
 import Hwfl.Json.Encode (jsonToValue)
 import Hwfl.Llm.Pricing (ModelPricing, providerCloseAttrs)
-import Hwfl.Llm.Provider (LlmProvider (..))
+import Hwfl.Llm.Provider (LlmProvider (..), safeLlmChat)
 import Hwfl.Llm.Types
   ( ChatRequest (..),
     Message (..),
@@ -173,12 +174,28 @@ hostOpsEnv =
 -- | Execute one host op (one transition / snapshot boundary).
 -- @human.confirm@ / @human.choice@ / @human.ask@ / @obs.span@ / @obs.log@ / @llm.agent@ /
 -- @llm.agent_object@ / confirm-gated @exec.run@ are handled by the machine driver.
+--
+-- Ops touch the filesystem, subprocesses and the network, so an implementation
+-- (or a library it calls) can throw where the surface promises an @Either@.
+-- Such a throw is reported as a 'HostErr' for the op, which authors can
+-- @try@/@catch@ like any other host failure.
 runHostOp ::
   HostEnv ->
   HostOpId ->
   [(Maybe Ident, Value)] ->
   IO (Either RuntimeError HostResult)
-runHostOp env op args = case op of
+runHostOp env op args = do
+  r <- trySync (dispatchHostOp env op args)
+  pure $ case r of
+    Right res -> res
+    Left ex -> Left (HostErr (hostOpName op <> ": " <> describeException ex))
+
+dispatchHostOp ::
+  HostEnv ->
+  HostOpId ->
+  [(Maybe Ident, Value)] ->
+  IO (Either RuntimeError HostResult)
+dispatchHostOp env op args = case op of
   HostFsRead -> doFsRead env args
   HostFsWrite -> doFsWrite env args
   HostFsFind -> doFsFind env args
@@ -981,7 +998,7 @@ doLlmChat env args = case parseChatArgs args of
               chatSystem = Just system,
               chatOnChunk = env.heLlmOnChunk
             }
-    result <- env.heProvider.llmChat req
+    result <- safeLlmChat env.heProvider req
     pure $ case result of
       Left pe -> Left (ProviderErr (renderProviderError pe))
       Right pr ->
@@ -1006,7 +1023,7 @@ doLlmChatMessages env args = case parseChatMessagesArgs args of
               chatSystem = system,
               chatOnChunk = env.heLlmOnChunk
             }
-    result <- env.heProvider.llmChat req
+    result <- safeLlmChat env.heProvider req
     pure $ case result of
       Left pe -> Left (ProviderErr (renderProviderError pe))
       Right pr ->
@@ -1026,7 +1043,7 @@ doLlmObject env args = case parseObjectArgs args of
             { chatMessages = [Message RoleUser prompt],
               chatResponseFormat = Just schema
             }
-    result <- env.heProvider.llmChat req
+    result <- safeLlmChat env.heProvider req
     pure $ case result of
       Left pe -> Left (ProviderErr (renderProviderError pe))
       Right pr -> case decodeJsonObject pr.prContent of

@@ -15,6 +15,7 @@ import Hwfl.Cli.Json
     jsonUsageError,
     renderCliError,
   )
+import Hwfl.Exception (describeException, trySync)
 import Hwfl.Driver
   ( DriverError (..),
     DriverRunRequest (..),
@@ -65,21 +66,36 @@ import System.IO.Error (isEOFError)
 
 main :: IO ()
 main = do
-  loadDotenv
   args <- getArgs
-  case args of
-    ["parse", path] -> cmdParse path
-    ("check" : rest) -> cmdCheck rest
-    ["version"] -> putStrLn "hwfl 0.1.0.0"
-    ("run" : rest) -> cmdRun rest
-    ("step" : rest) -> cmdStep rest
-    ("resume" : rest) -> cmdResume rest
-    ("approve" : rest) -> cmdApprove rest
-    ("choose" : rest) -> cmdChoose rest
-    ("reply" : rest) -> cmdReply rest
-    ("extend" : rest) -> cmdExtend rest
-    ("show" : rest) -> cmdShow rest
-    _ -> usage
+  outcome <- trySync (loadDotenv >> dispatch args)
+  case outcome of
+    Right () -> pure ()
+    Left ex -> do
+      -- Last resort: the run loop contains its own crashes, so reaching here
+      -- means loading, the CLI itself, or reporting threw. Still emit the
+      -- normal error shape rather than a raw GHC exception.
+      reportPlainFailure
+        ("--json" `elem` args)
+        1
+        "internal"
+        "InternalError"
+        (describeException ex)
+      exitWith (ExitFailure 1)
+
+dispatch :: [String] -> IO ()
+dispatch = \case
+  ["parse", path] -> cmdParse path
+  ("check" : rest) -> cmdCheck rest
+  ["version"] -> putStrLn "hwfl 0.1.0.0"
+  ("run" : rest) -> cmdRun rest
+  ("step" : rest) -> cmdStep rest
+  ("resume" : rest) -> cmdResume rest
+  ("approve" : rest) -> cmdApprove rest
+  ("choose" : rest) -> cmdChoose rest
+  ("reply" : rest) -> cmdReply rest
+  ("extend" : rest) -> cmdExtend rest
+  ("show" : rest) -> cmdShow rest
+  _ -> usage
 
 usage :: IO ()
 usage = do

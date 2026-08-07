@@ -215,3 +215,4 @@ runtimeErrorKind = \case
   HostErr {} -> "HostErr"
   ProviderErr {} -> "ProviderErr"
   ConfigErr {} -> "ConfigErr"
+  InternalErr {} -> "InternalErr"

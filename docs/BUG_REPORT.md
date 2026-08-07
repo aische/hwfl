@@ -81,12 +81,17 @@ Hardening landed alongside (closes L-24):
 ### H-2 — No exception containment in the run loop; any IO/pure exception kills the process
 
 - **Location:** `src/Hwfl/Runtime/Eval.hs:400` (`runHostOp`), `:623` (`llmChat`); `src/Hwfl/Runtime/Host.hs:984,1009,1029`; `app/Main.hs` (no top-level handler; only a stdin-EOF `catch` at `:440`)
-- **Verification:** `[Verified]` — grep confirms zero `try`/`catch`/`bracket`/`finally` in `Eval.hs` and `Run.hs`.
+- **Verification:** `[Verified]` — grep confirms zero `try`/`catch`/`bracket`/`finally` in `Eval.hs` and `Run.hs`. **Fixed** (2026-08-07)
 
 The run loop has **no exception barrier**. `result <- runHostOp host op args` and `result <- ctx.rcHost.heProvider.llmChat req` run unguarded; only `Llm/Simple.hs:61` wraps `loadModelOrThrow`. `Main.hs` has no `SomeException` handler, so the CLI dies with a raw GHC exception — no `--json` envelope, no `OutcomeFailed`.
 
 - **Impact:** Any provider throw, disk-full during snapshot persist (`Store.hs:337-355`), or pure exception (H-3, H-4) crashes the process. `snapshot.json` holds the **pre-exception machine**; resume re-executes from it, **duplicating already-applied side effects** (double `exec.run`, double LLM spend). Last host span stays open.
-- **Fix:** A `SomeException` barrier at the run-loop boundary converting exceptions to `RuntimeError`/`OutcomeFailed`; `try` around `llmChat`.
+- **Fix applied:** Three barriers, all built on `Hwfl.Exception.trySync`, which contains synchronous exceptions but re-throws `SomeAsyncException`, `ExitCode`, `ThreadKilled`, `UserInterrupt` and `HeapOverflow` so Ctrl-C and cancellation still work:
+  - `runHostOp` (`Host.hs`) reports a throw from any op as `HostErr "<op>: <message>"` — catchable by author `try`/`catch`, like every other host failure.
+  - `safeLlmChat` (`Llm/Provider.hs`) turns an adapter throw into `OtherProviderError`; all four call sites (`llm.chat`, `llm.chat_messages`, `llm.object`, agent model round) use it, so a socket reset fails the round rather than the process.
+  - `guardedStep` (`Eval.hs`) wraps every `stepMachine` call from `runUntilPause`. A crash below it becomes the new `InternalErr`, which is **not** `isCatchable`: the step aborted at an unknown point, so author code must not resume on top of it. Before returning, the barrier closes the spans that step opened (`SsError`) and persists the machine as `MsFailed`, so `snapshot.json` no longer holds a replayable pre-crash machine. Cleanup is itself wrapped, so a store that fails on the error path cannot mask the original exception.
+- Plus a last-resort handler in `app/Main.hs`: anything escaping the CLI outside a run (loading, reporting) is printed as a normal `--json` error envelope with kind `InternalError` instead of a raw GHC exception. Raw `IOException` text still leaks through it for missing module / catalog files — that is M-7's job.
+- **Not fixed here:** the *nested* branch machines (agent tool, `par`, `FrInvoke`) call `stepMachine` directly; a crash there propagates to the enclosing `runUntilPause` and fails the whole run. That is deliberate — an unknown-state crash must not be recovered into "this tool call failed, continue".
 
 ### H-3 — `jsonToValue` Double round-trip: silent integer corruption ≥ 2⁵³ and crash on huge magnitudes
 
@@ -337,7 +342,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 
 ## Recommended fix order
 
-1. **Exception barrier** at the run-loop boundary + `try` around `llmChat` (fixes H-2; converts H-3/H-4 from crashes into `RuntimeError`s).
+1. ~~**Exception barrier** at the run-loop boundary + `try` around `llmChat` (fixes H-2).~~ **Done** — H-3/H-4 now surface as an `InternalErr` run failure with a persisted failed snapshot instead of a process crash; they still need their own fixes to stay out of the barrier.
 2. **`jsonToValue` via `Scientific`** — coefficient/exponent to `Integer`/`Double`, trap non-finite (fixes H-3, half of H-4).
 3. ~~**Leaf-level `O_NOFOLLOW`/`lstat`** on write/copy targets (fixes H-1).~~ **Done** — H-1 retracted; the real fix was check-before-create on parent chains (H-1a).
 4. ~~**Sanitize run-id** (single path component) + existence check before reuse (H-7).~~ **Done** — validation in the store, create-only start path.

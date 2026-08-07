@@ -7,14 +7,15 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 ## Now (P0) — security / crash / trust
 
-Order matters; do not skip ahead of H-2.
+Order matters; do not skip ahead of H-6.
 
 - [x] **H-1** — Retracted, not reproducible (see report). **H-1a** fixed
       instead: check containment before creating each parent component.
       Touches L-24.
 - [x] **H-7** — Run-id validated as a single path component; start is
       create-only (reuse rejected)
-- [ ] **H-2** — `SomeException` barrier at run-loop + `try` around `llmChat`
+- [x] **H-2** — Sync-exception barriers at run loop, host ops and provider;
+      crash persists a failed machine
 - [ ] **H-6** — Align checker `applyPositional` / `applyNamed` with `bindParams`
 - [ ] **H-3** — `jsonToValue` via `Scientific` (no Double detour); trap
       non-finite
@@ -107,6 +108,10 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **H-2** — `Hwfl.Exception.trySync` (sync only; async / `ExitCode` re-thrown)
+  under `runUntilPause`, `runHostOp` and a new `safeLlmChat`. A crash mid-step
+  closes the spans it opened, persists `MsFailed`, and surfaces as the new
+  non-catchable `InternalErr`; the CLI has a last-resort envelope (2026-08)
 - **H-7** — `validateRunId` (single path component) in the store; `createRun`
   is the only start path and rejects reuse; `openRunStore` /
   `tryOpenRunStore` removed; failure paths no longer create run dirs (2026-08)

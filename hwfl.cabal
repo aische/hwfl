@@ -61,6 +61,7 @@ library
         Hwfl.Eval.Pure
         Hwfl.Eval.Value
         Hwfl.Env
+        Hwfl.Exception
         Hwfl.Llm.Mock
         Hwfl.Llm.Pricing
         Hwfl.Llm.Provider
@@ -179,6 +180,7 @@ test-suite hwfl-test
         Hwfl.Runtime.ConcurrentSpec
         Hwfl.Runtime.NestedSnapshotSpec
         Hwfl.Runtime.EvolveAgentSpec
+        Hwfl.Runtime.ExceptionSpec
         Hwfl.Runtime.HostOpsSpec
         Hwfl.Runtime.MetaInvokeSpec
         Hwfl.Runtime.MetaReadSpec

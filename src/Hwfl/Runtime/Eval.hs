@@ -39,8 +39,9 @@ import Hwfl.Eval.Prelude (applyBuiltin)
 import Hwfl.Eval.Pure (bindParams, matchPat)
 import Hwfl.Eval.Value
 import Data.Aeson.KeyMap qualified as KM
+import Hwfl.Exception (describeException, trySync)
 import Hwfl.Llm.Pricing (providerRoundCloseAttrs)
-import Hwfl.Llm.Provider (LlmProvider (..))
+import Hwfl.Llm.Provider (safeLlmChat)
 import Hwfl.Llm.Types
   ( ChatRequest (..),
     ProviderResult (..),
@@ -249,7 +250,7 @@ runUntilPause ctx mode = go
       MsFailed -> pure m
       MsPaused _ -> pure m
       _ -> do
-        er <- stepMachine ctx mode m
+        er <- guardedStep ctx mode m
         case er of
           Left err -> pure m {mStatus = MsFailed, mError = Just err}
           Right sr ->
@@ -261,6 +262,44 @@ runUntilPause ctx mode = go
                   StepRun
                     | isTerminal m' -> pure m'
                     | otherwise -> go m'
+
+-- | Exception barrier around one machine step.
+--
+-- Without it a throw anywhere below @stepMachine@ kills the process while
+-- @snapshot.json@ still holds the pre-step machine, so a resume replays a
+-- transition whose side effects may already have happened. Here the crash
+-- becomes an 'InternalErr': spans the step opened are closed, and the failure
+-- is persisted before the driver sees it. Async exceptions and 'ExitCode'
+-- still propagate ('trySync').
+--
+-- Cleanup runs under its own barrier — a store that throws on the failure
+-- path must not replace the original error with a second crash.
+guardedStep ::
+  RunCtx -> StepMode -> Machine -> IO (Either RuntimeError StepResult)
+guardedStep ctx mode m = do
+  before <- getSpanStack ctx.rcSpans
+  stepped <- trySync (stepMachine ctx mode m)
+  case stepped of
+    Right result -> pure result
+    Left ex -> do
+      let err = InternalErr (describeException ex)
+          crashed = m {mStatus = MsFailed, mError = Just err}
+      _ <- trySync (closeSpansOpenedBy ctx before (renderRuntimeError err))
+      _ <- trySync (persist ctx Nothing Nothing MsFailed (Just crashed))
+      pure (Left err)
+
+-- | Close, innermost first, the spans a crashed step left open. Spans already
+-- open when the step started belong to an enclosing machine (agent tool, par
+-- branch, module) which closes them on its own error path.
+closeSpansOpenedBy :: RunCtx -> [Text] -> Text -> IO ()
+closeSpansOpenedBy ctx before errMsg = do
+  after <- getSpanStack ctx.rcSpans
+  let opened = take (length after - length before) after
+  mapM_
+    ( \sid ->
+        closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= errMsg]) Nothing
+    )
+    opened
 
 isTerminal :: Machine -> Bool
 isTerminal m = case m.mStatus of
@@ -619,7 +658,7 @@ stepAgentModel ctx mode m ag
             <> " model round="
             <> T.pack (show ag.agRound)
         )
-      result <- ctx.rcHost.heProvider.llmChat req
+      result <- safeLlmChat ctx.rcHost.heProvider req
       sink.ssFlush
       case result of
         Left pe -> do

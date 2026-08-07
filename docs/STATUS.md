@@ -16,6 +16,11 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **H-2 fixed** — Synchronous exceptions are contained at three boundaries
+  (run loop, host op, LLM provider) via `Hwfl.Exception.trySync`; async
+  exceptions and `ExitCode` still propagate. A crash inside a step closes the
+  spans it opened, persists the machine as failed (so resume cannot replay an
+  already-applied transition) and reports the new non-catchable `InternalErr`
 - **H-7 fixed** — Run ids are validated as a single path component before any
   id→path mapping; starting a run is create-only (`createRun`), so reuse can
   no longer merge two runs into one directory; resume / step / approve open
@@ -41,8 +46,7 @@ None.
 
 ## Next up
 
-1. P0 High: H-2 exception barrier → H-6 checker ↔ runtime
-   → H-3/H-4 JSON/float → H-5 `nextPow2`
+1. P0 High: H-6 checker ↔ runtime → H-3/H-4 JSON/float → H-5 `nextPow2`
 2. P1 Medium: M-1, M-5, M-13, M-14, M-2/M-11b, M-7
 3. Remaining Medium + selected Lows (see TASKS)
 4. Then Tier A agent ops (MCP, git, terminals) / skills variant
