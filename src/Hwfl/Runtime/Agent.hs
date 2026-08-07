@@ -371,7 +371,7 @@ mixesSubmit ag calls =
 validateSubmit :: Aeson.Value -> Aeson.Value -> Either Text Value
 validateSubmit schema args = do
   validateAgainstSchema schema args
-  pure (jsonToValue args)
+  jsonToValue args
 
 parseAgentArgs ::
   [(Maybe Ident, Value)] ->
@@ -672,8 +672,7 @@ coerceToolArgs ts json = case ts.tvsCallee of
           _ -> Left (k <> " elements must be objects with old and new")
     namedObjectArgs = \case
       Aeson.Object o ->
-        Right
-          [ (Just (Ident (Key.toText k)), jsonToValue v)
-            | (k, v) <- KM.toList o
-          ]
+        traverse
+          (\(k, v) -> (Just (Ident (Key.toText k)),) <$> jsonToValue v)
+          (KM.toList o)
       _ -> Left "tool arguments must be a JSON object"

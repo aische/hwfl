@@ -6,6 +6,7 @@ import Hwfl.Check.ModuleSpec
 import Hwfl.Check.ProjectSpec
 import Hwfl.Cli.JsonSpec
 import Hwfl.Check.SchemaSpec
+import Hwfl.Json.EncodeSpec
 import Hwfl.Json.ValidateSpec
 import Hwfl.DriverSpec
 import Hwfl.Eval.PureSpec
@@ -59,6 +60,7 @@ main = hspec $ do
   Hwfl.Check.ProjectSpec.spec
   Hwfl.Cli.JsonSpec.spec
   Hwfl.Check.SchemaSpec.spec
+  Hwfl.Json.EncodeSpec.spec
   Hwfl.Json.ValidateSpec.spec
   Hwfl.DriverSpec.spec
   Hwfl.SkillCatalogSpec.spec

@@ -53,7 +53,6 @@ import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Prelude (preludeEnv)
 import Hwfl.Eval.Pure (bindParams)
 import Hwfl.Eval.Value
-import Hwfl.Json.Encode (jsonToValue, valueToAeson)
 import Hwfl.Llm.Pricing (ModelPricing, loadModelPricing)
 import Hwfl.Llm.Provider (LlmProvider)
 import Hwfl.Obs.Observer
@@ -821,7 +820,7 @@ invokeResult ok runId status outcome err =
     [ (Ident "ok", VBool ok),
       (Ident "run_id", VString runId),
       (Ident "status", VString status),
-      (Ident "outcome", jsonToValue (valueToAeson outcome)),
+      (Ident "outcome", outcome),
       (Ident "error", VString err)
     ]
 

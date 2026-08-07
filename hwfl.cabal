@@ -157,6 +157,7 @@ test-suite hwfl-test
         Hwfl.Check.ProjectSpec
         Hwfl.Cli.JsonSpec
         Hwfl.Check.SchemaSpec
+        Hwfl.Json.EncodeSpec
         Hwfl.Json.ValidateSpec
         Hwfl.DriverSpec
         Hwfl.Eval.PureSpec
@@ -203,6 +204,7 @@ test-suite hwfl-test
         filepath,
         hspec                >=2.10 && <2.12,
         megaparsec,
+        scientific,
         temporary            >=1.3  && <1.4,
         text,
         unix,

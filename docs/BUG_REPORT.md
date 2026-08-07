@@ -96,7 +96,7 @@ The run loop has **no exception barrier**. `result <- runHostOp host op args` an
 ### H-3 — `jsonToValue` Double round-trip: silent integer corruption ≥ 2⁵³ and crash on huge magnitudes
 
 - **Location:** `src/Hwfl/Json/Encode.hs:29-32`; reachable from `Host.hs:1045` (`llm.object`), `Agent.hs:372-374` (submit), `Agent.hs:676` (tool args), `Host.hs:704,800` (`meta.read_snapshot`/`read_spans`)
-- **Verification:** `[Verified]`
+- **Verification:** `[Verified]` — **Fixed** (2026-08-07)
 
 ```haskell
 Aeson.Number n ->
@@ -108,7 +108,11 @@ Aeson.Number n ->
 Every JSON number funnels through `Double`. An integer ≥ 2⁵³ (`9007199254740993`) rounds to `9007199254740992` — **silent corruption**, even though `VInt` is arbitrary-precision `Integer` (`fromIntegral i == d` cannot detect it). A magnitude ≥ ~1.8e308 (model emits `1e999`) makes `d` infinite and `round Infinity` throws an arithmetic exception — which, per H-2, escapes as a crash.
 
 - **Impact:** Untrusted LLM output (tool arguments, submit payloads, `llm.object` results, snapshot/span reads) either corrupts integers silently or crashes the process.
-- **Fix:** Decode `Scientific` coefficient/exponent directly to `Integer`/`Double` without the Double detour; reject or trap non-finite magnitudes.
+- **Fix applied:** `jsonToValue` now uses `Scientific.floatingOrInteger`, so
+  every mathematically integral JSON number becomes an arbitrary-precision
+  `VInt`. Fractional values convert to `Double` exactly once and are rejected
+  if that conversion is non-finite; the fallible conversion propagates through
+  LLM object responses, agent submit/tool arguments, and meta-read values.
 
 ### H-4 — Non-finite floats from ordinary language code crash persist/encode
 

@@ -18,8 +18,8 @@ Order matters; do not skip ahead of H-6.
       crash persists a failed machine
 - [x] **H-6** — Checker/runtime calls align: `f()` only calls `Unit` domains;
       single record parameters pack positional or named fields
-- [ ] **H-3** — `jsonToValue` via `Scientific` (no Double detour); trap
-      non-finite
+- [x] **H-3** — `jsonToValue` via `Scientific`; exact integers preserved and
+      overflowing fractional `Double`s rejected
 - [ ] **H-4** — Guard NaN/Inf at float arith and/or encode/render
 - [ ] **H-5** + **L-19** — Bounded `nextPow2`; fix `max_rounds` /
       `agMaxRounds + extra` wrap
@@ -112,6 +112,10 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **H-3** — JSON `Scientific` decode keeps all integral values as arbitrary-
+  precision `VInt`; non-integral values that cannot be represented by a finite
+  `Double` return conversion errors through LLM, agent-tool, and meta-read
+  paths (2026-08)
 - **H-6** — Empty application rejects non-`Unit` domains; `bindParams` supplies
   omitted `Unit`, and packs positional/named record fields for a single record
   parameter. `fs.write` accepts the two checked positional arguments (2026-08)

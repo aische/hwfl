@@ -16,6 +16,9 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **H-3 fixed** — JSON numbers decode via `Scientific`; exact integral values
+  remain arbitrary-precision `VInt`s, and fractional values outside `Double`'s
+  finite range become normal conversion errors rather than crashes
 - **H-6 fixed** — Empty application rejects non-`Unit` domains; runtime
   supplies the omitted Unit argument and packs positional/named fields for one
   record parameter. `fs.write` accepts its checked positional form. Residuals
@@ -51,7 +54,7 @@ None.
 
 ## Next up
 
-1. P0 High: H-3/H-4 JSON/float → H-5 `nextPow2`
+1. P0 High: H-4 float → H-5 `nextPow2`
 2. P1 Medium: M-1, M-19, M-5, M-13, M-14, M-2/M-11b, M-7
 3. Remaining Medium + selected Lows (see TASKS)
 4. Then Tier A agent ops (MCP, git, terminals) / skills variant

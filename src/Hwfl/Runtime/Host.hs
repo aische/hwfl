@@ -12,6 +12,7 @@ where
 
 import Data.Aeson (object, (.=))
 import Data.Aeson qualified as Aeson
+import Data.Bifunctor (first)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -660,12 +661,13 @@ doMetaReadSpans env args = case parseMetaReadSpansArgs args of
               )
         Just store -> do
           records <- readSpans store filt
-          pure $
+          pure $ do
+            spans <- traverse spanRecordToValue records
             Right
               ( HostResult
                   ( VRecord
                       [ (Ident "ok", VBool True),
-                        (Ident "spans", VList (map spanRecordToValue records)),
+                        (Ident "spans", VList spans),
                         (Ident "error", VString "")
                       ]
                   )
@@ -715,12 +717,13 @@ doMetaReadSnapshot env args = case parseMetaReadSnapshotArgs args of
                   )
             Just snap ->
               let redacted = redactJson (snapshotToJson snap)
-               in pure $
+               in pure $ do
+                    snapshot <- jsonToHostValue redacted
                     Right
                       ( HostResult
                           ( VRecord
                               [ (Ident "ok", VBool True),
-                                (Ident "snapshot", jsonToValue redacted),
+                                (Ident "snapshot", snapshot),
                                 (Ident "error", VString "")
                               ]
                           )
@@ -805,9 +808,11 @@ runMetaToValue meta =
       (Ident "project_hash", VString meta.rmProjectHash)
     ]
 
-spanRecordToValue :: SpanRecord -> Value
-spanRecordToValue r =
-  VRecord
+spanRecordToValue :: SpanRecord -> Either RuntimeError Value
+spanRecordToValue r = do
+  attrs <- jsonToHostValue r.srAttrs
+  pure $
+    VRecord
     [ (Ident "op", VString r.srOp),
       (Ident "id", VString r.srId),
       (Ident "parent_id", VString (fromMaybeText r.srParentId)),
@@ -816,11 +821,14 @@ spanRecordToValue r =
       (Ident "t_start", VString (fromMaybeText r.srTStart)),
       (Ident "t_end", VString (fromMaybeText r.srTEnd)),
       (Ident "status", VString (maybe "" spanStatusText r.srStatus)),
-      (Ident "attrs", jsonToValue r.srAttrs),
+      (Ident "attrs", attrs),
       (Ident "snapshot_seq", VInt (maybe 0 fromIntegral r.srSnapshotSeq))
     ]
   where
     fromMaybeText = fromMaybe ""
+
+jsonToHostValue :: Aeson.Value -> Either RuntimeError Value
+jsonToHostValue = first (HostErr . ("JSON conversion failed: " <>)) . jsonToValue
 
 checkModuleValue :: Text -> Text -> Value
 checkModuleValue path txt = case loadModuleText (T.unpack path) txt of
@@ -1061,7 +1069,8 @@ decodeJsonObject :: Text -> Either Text Value
 decodeJsonObject txt =
   case Aeson.eitherDecodeStrict' (TE.encodeUtf8 txt) of
     Left err -> Left ("llm.object: invalid JSON response: " <> T.pack err)
-    Right (v :: Aeson.Value) -> Right (jsonToValue v)
+    Right (v :: Aeson.Value) ->
+      first ("llm.object: invalid JSON number: " <>) (jsonToValue v)
 
 parseChatArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text, Text)
 parseChatArgs args = do
