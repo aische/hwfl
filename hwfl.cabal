@@ -203,4 +203,5 @@ test-suite hwfl-test
         megaparsec,
         temporary            >=1.3  && <1.4,
         text,
+        unix,
         vector

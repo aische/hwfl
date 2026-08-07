@@ -19,19 +19,64 @@ Each finding carries a **Verification** tag:
 - `[Verified]` — cited code read directly during this analysis.
 - `[Reported]` — identified by a parallel review with quoted evidence; spot-corroborated.
 
+`[Verified]` is weaker than it looks: it certifies that the code was read, not
+that the failure was reproduced. H-1 was `[Verified]` and still wrong, because
+it assumed a library contract instead of executing it. Treat any security
+finding as unconfirmed until a proof-of-concept has actually run.
+
 ---
 
 ## High
 
-### H-1 — Sandbox escape: `fs.write` / `fs.copy` follow symlinks out of the workspace
+### H-1 — ~~Sandbox escape: `fs.write` / `fs.copy` follow symlinks out of the workspace~~ **RETRACTED — not reproducible**
 
 - **Location:** `src/Hwfl/Runtime/Workspace.hs` (`writeTextFile`, `copyOneFile`)
-- **Verification:** `[Verified]` → **Fixed** (2026-08-07)
+- **Verification:** `[Verified]` → **Retracted** (2026-08-07), superseded by H-1a below.
 
-`writeTextFile` validated the _parent_ directory by canonicalization, then checked the leaf only via `canonicalizePath target`. `canonicalizePath` **throws** on a dangling symlink (POSIX `realpath` ENOENT), so the fallback ran `BS.writeFile target` — which follows the link. `copyOneFile` had no leaf check at all.
+The claim rested on "`canonicalizePath` **throws** on a dangling symlink (POSIX `realpath` ENOENT), so the `_ ->` fallback runs `BS.writeFile target`". **That premise is false.** `directory`'s `canonicalizePath` is not `realpath`: `attemptRealpathWith`/`realpathFurther` explicitly call `getSymbolicLinkTarget` on each unresolved segment and dereference dangling links, returning the resolved-but-nonexistent path. Measured on `directory-1.3.8.5`:
 
-- **Impact:** Arbitrary file write/copy outside the sandbox.
-- **Fix applied:** Leaf destinations opened with `O_NOFOLLOW` (`writeBytesNoFollow` / `copyFileNoFollow`); symlink open failures mapped to `SandboxErr`. `pathExists` treats leaf symlinks as existing dirents (parent containment only); `removePath` unlinks dangling leaves so `overwrite=True` copy can replace them (also closes L-24).
+```
+canon <ws>/dangling-out  =>  Right "/private/tmp/outside/missing.txt"
+```
+
+which is outside the root, so the old leaf check returned `SandboxErr`. Replaying the exact HEAD~1 logic against a dangling **and** a live out-of-workspace link:
+
+```
+fs.write through a DANGLING symlink  ->  Left "SandboxErr leaf"   (no file created outside)
+fs.write through a LIVE symlink      ->  Left "SandboxErr leaf"   (outside file unchanged)
+```
+
+The `copyOneFile` half was also wrong. `System.Directory.copyFile` is `atomicCopyFileContents`: it opens a temp file in `takeDirectory dst` (the already-canonicalized parent, inside the root), copies, `copyPermissions`, then `renameFile tmp dst`. `rename(2)` never follows a symlink on the final component, so the destination link was *replaced* by a regular file inside the workspace:
+
+```
+fs.copy onto a DANGLING symlink  ->  Right ()  (no file outside; dst is now a regular file)
+fs.copy onto a LIVE symlink      ->  Right ()  (outside file unchanged)
+```
+
+**Lesson for this report:** `[Verified]` meant "cited code read directly", not "failure reproduced". Security claims need an executed proof-of-concept, not a reading of the library's contract.
+
+### H-1a — Sandbox escape: directories created outside the root before the containment check
+
+- **Location:** `src/Hwfl/Runtime/Workspace.hs` (`writeTextFile`, `copyOneFile`, `movePath`, `mkdirPath`)
+- **Verification:** `[Verified]` — reproduced. **Fixed** (2026-08-07)
+
+The real ordering bug, found while disproving H-1. Every mutating op ran `createDirectoryIfMissing True parent` **and then** canonicalized and checked containment. With an in-workspace directory symlink `dirlink -> /tmp/evil`, `fs.mkdir("dirlink/escaped")` created `/tmp/evil/escaped` and only afterwards returned `SandboxErr`:
+
+```
+createDirectoryIfMissing <ws>/dirlink/escaped  =>  ()
+  created outside?                             =>  True
+```
+
+- **Impact:** Attacker-chosen directory creation anywhere the process can write. No file contents escape (the leaf checks held), so this is a weaker primitive than H-1 claimed — but it is a genuine escape, and it is the same "create, then check" ordering mistake in four places.
+- **Fix applied:** `ensureDirUnderRoot` walks the chain one component at a time from the canonical root, checking containment *before* each `createDirectory`. The cursor is canonical and inside the root at every step, so nothing can be created outside by construction. `writeTextFile` / `copyOneFile` / `movePath` / `mkdirPath` all go through it.
+
+Hardening landed alongside (closes L-24):
+
+- Write destinations open with `O_NOFOLLOW`; copies land via `rename`. Neither can be redirected by a link swapped in after the check, so the leaf TOCTOU is closed rather than narrowed. `ELOOP`/`EMLINK` is detected by `ioe_errno`, not by matching the locale-dependent `strerror` text.
+- A leaf symlink is followed only when it resolves inside the workspace, making write symmetric with read; workspace-internal aliases stay usable.
+- `fs.remove` unlinks a leaf symlink instead of following it. Previously `fs.remove` on a *directory* symlink canonicalized and then ran `removeDirectoryRecursive` on the **target** — silent data loss outside the sandbox, and the most damaging bug in this cluster. Not in the original report.
+- `pathExists` / `statPath` agree: a symlink is an existing entry with `kind = "symlink"`, so `fs.copy` / `fs.move` cannot clobber one unnoticed.
+- `fs.copy` keeps `copyFile`'s atomicity and access mode (set-uid/gid and sticky bits are dropped deliberately); a file-onto-file overwrite is no longer pre-removed, so the destination survives a failed copy.
 
 ### H-2 — No exception containment in the run loop; any IO/pure exception kills the process
 
@@ -267,7 +312,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 | L-21 | `Runtime/Ignore.hs:168-181`                                  | `globMatch` naive backtracking (`any (go ps) (tails xs)`) — exponential on many-`*` rules vs long paths.                                                                               |
 | L-22 | `Workspace.hs:232-238`                                       | `matchPat` compares extensions case-sensitively; `**/*.MD` misses `foo.md` on macOS, finds it on Linux — host-FS-dependent behavior.                                                   |
 | L-23 | `Obs/Stream.hs:86-110`                                       | `appendText` read-modify-write not atomic; concurrent `onChunk` calls could drop text (single-threaded in practice).                                                                   |
-| L-24 | `Workspace.hs` write/copy/remove                               | **Fixed** with H-1: `O_NOFOLLOW` destinations; dangling symlink `removePath` / `pathExists`.                                                                                            |
+| L-24 | `Workspace.hs` write/copy/remove                             | **Fixed** with H-1a: `O_NOFOLLOW` writes / `rename` copies close the leaf TOCTOU; `removePath` unlinks leaf symlinks.                                                                  |
 | L-25 | `Parse/Section.hs:55-58,66-70`                               | `headings !! j` comprehension + fence rescan are O(n²) on large prose modules.                                                                                                         |
 
 ---
@@ -290,7 +335,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 
 1. **Exception barrier** at the run-loop boundary + `try` around `llmChat` (fixes H-2; converts H-3/H-4 from crashes into `RuntimeError`s).
 2. **`jsonToValue` via `Scientific`** — coefficient/exponent to `Integer`/`Double`, trap non-finite (fixes H-3, half of H-4).
-3. ~~**Leaf-level `O_NOFOLLOW`/`lstat`** on write/copy targets (fixes H-1).~~ **Done.**
+3. ~~**Leaf-level `O_NOFOLLOW`/`lstat`** on write/copy targets (fixes H-1).~~ **Done** — H-1 retracted; the real fix was check-before-create on parent chains (H-1a).
 4. **Sanitize run-id** (single path component) + existence check before reuse (H-7).
 5. **`nextPow2`** — `ceiling (logBase 2 …)` or bounded search (H-5).
 6. **Align `applyPositional`/`applyNamed` with `bindParams`** or reject divergent shapes at check time (H-6, M-1).

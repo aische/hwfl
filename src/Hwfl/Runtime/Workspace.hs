@@ -1,7 +1,19 @@
 -- | Workspace sandbox: canonical root + two-stage path containment
 -- (lexical resolve, then canonicalize + prefix check). Symlink escape fails hard.
--- Write/copy destinations use @O_NOFOLLOW@ so a dangling leaf symlink cannot
--- redirect the write outside the workspace.
+--
+-- Mutating operations additionally hold to three rules:
+--
+-- * Directory chains are created one component at a time from the canonical
+--   root outwards, so a symlink in the middle of a path can never cause a
+--   directory to be created outside the workspace.
+-- * A leaf symlink is followed only when it resolves inside the workspace;
+--   otherwise the operation fails with 'SandboxErr'.
+-- * The resolved destination is opened with @O_NOFOLLOW@ (writes) or reached
+--   by @rename@ (copies), neither of which can be redirected by a symlink
+--   swapped in after the containment check.
+--
+-- This module is POSIX-only: it uses @openat@-style flags and @lstat@ from
+-- the @unix@ package.
 module Hwfl.Runtime.Workspace
   ( Workspace,
     workspaceRoot,
@@ -25,16 +37,20 @@ module Hwfl.Runtime.Workspace
   )
 where
 
-import Control.Exception (IOException, finally, try)
+import Control.Exception (IOException, bracketOnError, finally, onException, try)
+import Data.Bits ((.&.))
 import Data.ByteString qualified as BS
-import Data.List (isInfixOf, sort)
+import Data.List (sort)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8', encodeUtf8)
+import Foreign.C.Error (Errno (..), eLOOP, eMLINK)
+import GHC.IO.Exception (IOException (ioe_errno))
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Ignore (IgnoreSet, isIgnored, loadIgnoreSet)
 import System.Directory
   ( canonicalizePath,
+    createDirectory,
     createDirectoryIfMissing,
     doesDirectoryExist,
     doesFileExist,
@@ -56,15 +72,23 @@ import System.FilePath
     takeFileName,
     (</>),
   )
-import System.IO (IOMode (ReadMode), hClose, withFile)
-import System.IO.Error (ioeGetErrorString)
+import System.IO
+  ( IOMode (ReadMode),
+    hClose,
+    hSetBinaryMode,
+    openBinaryTempFile,
+    withBinaryFile,
+  )
+import System.Posix.Files (fileMode, getFileStatus, setFileMode)
 import System.Posix.IO
   ( OpenFileFlags (..),
     OpenMode (WriteOnly),
+    closeFd,
     defaultFileFlags,
     fdToHandle,
     openFd,
   )
+import System.Posix.Types (FileMode)
 import Text.Regex.TDFA (Regex, defaultCompOpt, defaultExecOpt, matchTest)
 import Text.Regex.TDFA.String (compile)
 
@@ -81,12 +105,17 @@ newWorkspace dir = do
 -- | Lexical resolve of a workspace-relative path. Rejects absolute paths and
 -- @..@ escape above the root.
 resolvePath :: Workspace -> Text -> Either RuntimeError FilePath
-resolvePath ws rel
+resolvePath ws rel = (\segs -> workspaceRoot ws </> joinPath segs) <$> resolveRelSegments rel
+
+-- | Lexical resolve to normalised path segments relative to the root.
+-- @[]@ denotes the workspace root itself.
+resolveRelSegments :: Text -> Either RuntimeError [FilePath]
+resolveRelSegments rel
   | isAbsolute relStr =
       Left (SandboxErr ("absolute paths are not allowed: " <> rel))
   | otherwise = case resolveSegments (splitDirectories relStr) of
       Nothing -> Left (SandboxErr ("path escapes the workspace root: " <> rel))
-      Just segs -> Right (workspaceRoot ws </> joinPath segs)
+      Just segs -> Right segs
   where
     relStr = T.unpack rel
 
@@ -124,7 +153,8 @@ isPathUnderRoot root child =
         (".." : _) -> False
         _ -> True
 
--- | @True@ when @path@ is a symbolic link (including dangling).
+-- | @True@ when @path@ is a symbolic link (including dangling). Uses @lstat@,
+-- so unlike 'doesPathExist' it sees the link rather than its target.
 leafIsSymlink :: FilePath -> IO Bool
 leafIsSymlink path = do
   result <- try (pathIsSymbolicLink path) :: IO (Either IOException Bool)
@@ -132,72 +162,182 @@ leafIsSymlink path = do
     Right True -> True
     _ -> False
 
-symlinkLeafErr :: Text -> RuntimeError
-symlinkLeafErr rel =
-  SandboxErr ("refusing to write through symlink: " <> rel)
+-- | Containment for a leaf symlink: the link's own directory entry must sit
+-- inside the workspace. The target is deliberately not resolved — the entry
+-- is workspace-local even when it points elsewhere. Returns the link path
+-- under the canonical parent.
+containedLinkPath :: Workspace -> Text -> FilePath -> IO (Either RuntimeError FilePath)
+containedLinkPath ws rel path = do
+  parentCanon <- try (canonicalizePath (takeDirectory path)) :: IO (Either IOException FilePath)
+  pure $ case parentCanon of
+    Left ex ->
+      Left (HostErr ("cannot resolve path '" <> rel <> "': " <> T.pack (show ex)))
+    Right pCanon
+      | not (isPathUnderRoot (workspaceRoot ws) pCanon) ->
+          Left (SandboxErr ("path escapes the workspace root: " <> rel))
+      | otherwise -> Right (pCanon </> takeFileName path)
 
+-- | Create the directory chain @segs@ below the root, verifying containment
+-- before each component is created and returning the canonical directory.
+--
+-- Descending one component at a time keeps the invariant that the cursor is
+-- always a canonical path under the root, so 'createDirectory' can never
+-- create anything outside the workspace. Creating the whole chain first and
+-- checking afterwards (as @createDirectoryIfMissing@ would) leaks directories
+-- through an in-workspace symlink that points out of the sandbox.
+ensureDirUnderRoot :: Workspace -> Text -> [FilePath] -> IO (Either RuntimeError FilePath)
+ensureDirUnderRoot ws rel = go (workspaceRoot ws)
+  where
+    go cur [] = pure (Right cur)
+    go cur (seg : rest) = do
+      let candidate = cur </> seg
+      isLink <- leafIsSymlink candidate
+      if isLink
+        then do
+          resolved <- try (canonicalizePath candidate) :: IO (Either IOException FilePath)
+          case resolved of
+            Left ex ->
+              pure (Left (HostErr ("cannot resolve path '" <> rel <> "': " <> T.pack (show ex))))
+            Right canon
+              | not (isPathUnderRoot (workspaceRoot ws) canon) ->
+                  pure (Left (SandboxErr ("path escapes the workspace root: " <> rel)))
+              | otherwise -> do
+                  isDir <- doesDirectoryExist canon
+                  if isDir
+                    then go canon rest
+                    else pure (Left (notADirectory rel))
+        else do
+          isDir <- doesDirectoryExist candidate
+          if isDir
+            then go candidate rest
+            else do
+              made <- try (createDirectory candidate) :: IO (Either IOException ())
+              case made of
+                Right () -> go candidate rest
+                Left ex -> do
+                  -- Lost a race, or the component exists as a non-directory.
+                  raced <- doesDirectoryExist candidate
+                  if raced
+                    then go candidate rest
+                    else
+                      pure
+                        ( Left
+                            ( HostErr
+                                ("cannot prepare path '" <> rel <> "': " <> T.pack (show ex))
+                            )
+                        )
+
+    notADirectory r = HostErr ("not a directory on the path to '" <> r <> "'")
+
+-- | Resolve a destination for a mutating operation: create the parent chain
+-- inside the sandbox, then resolve the leaf.
+--
+-- A leaf symlink is followed only when it resolves inside the workspace, so
+-- workspace-internal aliases stay writable (symmetric with 'readTextFile')
+-- while any link that resolves outside is a hard 'SandboxErr'. The returned
+-- path is canonical and therefore has no symlink at its own leaf.
+resolveWriteTarget :: Workspace -> Text -> IO (Either RuntimeError FilePath)
+resolveWriteTarget ws rel = case resolveRelSegments rel of
+  Left e -> pure (Left e)
+  Right [] -> pure (Left (SandboxErr ("cannot write to the workspace root: " <> rel)))
+  Right segs -> do
+    parent <- ensureDirUnderRoot ws rel (init segs)
+    case parent of
+      Left e -> pure (Left e)
+      Right pCanon -> do
+        let target = pCanon </> last segs
+        isLink <- leafIsSymlink target
+        if not isLink
+          then pure (Right target)
+          else do
+            resolved <- try (canonicalizePath target) :: IO (Either IOException FilePath)
+            pure $ case resolved of
+              Left ex ->
+                Left (HostErr ("cannot resolve path '" <> rel <> "': " <> T.pack (show ex)))
+              Right canon
+                | not (isPathUnderRoot (workspaceRoot ws) canon) ->
+                    Left (SandboxErr ("path escapes the workspace root: " <> rel))
+                | otherwise -> Right canon
+
+-- | @O_NOFOLLOW@ rejects a symlink with @ELOOP@ on Linux and macOS, and with
+-- @EMLINK@ on the BSDs.
 isSymlinkOpenError :: IOException -> Bool
-isSymlinkOpenError ex =
-  let msg = ioeGetErrorString ex
-      shown = show ex
-   in "Too many levels of symbolic links" `isInfixOf` msg
-        || "Too many levels of symbolic links" `isInfixOf` shown
+isSymlinkOpenError ex = case ioe_errno ex of
+  Nothing -> False
+  Just n -> Errno n == eLOOP || Errno n == eMLINK
+
+-- | Reaching a leaf symlink here means one was swapped in after
+-- 'resolveWriteTarget' checked; treat it as an escape attempt.
+mapWriteError :: Text -> IOException -> RuntimeError
+mapWriteError rel ex
+  | isSymlinkOpenError ex =
+      SandboxErr ("refusing to write through symlink: " <> rel)
+  | otherwise = HostErr ("write failed for '" <> rel <> "': " <> T.pack (show ex))
+
+mapCopyError :: Text -> IOException -> RuntimeError
+mapCopyError rel ex
+  | isSymlinkOpenError ex =
+      SandboxErr ("refusing to write through symlink: " <> rel)
+  | otherwise = HostErr ("copy failed for '" <> rel <> "': " <> T.pack (show ex))
+
+noFollowWriteFlags :: OpenFileFlags
+noFollowWriteFlags =
+  defaultFileFlags
+    { trunc = True,
+      creat = Just 0o666,
+      nofollow = True,
+      cloexec = True
+    }
 
 -- | Create or truncate @path@ without following a leaf symlink (@O_NOFOLLOW@).
 writeBytesNoFollow :: FilePath -> BS.ByteString -> IO ()
 writeBytesNoFollow path content = do
-  fd <-
-    openFd
-      path
-      WriteOnly
-      defaultFileFlags
-        { trunc = True,
-          creat = Just 0o666,
-          nofollow = True,
-          cloexec = True
-        }
-  handle <- fdToHandle fd
-  BS.hPut handle content `finally` hClose handle
+  fd <- openFd path WriteOnly noFollowWriteFlags
+  -- The Handle owns the Fd once fdToHandle succeeds; only close the raw Fd
+  -- if the conversion itself fails.
+  handle <- fdToHandle fd `onException` closeFd fd
+  ( do
+      hSetBinaryMode handle True
+      BS.hPut handle content
+    )
+    `finally` hClose handle
 
--- | Copy file contents into @dst@ without following a leaf symlink there.
-copyFileNoFollow :: FilePath -> FilePath -> IO ()
-copyFileNoFollow src dst = do
-  fd <-
-    openFd
-      dst
-      WriteOnly
-      defaultFileFlags
-        { trunc = True,
-          creat = Just 0o666,
-          nofollow = True,
-          cloexec = True
-        }
-  hout <- fdToHandle fd
-  let write = withFile src ReadMode $ \hin -> copyChunks hin hout
-  write `finally` hClose hout
+copyChunkSize :: Int
+copyChunkSize = 128 * 1024
+
+-- | Copy @src@ onto @dst@ atomically, preserving the source's access mode.
+--
+-- Contents go to a fresh @O_EXCL@ temporary next to @dst@ and are renamed into
+-- place. @rename@ never follows a symlink at the destination, so this cannot be
+-- redirected outside the workspace; a failure part-way leaves @dst@ untouched
+-- rather than truncated. Set-user-ID / set-group-ID / sticky bits are dropped
+-- deliberately — the sandbox has no business propagating them.
+copyFileAtomic :: FilePath -> FilePath -> IO ()
+copyFileAtomic src dst = do
+  srcMode <- fileMode <$> getFileStatus src
+  bracketOnError
+    (openBinaryTempFile (takeDirectory dst) ".hwfl-copy.tmp")
+    (\(tmp, h) -> hClose h `finally` ignoringIOErrors (removeFile tmp))
+    ( \(tmp, hout) -> do
+        withBinaryFile src ReadMode (`copyChunks` hout)
+        hClose hout
+        setFileMode tmp (srcMode .&. accessModeMask)
+        renamePath tmp dst
+    )
   where
-    chunkSize = 64 * 1024
     copyChunks hin hout = do
-      chunk <- BS.hGetSome hin chunkSize
+      chunk <- BS.hGetSome hin copyChunkSize
       if BS.null chunk
         then pure ()
         else BS.hPut hout chunk >> copyChunks hin hout
 
-mapNoFollowWriteError :: Text -> FilePath -> IOException -> IO RuntimeError
-mapNoFollowWriteError rel target ex = do
-  isLink <- leafIsSymlink target
-  pure $
-    if isLink || isSymlinkOpenError ex
-      then symlinkLeafErr rel
-      else HostErr ("write failed for '" <> rel <> "': " <> T.pack (show ex))
+accessModeMask :: FileMode
+accessModeMask = 0o777
 
-mapNoFollowCopyError :: Text -> FilePath -> IOException -> IO RuntimeError
-mapNoFollowCopyError rel target ex = do
-  isLink <- leafIsSymlink target
-  pure $
-    if isLink || isSymlinkOpenError ex
-      then symlinkLeafErr rel
-      else HostErr ("copy failed for '" <> rel <> "': " <> T.pack (show ex))
+ignoringIOErrors :: IO () -> IO ()
+ignoringIOErrors act = do
+  _ <- try act :: IO (Either IOException ())
+  pure ()
 
 -- | Read a workspace file as UTF-8 text.
 readTextFile :: Workspace -> Text -> IO (Either RuntimeError Text)
@@ -230,34 +370,18 @@ readTextSlice ws rel startLine endLine
            in Right (T.unlines slice)
 
 -- | Write UTF-8 text, creating parent dirs inside the sandbox as needed.
--- Leaf destinations are opened with @O_NOFOLLOW@ so a dangling symlink cannot
--- redirect the write outside the workspace.
+-- A leaf symlink is followed only when it resolves inside the workspace; the
+-- resolved destination is opened with @O_NOFOLLOW@.
 writeTextFile :: Workspace -> Text -> Text -> IO (Either RuntimeError ())
 writeTextFile ws rel content = do
-  -- For writes to new paths, canonicalize the parent then append the basename.
-  case resolvePath ws rel of
+  target <- resolveWriteTarget ws rel
+  case target of
     Left e -> pure (Left e)
     Right path -> do
-      let parent = takeDirectory path
-      parentCanon <-
-        try
-          ( do
-              createDirectoryIfMissing True parent
-              canonicalizePath parent
-          ) ::
-          IO (Either IOException FilePath)
-      case parentCanon of
-        Left ex ->
-          pure (Left (HostErr ("cannot prepare write path '" <> rel <> "': " <> T.pack (show ex))))
-        Right pCanon ->
-          if not (isPathUnderRoot (workspaceRoot ws) pCanon)
-            then pure (Left (SandboxErr ("path escapes the workspace root: " <> rel)))
-            else do
-              let target = pCanon </> takeFileName path
-              result <- try (writeBytesNoFollow target (encodeUtf8 content)) :: IO (Either IOException ())
-              case result of
-                Left ex -> Left <$> mapNoFollowWriteError rel target ex
-                Right () -> pure (Right ())
+      result <- try (writeBytesNoFollow path (encodeUtf8 content)) :: IO (Either IOException ())
+      pure $ case result of
+        Left ex -> Left (mapWriteError rel ex)
+        Right () -> Right ()
 
 -- | Find workspace-relative files matching a simple glob.
 -- Supported: @**/*.ext@ (recursive) and @*.ext@ (workspace root only).
@@ -340,8 +464,9 @@ listDir ws rel = do
       pure (T.pack name, if isDir then "dir" else "file")
 
 -- | Remove a workspace file or directory tree. Cannot delete the workspace root.
--- Dangling leaf symlinks are removed via @unlink@ (they are not resolvable by
--- canonicalize, so the normal contained-path path would miss them).
+--
+-- A leaf symlink is unlinked rather than followed, so @fs.remove@ on a link to
+-- a directory removes the link and leaves the target's contents alone.
 removePath :: Workspace -> Text -> IO (Either RuntimeError ())
 removePath ws rel = case resolvePath ws rel of
   Left e -> pure (Left e)
@@ -376,62 +501,36 @@ removePath ws rel = case resolvePath ws rel of
 
 removeLeafSymlink :: Workspace -> Text -> FilePath -> IO (Either RuntimeError ())
 removeLeafSymlink ws rel path = do
-  let parent = takeDirectory path
-  parentCanon <- try (canonicalizePath parent) :: IO (Either IOException FilePath)
-  case parentCanon of
-    Left ex ->
-      pure (Left (HostErr ("cannot resolve path '" <> rel <> "': " <> T.pack (show ex))))
-    Right pCanon
-      | not (isPathUnderRoot (workspaceRoot ws) pCanon) ->
-          pure (Left (SandboxErr ("path escapes the workspace root: " <> rel)))
-      | otherwise -> do
-          let target = pCanon </> takeFileName path
-          result <- try (removeFile target) :: IO (Either IOException ())
-          pure $ case result of
-            Left ex ->
-              Left (HostErr ("remove failed for '" <> rel <> "': " <> T.pack (show ex)))
-            Right () -> Right ()
+  linkPath <- containedLinkPath ws rel path
+  case linkPath of
+    Left e -> pure (Left e)
+    Right target -> do
+      result <- try (removeFile target) :: IO (Either IOException ())
+      pure $ case result of
+        Left ex ->
+          Left (HostErr ("remove failed for '" <> rel <> "': " <> T.pack (show ex)))
+        Right () -> Right ()
 
 -- | Create a directory (and parents) inside the sandbox.
 mkdirPath :: Workspace -> Text -> IO (Either RuntimeError ())
-mkdirPath ws rel = case resolvePath ws rel of
+mkdirPath ws rel = case resolveRelSegments rel of
   Left e -> pure (Left e)
-  Right path -> do
-    parentCanon <-
-      try
-        ( do
-            createDirectoryIfMissing True path
-            canonicalizePath path
-        ) ::
-        IO (Either IOException FilePath)
-    pure $ case parentCanon of
-      Left ex ->
-        Left (HostErr ("mkdir failed for '" <> rel <> "': " <> T.pack (show ex)))
-      Right canon
-        | not (isPathUnderRoot (workspaceRoot ws) canon) ->
-            Left (SandboxErr ("path escapes the workspace root: " <> rel))
-        | otherwise -> Right ()
+  Right segs -> fmap (fmap (const ())) (ensureDirUnderRoot ws rel segs)
 
--- | Whether a workspace path exists (file or directory). Missing ⇒ @False@.
--- Leaf symlinks (including dangling / escaping targets) count as existing
--- directory entries when their parent is inside the sandbox; ops that follow
--- the link still fail hard on escape.
+-- | Whether a workspace path exists. Missing ⇒ @False@.
+--
+-- A leaf symlink is an existing directory entry whenever its own parent is
+-- inside the sandbox, even if it dangles or points out of the workspace —
+-- 'statPath' reports it as @"symlink"@ and operations that follow the link
+-- still fail hard on escape. Reporting it as absent would let @fs.copy@ and
+-- @fs.move@ clobber a directory entry they were asked not to touch.
 pathExists :: Workspace -> Text -> IO (Either RuntimeError Bool)
 pathExists ws rel = case resolvePath ws rel of
   Left e -> pure (Left e)
   Right path -> do
     isLink <- leafIsSymlink path
     if isLink
-      then do
-        let parent = takeDirectory path
-        parentCanon <- try (canonicalizePath parent) :: IO (Either IOException FilePath)
-        pure $ case parentCanon of
-          Left ex ->
-            Left (HostErr ("cannot resolve path '" <> rel <> "': " <> T.pack (show ex)))
-          Right pCanon
-            | not (isPathUnderRoot (workspaceRoot ws) pCanon) ->
-                Left (SandboxErr ("path escapes the workspace root: " <> rel))
-            | otherwise -> Right True
+      then fmap (True <$) (containedLinkPath ws rel path)
       else do
         exists <- doesPathExist path
         if not exists
@@ -442,28 +541,34 @@ pathExists ws rel = case resolvePath ws rel of
               Left e -> Left e
               Right _ -> Right True
 
--- | Stat a workspace path. @kind@ is @"file"@ / @"dir"@ / @""@ when missing;
--- @size@ is bytes for files, @0@ for directories and missing paths.
+-- | Stat a workspace path. @kind@ is @"file"@ / @"dir"@ / @"symlink"@, or
+-- @""@ when missing; @size@ is bytes for files and @0@ otherwise.
 statPath :: Workspace -> Text -> IO (Either RuntimeError (Bool, Text, Integer))
-statPath ws rel = do
-  ex <- pathExists ws rel
-  case ex of
-    Left e -> pure (Left e)
-    Right False -> pure (Right (False, "", 0))
-    Right True -> do
-      resolved <- resolveContainedPath ws rel
-      case resolved of
-        Left e -> pure (Left e)
-        Right path -> do
-          isDir <- doesDirectoryExist path
-          if isDir
-            then pure (Right (True, "dir", 0))
-            else do
-              sizeResult <- try (getFileSize path) :: IO (Either IOException Integer)
-              pure $ case sizeResult of
-                Left ex' ->
-                  Left (HostErr ("stat failed for '" <> rel <> "': " <> T.pack (show ex')))
-                Right n -> Right (True, "file", n)
+statPath ws rel = case resolvePath ws rel of
+  Left e -> pure (Left e)
+  Right path -> do
+    isLink <- leafIsSymlink path
+    if isLink
+      then fmap ((True, "symlink", 0) <$) (containedLinkPath ws rel path)
+      else do
+        ex <- pathExists ws rel
+        case ex of
+          Left e -> pure (Left e)
+          Right False -> pure (Right (False, "", 0))
+          Right True -> do
+            resolved <- resolveContainedPath ws rel
+            case resolved of
+              Left e -> pure (Left e)
+              Right canon -> do
+                isDir <- doesDirectoryExist canon
+                if isDir
+                  then pure (Right (True, "dir", 0))
+                  else do
+                    sizeResult <- try (getFileSize canon) :: IO (Either IOException Integer)
+                    pure $ case sizeResult of
+                      Left ex' ->
+                        Left (HostErr ("stat failed for '" <> rel <> "': " <> T.pack (show ex')))
+                      Right n -> Right (True, "file", n)
 
 -- | Copy a file or directory tree (@src@ → @dst@) within the sandbox.
 -- When @overwrite@ is false, @dst@ must not exist. @exclude@ is a list of
@@ -505,10 +610,20 @@ copyPath ws srcRel dstRel overwrite exclude = do
                     | not overwrite ->
                         pure (Left (HostErr ("destination already exists: '" <> dstRel <> "'")))
                     | otherwise -> do
-                        rm <- removePath ws dstRel
-                        case rm of
+                        dstStat <- statPath ws dstRel
+                        case dstStat of
                           Left e -> pure (Left e)
-                          Right () -> copyInto ws srcRel srcPath dstRel exclude
+                          -- A file-onto-file overwrite is replaced atomically by
+                          -- the copy itself, so the destination survives a failure
+                          -- part-way through. Directories and symlinks have to go
+                          -- first: rename cannot replace them in place.
+                          Right (_, "file", _)
+                            | not srcIsDir -> copyInto ws srcRel srcPath dstRel exclude
+                          Right _ -> do
+                            rm <- removePath ws dstRel
+                            case rm of
+                              Left e -> pure (Left e)
+                              Right () -> copyInto ws srcRel srcPath dstRel exclude
                   Right False -> copyInto ws srcRel srcPath dstRel exclude
 
 copyInto :: Workspace -> Text -> FilePath -> Text -> [Text] -> IO (Either RuntimeError ())
@@ -523,29 +638,15 @@ copyInto ws srcRel srcPath dstRel exclude = do
         else pure (Left (HostErr ("path not found: '" <> srcRel <> "'")))
 
 copyOneFile :: Workspace -> FilePath -> Text -> IO (Either RuntimeError ())
-copyOneFile ws srcAbs dstRel = case resolvePath ws dstRel of
-  Left e -> pure (Left e)
-  Right dstPath -> do
-    let parent = takeDirectory dstPath
-    parentCanon <-
-      try
-        ( do
-            createDirectoryIfMissing True parent
-            canonicalizePath parent
-        ) ::
-        IO (Either IOException FilePath)
-    case parentCanon of
-      Left ex ->
-        pure (Left (HostErr ("cannot prepare copy destination '" <> dstRel <> "': " <> T.pack (show ex))))
-      Right pCanon
-        | not (isPathUnderRoot (workspaceRoot ws) pCanon) ->
-            pure (Left (SandboxErr ("path escapes the workspace root: " <> dstRel)))
-        | otherwise -> do
-            let target = pCanon </> takeFileName dstPath
-            result <- try (copyFileNoFollow srcAbs target) :: IO (Either IOException ())
-            case result of
-              Left ex -> Left <$> mapNoFollowCopyError dstRel target ex
-              Right () -> pure (Right ())
+copyOneFile ws srcAbs dstRel = do
+  target <- resolveWriteTarget ws dstRel
+  case target of
+    Left e -> pure (Left e)
+    Right dstPath -> do
+      result <- try (copyFileAtomic srcAbs dstPath) :: IO (Either IOException ())
+      pure $ case result of
+        Left ex -> Left (mapCopyError dstRel ex)
+        Right () -> Right ()
 
 copyTree :: Workspace -> FilePath -> Text -> Text -> [Text] -> IO (Either RuntimeError ())
 copyTree ws srcRoot dstRel relInTree exclude
@@ -602,81 +703,59 @@ movePath ws srcRel dstRel = do
   srcResolved <- resolveContainedPath ws srcRel
   case srcResolved of
     Left e -> pure (Left e)
-    Right srcPath ->
-      if srcPath == workspaceRoot ws
-        then pure (Left (SandboxErr ("cannot move workspace root: " <> srcRel)))
+    Right srcPath
+      | srcPath == workspaceRoot ws ->
+          pure (Left (SandboxErr ("cannot move workspace root: " <> srcRel)))
+      | otherwise -> case (resolvePath ws srcRel, resolveRelSegments dstRel) of
+          (Left e, _) -> pure (Left e)
+          (_, Left e) -> pure (Left e)
+          (_, Right []) ->
+            pure (Left (SandboxErr ("cannot move onto the workspace root: " <> dstRel)))
+          (Right srcLex, Right dstSegs) -> do
+            dstEx <- pathExists ws dstRel
+            case dstEx of
+              Left e -> pure (Left e)
+              Right True ->
+                pure (Left (HostErr ("destination already exists: '" <> dstRel <> "'")))
+              Right False -> moveInto ws srcRel dstRel srcPath srcLex dstSegs
+
+-- | Rename step of 'movePath': @src@ is contained and @dst@ is known absent.
+-- Because the destination has no directory entry and @rename@ never follows a
+-- symlink at the leaf, the raw name under the vetted parent is safe to use.
+moveInto ::
+  Workspace ->
+  Text ->
+  Text ->
+  FilePath ->
+  FilePath ->
+  [FilePath] ->
+  IO (Either RuntimeError ())
+moveInto ws srcRel dstRel srcPath srcLex dstSegs = do
+  parentCanon <- ensureDirUnderRoot ws dstRel (init dstSegs)
+  case parentCanon of
+    Left e -> pure (Left e)
+    Right pCanon -> do
+      let dstLex = workspaceRoot ws </> joinPath dstSegs
+          target = pCanon </> last dstSegs
+      srcIsDir <- doesDirectoryExist srcPath
+      if srcIsDir && (dstLex == srcLex || isPathUnderRoot srcLex dstLex)
+        then
+          pure
+            (Left (HostErr ("cannot move '" <> srcRel <> "' into itself or a descendant")))
         else do
-          dstEx <- pathExists ws dstRel
-          case dstEx of
-            Left e -> pure (Left e)
-            Right True ->
-              pure (Left (HostErr ("destination already exists: '" <> dstRel <> "'")))
-            Right False -> case (resolvePath ws srcRel, resolvePath ws dstRel) of
-              (Left e, _) -> pure (Left e)
-              (_, Left e) -> pure (Left e)
-              (Right srcLex, Right dstPath) -> do
-                let parent = takeDirectory dstPath
-                parentCanon <-
-                  try
-                    ( do
-                        createDirectoryIfMissing True parent
-                        canonicalizePath parent
-                    ) ::
-                    IO (Either IOException FilePath)
-                case parentCanon of
-                  Left ex ->
-                    pure
-                      ( Left
-                          ( HostErr
-                              ( "cannot prepare move destination '"
-                                  <> dstRel
-                                  <> "': "
-                                  <> T.pack (show ex)
-                              )
-                          )
-                      )
-                  Right pCanon
-                    | not (isPathUnderRoot (workspaceRoot ws) pCanon) ->
-                        pure (Left (SandboxErr ("path escapes the workspace root: " <> dstRel)))
-                    | otherwise -> do
-                        let target = pCanon </> takeFileName dstPath
-                        srcIsDir <- doesDirectoryExist srcPath
-                        let nested =
-                              srcIsDir
-                                && ( dstPath == srcLex
-                                       || isPathUnderRoot srcLex dstPath
-                                   )
-                        if nested
-                          then
-                            pure
-                              ( Left
-                                  ( HostErr
-                                      ( "cannot move '"
-                                          <> srcRel
-                                          <> "' into itself or a descendant"
-                                      )
-                                  )
-                              )
-                          else do
-                            result <- try (renamePath srcPath target) :: IO (Either IOException ())
-                            case result of
-                              Right () -> pure (Right ())
-                              Left ex -> do
-                                -- Cross-device rename: copy then remove.
-                                copied <- copyPath ws srcRel dstRel False []
-                                case copied of
-                                  Left _ ->
-                                    pure
-                                      ( Left
-                                          ( HostErr
-                                              ( "move failed for '"
-                                                  <> srcRel
-                                                  <> "': "
-                                                  <> T.pack (show ex)
-                                              )
-                                          )
-                                      )
-                                  Right () -> removePath ws srcRel
+          result <- try (renamePath srcPath target) :: IO (Either IOException ())
+          case result of
+            Right () -> pure (Right ())
+            Left ex -> do
+              -- Cross-device rename: copy then remove.
+              copied <- copyPath ws srcRel dstRel False []
+              case copied of
+                Left _ ->
+                  pure
+                    ( Left
+                        (HostErr ("move failed for '" <> srcRel <> "': " <> T.pack (show ex)))
+                    )
+                Right () -> removePath ws srcRel
 
 -- | Literal whole-string replacement. Returns @(ok, replacements)@ where
 -- @ok@ is true iff at least one occurrence was replaced. Empty @old@ is an error.

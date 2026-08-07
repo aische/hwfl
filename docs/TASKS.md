@@ -9,8 +9,9 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 Order matters; do not skip ahead of H-7 / H-2.
 
-- [x] **H-1** — Leaf `lstat` / `O_NOFOLLOW` on `fs.write` / `fs.copy` targets
-      (dangling-symlink sandbox escape). Touches L-24.
+- [x] **H-1** — Retracted, not reproducible (see report). **H-1a** fixed
+      instead: check containment before creating each parent component.
+      Touches L-24.
 - [ ] **H-7** — Sanitize run-id (single path component); reject reuse unless
       explicit
 - [ ] **H-2** — `SomeException` barrier at run-loop + `try` around `llmChat`
@@ -106,8 +107,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
-- **H-1** / **L-24** — `O_NOFOLLOW` write/copy destinations; dangling-symlink
-  `pathExists` / `removePath` (2026-08)
+- **H-1a** / **L-24** — Check-before-create parent chains; `O_NOFOLLOW` writes
+  and `rename` copies; `fs.remove` unlinks leaf symlinks; `"symlink"` stat
+  kind. H-1 itself retracted as not reproducible (2026-08)
 
 See [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md) for M0–M9
 and 2026-07 completions (P0, coding-agent, skills A–C, semantic-check

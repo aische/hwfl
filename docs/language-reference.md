@@ -78,9 +78,18 @@ Each call is a transition (snapshot + span) unless noted.
 | `fs.copy` | Write | `{ src, dst, overwrite?, exclude? } -> ()` (file or recursive tree; `exclude` = path prefixes under the tree root) |
 | `fs.move` | Write | `{ src, dst } -> ()` (fails if `dst` exists) |
 | `fs.exists` | Read | `(path: FileRef) -> Bool` |
-| `fs.stat` | Read | `(path: FileRef) -> { exists: Bool, kind: String, size: Int }` (`kind` is `file` / `dir` / `""`) |
+| `fs.stat` | Read | `(path: FileRef) -> { exists: Bool, kind: String, size: Int }` (`kind` is `file` / `dir` / `symlink` / `""`) |
 
-Paths are sandboxed to the workspace root (symlink escape fails).
+Paths are sandboxed to the workspace root. Symlinks follow one rule: a link is
+followed only when it resolves inside the workspace, and any link that resolves
+outside is a hard failure — for reads and writes alike. So a workspace-internal
+symlink works as a plain alias, while `fs.write` / `fs.copy` through an escaping
+or dangling link fails instead of writing outside.
+
+A symlink is itself a directory entry: `fs.exists` reports it as present and
+`fs.stat` reports `kind = "symlink"` even when its target is missing or outside,
+so `fs.copy` / `fs.move` will not silently clobber it. `fs.remove` unlinks the
+link and leaves the target alone.
 
 ### Process
 

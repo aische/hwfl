@@ -196,6 +196,11 @@ Identical intent to hwfi:
 
 - All file ops under workspace root
 - Canonicalize + prefix check (no symlink escape)
+- Directory chains are created one component at a time from the canonical
+  root outwards, so a symlink mid-path cannot cause a directory to be created
+  outside the sandbox
+- Write destinations are opened `O_NOFOLLOW` and copies land via `rename`, so
+  a link swapped in after the containment check cannot redirect the write
 - Separate project dir (code) vs workspace dir (data) if both provided by CLI
 
 ## 8. Determinism

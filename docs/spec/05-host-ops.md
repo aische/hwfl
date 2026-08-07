@@ -23,10 +23,14 @@ opens/closes a **span**.
 | `fs.move` | Write | `{ src, dst } -> ()` — rename / relocate; fails if `dst` exists |
 | `fs.remove` | Write | `(path: FileRef) -> ()` |
 | `fs.exists` | Read | `(path: FileRef) -> Bool` |
-| `fs.stat` | Read | `(path: FileRef) -> { exists, kind, size }` — `kind` is `file` / `dir` / `""` when missing |
+| `fs.stat` | Read | `(path: FileRef) -> { exists, kind, size }` — `kind` is `file` / `dir` / `symlink` / `""` when missing |
 
 All paths constrained to the **workspace sandbox** (hwfi containment
-rules). Symlink escape is a hard failure.
+rules). Symlink escape is a hard failure, on the write path as well as the
+read path: a link is followed only when it resolves inside the workspace.
+A symlink counts as an existing directory entry for `fs.exists` / `fs.stat`
+regardless of where it points, and `fs.remove` unlinks the link rather than
+its target.
 
 `fs.find` / `fs.grep` ignore policy (v1): hidden path segments are always
 skipped; workspace-root `.gitignore` and `.ignore` are applied even when

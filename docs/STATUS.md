@@ -16,8 +16,12 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
-- **H-1 / L-24** — `O_NOFOLLOW` on `fs.write` / `fs.copy` destinations;
-  dangling-symlink `pathExists` / `removePath`; regression tests
+- **H-1 retracted; H-1a / L-24 fixed** — H-1's dangling-symlink escape was
+  not reproducible (`canonicalizePath` resolves dangling links; `copyFile`
+  renames). Real bug: parent chains were created before the containment
+  check, leaking dirs outside the root. Now `ensureDirUnderRoot` checks
+  before each `createDirectory`; `O_NOFOLLOW` writes / `rename` copies;
+  `fs.remove` unlinks leaf symlinks (was recursively deleting link targets)
 - **Source review** — Full `src/Hwfl/**` read-only review; findings in
   [BUG_REPORT.md](BUG_REPORT.md)
 - **Semantic-check layer 0** — `meta.check_project(".")` when
