@@ -82,6 +82,9 @@ spec = describe "type checker" $ do
     it "rejects bare overloaded operator" $
       inferE "==" `shouldSatisfy` isLeft
 
+    it "rejects an empty call to a non-Unit function" $
+      inferE "(fun (x: Int): Int => x)()" `shouldSatisfy` isLeft
+
     it "rejects Bool used as Int" $
       inferE "1 + true" `shouldSatisfy` isLeft
 

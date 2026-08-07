@@ -16,7 +16,8 @@ Order matters; do not skip ahead of H-6.
       create-only (reuse rejected)
 - [x] **H-2** — Sync-exception barriers at run loop, host ops and provider;
       crash persists a failed machine
-- [ ] **H-6** — Align checker `applyPositional` / `applyNamed` with `bindParams`
+- [x] **H-6** — Checker/runtime calls align: `f()` only calls `Unit` domains;
+      single record parameters pack positional or named fields
 - [ ] **H-3** — `jsonToValue` via `Scientific` (no Double detour); trap
       non-finite
 - [ ] **H-4** — Guard NaN/Inf at float arith and/or encode/render
@@ -108,6 +109,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **H-6** — Empty application rejects non-`Unit` domains; `bindParams` supplies
+  omitted `Unit`, and packs positional/named record fields for a single record
+  parameter. `fs.write` accepts the two checked positional arguments (2026-08)
 - **H-2** — `Hwfl.Exception.trySync` (sync only; async / `ExitCode` re-thrown)
   under `runUntilPause`, `runHostOp` and a new `safeLlmChat`. A crash mid-step
   closes the spans it opened, persists `MsFailed`, and surfaces as the new

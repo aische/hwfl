@@ -384,29 +384,31 @@ classifyArgs args
       _ -> False
 
 applyPositional :: TypeEnv -> TypeExpr -> [Expr] -> Either CheckError TypeExpr
-applyPositional env = go
+applyPositional env initialTy [] = case funArrow initialTy of
+  -- @f()@ on @Unit -> T@ is a full call (empty arg list means unit).
+  Just (domain, ret) -> do
+    domain' <- resolveType env domain
+    if typesCompatible domain' tUnit
+      then Right ret
+      else Left (ArityMismatch 1 0)
+  Nothing -> Left (ExpectedFunction initialTy)
+applyPositional env initialTy providedArgs = go initialTy providedArgs
   where
-    go ty [] = case funArrow ty of
-      -- @f()@ on @Unit -> T@ is a full call (empty arg list means unit).
-      Just (domain, ret) -> do
-        domain' <- resolveType env domain
-        if typesCompatible domain' tUnit
-          then Right ret
-          else Right ty
-      Nothing -> Right ty
-    go ty args = case funArrow ty of
+    go currentTy remainingArgs = case funArrow currentTy of
       Just (TRecord fields, ret)
-        | length args == length fields && not (null args) -> do
+        | length remainingArgs == length fields && not (null remainingArgs) -> do
             mapM_
               ( \(arg, (_, domain)) -> check env arg domain
               )
-              (zip args fields)
+              (zip remainingArgs fields)
             pure ret
       Just (domain, ret)
-        | (arg : rest) <- args -> do
+        | (arg : rest) <- remainingArgs -> do
             check env arg domain
-            go ret rest
-      _ -> Left (ExpectedFunction ty)
+            case rest of
+              [] -> pure ret
+              _ -> go ret rest
+      _ -> Left (ExpectedFunction currentTy)
 
 applyNamed :: TypeEnv -> TypeExpr -> [(Ident, Expr)] -> Either CheckError TypeExpr
 applyNamed env fty nes = case funArrow fty of

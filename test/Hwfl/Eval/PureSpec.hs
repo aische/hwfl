@@ -2,11 +2,13 @@ module Hwfl.Eval.PureSpec (spec) where
 
 import Data.Text (Text)
 import Hwfl.Ast.Decl (ModuleBody)
-import Hwfl.Ast.Expr (Expr)
-import Hwfl.Ast.Name (Ident (..))
+import Hwfl.Ast.Expr (Expr, Param (..))
+import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Module (callFun, evalExpr, loadModuleBody)
 import Hwfl.Eval.Prelude (preludeEnv)
+import Hwfl.Eval.Pure (bindParams)
 import Hwfl.Eval.Value
 import Hwfl.Parse.Expr (parseExprText)
 import Hwfl.Parse.Module (parseModuleBody)
@@ -98,6 +100,23 @@ spec = describe "pure evaluator" $ do
     it "rejects par" $
       evalE "par for x in xs { x }"
         `shouldBe` Left (show (Unsupported "par is not pure" :: EvalError))
+
+  describe "parameter binding" $ do
+    it "supplies Unit for an omitted Unit parameter" $
+      bindParams [Param (Ident "x") (Just (TName (TypeName "Unit")))] []
+        `shouldBe` Right [(Ident "x", VUnit)]
+
+    it "packs positional fields for a single record parameter" $
+      bindParams
+        [Param (Ident "input") (Just (TRecord [(Ident "a", TName (TypeName "Int")), (Ident "b", TName (TypeName "Int"))]))]
+        [(Nothing, VInt 1), (Nothing, VInt 2)]
+        `shouldBe` Right [(Ident "input", VRecord [(Ident "a", VInt 1), (Ident "b", VInt 2)])]
+
+    it "packs named fields for a single record parameter" $
+      bindParams
+        [Param (Ident "input") (Just (TRecord [(Ident "a", TName (TypeName "Int")), (Ident "b", TName (TypeName "Int"))]))]
+        [(Just (Ident "a"), VInt 1), (Just (Ident "b"), VInt 2)]
+        `shouldBe` Right [(Ident "input", VRecord [(Ident "a", VInt 1), (Ident "b", VInt 2)])]
 
 isLeft :: Either a b -> Bool
 isLeft = \case

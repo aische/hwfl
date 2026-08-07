@@ -14,8 +14,9 @@ where
 
 import Data.Text qualified as T
 import Hwfl.Ast.Expr
-import Hwfl.Ast.Name (Ident (..), qnameToText, slugToText)
+import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameToText, slugToText)
 import Hwfl.Ast.Pat (Literal (..), Pattern (..))
+import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Prelude (applyBuiltin)
 import Hwfl.Eval.Value
@@ -110,26 +111,62 @@ bindParams params args
   | any (isJust . fst) args && any (isNothing . fst) args =
       Left (Trap "cannot mix positional and named arguments")
   | all (isNothing . fst) args =
-      if length params /= length args
-        then
-          Left
-            ( Trap
-                ( "arity mismatch: expected "
-                    <> T.pack (show (length params))
-                    <> ", got "
-                    <> T.pack (show (length args))
-                )
-            )
-        else Right (zipWith (\p (_, v) -> (paramName p, v)) params args)
-  | length params /= length args =
-      Left (Trap "arity mismatch for named arguments")
-  | otherwise = traverse bindNamed params
+      bindPositional (map snd args)
+  | otherwise = bindNamedArgs
   where
     named = [(n, v) | (Just n, v) <- args]
     bindNamed p = case lookup (paramName p) named of
       Just v -> Right (paramName p, v)
       Nothing ->
         Left (Trap ("missing named argument: " <> unIdent (paramName p)))
+
+    bindPositional values
+      | null values,
+        [p] <- params,
+        isUnitParam p =
+          Right [(paramName p, VUnit)]
+      | [p] <- params,
+        Just fields <- recordParamFields p,
+        length values == length fields =
+          Right [(paramName p, VRecord (zip (map fst fields) values))]
+      | length params == length values =
+          Right (zipWith (\p v -> (paramName p, v)) params values)
+      | otherwise = Left (arityMismatch (length params) (length values))
+
+    bindNamedArgs
+      | [p] <- params,
+        Just fields <- recordParamFields p,
+        length named == length fields =
+          VRecord <$> traverse (bindRecordField named) fields >>= \record ->
+            Right [(paramName p, record)]
+      | [p] <- params,
+        Just fields <- recordParamFields p =
+          Left (arityMismatch (length fields) (length named))
+      | length params /= length named =
+          Left (Trap "arity mismatch for named arguments")
+      | otherwise = traverse bindNamed params
+
+    bindRecordField supplied (name, _) = case lookup name supplied of
+      Just value -> Right (name, value)
+      Nothing -> Left (Trap ("missing named argument: " <> unIdent name))
+
+arityMismatch :: Int -> Int -> EvalError
+arityMismatch expected given =
+  Trap
+    ( "arity mismatch: expected "
+        <> T.pack (show expected)
+        <> ", got "
+        <> T.pack (show given)
+    )
+
+isUnitParam :: Param -> Bool
+isUnitParam (Param (Ident "_") Nothing) = True
+isUnitParam (Param _ (Just (TName (TypeName "Unit")))) = True
+isUnitParam _ = False
+
+recordParamFields :: Param -> Maybe [(Ident, TypeExpr)]
+recordParamFields (Param _ (Just (TRecord fields))) = Just fields
+recordParamFields _ = Nothing
 
 isJust :: Maybe a -> Bool
 isJust = \case

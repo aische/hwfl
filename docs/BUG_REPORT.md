@@ -137,7 +137,10 @@ For `n > 2^62`, `2^63` overflows `Int` to `minBound` (negative); no element ever
 ### H-6 — Checker/runtime divergence: accepted programs trap at runtime
 
 - **Location:** `src/Hwfl/Check/Infer.hs:389-395` (`f()` on non-Unit), `:398-404` (positional args zip-checked against record _fields_); runtime side `src/Hwfl/Eval/Pure.hs:113-133` (`bindParams`); host-op record stubs `src/Hwfl/Check/Prelude.hs:141-149`
-- **Verification:** `[Verified]`
+- **Verification:** `[Verified]`; **fixed 2026-08** — empty application now
+  rejects non-`Unit` domains; runtime supplies omitted `Unit` and packs
+  positional/named record fields for a single record parameter. `fs.write`
+  accepts the two positional arguments the checker validates.
 
 1. `go ty []` — for `f() : Int -> Int`, when the domain isn't `Unit` it returns `Right ty` (the **function type itself**) instead of an error. `f()` typechecks; runtime applies `f` to zero args → `bindParams` arity `Trap`.
 2. `applyPositional` — when `length args == length fields` it zips positional args against record fields: `f {a=1} {b=2}` for `fun (a: Int, b: Int)` checks each record against a _field_ type and accepts. Runtime `bindParams` binds `a := {a=1}` (a record where `Int` was promised) → downstream arithmetic traps. Same class: `fs.write("a.txt", "hi")` typechecks against the record stub `{path, text}`; the driver receives two positionals.

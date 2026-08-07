@@ -314,7 +314,9 @@ doFsWrite env args =
     pathArg = case lookupNamed (Ident "path") args of
       Just v -> fileRefValue v
       Nothing -> fileRefArg args
-    textArg = lookupNamed (Ident "text") args
+    textArg = lookupNamed (Ident "text") args `orElse` lookupPositional 1 args
+    orElse (Just value) _ = Just value
+    orElse Nothing fallback = fallback
 
 doFsFind :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doFsFind env args = case globArg args of
