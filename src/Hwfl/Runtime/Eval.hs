@@ -261,7 +261,10 @@ runUntilPause ctx mode = go
       _ -> do
         er <- guardedStep ctx mode m
         case er of
-          Left err -> pure m {mStatus = MsFailed, mError = Just err}
+          Left err -> do
+            let failed = m {mStatus = MsFailed, mError = Just err}
+            _ <- persist ctx Nothing Nothing MsFailed (Just failed)
+            pure failed
           Right sr ->
             let m' = sr.srMachine
              in case mode of

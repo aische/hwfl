@@ -29,7 +29,8 @@ Order matters; do not skip ahead of H-6.
 
 - [x] **M-1** — `llm.object` validates provider JSON against schema before
       converting it to a runtime value
-- [ ] **M-13** — Persist failed machine; keep meta/snapshot status aligned
+- [x] **M-13** — Persist failed machine before finalizing the outcome; snapshot
+      and meta both report failed, and resume cannot replay the failed step
 - [ ] **M-14** — `text.split_sentences` must keep the final sentence
 - [ ] **M-2** + **M-11(b)** — Redaction hardening; re-wrap `TSecret` model
       fields as `VSecret`
@@ -119,6 +120,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
   `validateAgainstSchema` before `jsonToValue`; malformed or mistyped output
   becomes a normal `HostErr` and cannot violate the checked result type
   (2026-08)
+- **M-13** — Ordinary evaluator failures persist the failed root machine before
+      outcome finalization; `snapshot.json` and `meta.json` agree on failure,
+      and resume returns the terminal failure without replaying it (2026-08)
 - **H-5** + **L-19** — Bounded agent-budget suggestion; source and snapshot
   `max_rounds` validation; checked extension arithmetic (2026-08)
 - **H-3** — JSON `Scientific` decode keeps all integral values as arbitrary-

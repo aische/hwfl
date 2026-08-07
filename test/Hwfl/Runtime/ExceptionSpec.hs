@@ -24,10 +24,11 @@ import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     emptySkillRuntime,
+    resumeRun,
     runLoadedModule,
   )
-import Hwfl.Runtime.Snapshot (RunSnapshot (..))
-import Hwfl.Runtime.Store (RunStore, readRunSnapshot, readSpanRecords)
+import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..))
+import Hwfl.Runtime.Store (RunStore, readRunMeta, readRunSnapshot, readSpanRecords)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -163,6 +164,25 @@ readSrc =
       "```"
     ]
 
+pureTrapSrc :: Text
+pureTrapSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/pure-trap",
+      "inputs: {}",
+      "outputs:",
+      "  result: Int",
+      "effects: []",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { result: Int } =",
+      "  { result = 1 / 0 }",
+      "```"
+    ]
+
 failureOf :: RunOutcome -> IO (RuntimeError, RunStore)
 failureOf = \case
   OutcomeFailed err store _ -> pure (err, store)
@@ -225,6 +245,25 @@ spec = describe "exception containment (H-2)" $ do
         Just snap -> do
           snap.rsStatus `shouldBe` MsFailed
           fmap (.mStatus) snap.rsMachine `shouldBe` Just MsFailed
+
+  it "persists normal evaluator failures and does not replay them on resume" $
+    withSystemTempDirectory "hwfl-eval-persist" $ \dir -> do
+      let path = dir </> "pure-trap.md"
+          runId = "test-eval-persist"
+          opts = runOpts dir path runId
+      writeFile path (T.unpack pureTrapSrc)
+      (_, store) <- failureOf =<< runSource pureTrapSrc path opts
+      fmap (.rmStatus) <$> readRunMeta store `shouldReturn` Just "failed"
+      mSnap <- readRunSnapshot store
+      case mSnap of
+        Nothing -> expectationFailure "expected a snapshot for the failed run"
+        Just snap -> do
+          snap.rsStatus `shouldBe` MsFailed
+          fmap (.mStatus) snap.rsMachine `shouldBe` Just MsFailed
+      resumed <- resumeRun dir runId (roProvider opts) "model-catalog.json" noopObserver
+      resumed `shouldSatisfy` \case
+        OutcomeFailed {} -> True
+        _ -> False
 
   it "closes the span the crashed step opened" $
     withSystemTempDirectory "hwfl-exc-spans" $ \dir -> do

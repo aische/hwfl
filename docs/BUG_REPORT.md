@@ -284,9 +284,14 @@ glob-less `fs.grep`.
 ### M-13 — Failure states are not durable; meta/snapshot status divergence
 
 - **Location:** `src/Hwfl/Runtime/Eval.hs:247`, `src/Hwfl/Runtime/Run.hs:497-516`
-- **Verification:** `[Reported]`
+- **Verification:** **Fixed** (2026-08-07)
 
-`runUntilPause`'s `Left err -> pure m {mStatus = MsFailed, …}` never persists the failed machine; `meta.json` flips to `"failed"` while `snapshot.json` keeps the pre-failure machine. Resume after crash re-executes from before the failing step (only `doHostRun`/`failAgent`/`finishJoin` persist their own failure paths).
+`runUntilPause` now persists the failed root machine on its ordinary `Left err`
+path before `finalizeOutcome` updates `meta.json`. The snapshot status and
+embedded machine are both `MsFailed`, so meta and snapshot report `"failed"`
+after finalization and resume returns the terminal failure without replaying
+the step. Regression coverage uses an ordinary division-by-zero evaluator
+trap, rather than an exception or host-operation failure path.
 
 ### M-14 — `splitSentences` drops the final sentence
 

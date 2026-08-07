@@ -1,21 +1,20 @@
 # Status
-
 Last updated: 2026-08-07
 
 ## Current focus
-
 **Bug-fix pass** — Work [BUG_REPORT.md](BUG_REPORT.md) in the order in
 [TASKS.md](TASKS.md) (P0 High → P1 Medium → remaining). Agent substrate
 (MCP / git / terminals) waits until that backlog clears.
 
 ## North star
-
 hwfl = durable workflow **runtime library** (language + interpreter).
 Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
-
+- **M-13 fixed** — Ordinary evaluator failures persist their failed root
+  machine before finalization; `meta.json` and `snapshot.json` report the same
+  terminal status, and resume cannot replay the failed step
 - **M-5 fixed** — Shared filesystem traversal refuses directory-symlink
   descent; every listed directory has canonical containment and cycle checks
 - **M-19 fixed** — Record-domain host calls normalize packed records and accept
@@ -63,17 +62,14 @@ product. Broader lab framing in [idea.md](idea.md).
   chat `coding_session`
 
 ## Blockers
-
 None.
 
 ## Next up
-
-1. P1 Medium: M-13, M-14, M-2/M-11b, M-7
+1. P1 Medium: M-14, M-2/M-11b, M-7
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 
 ## Deferred
-
 - Opt-in Docker `exec.runtime` (spec §05 §3.1) when untrusted spawn bites
 - Multi-process run-store locking / **M-16** (until parallel lab processes)
 - Semantic-check S4 / S6; skills phase D; concurrent `par` host IO
@@ -81,5 +77,4 @@ None.
 - Nested ignore files; `fs.find`/`fs.grep` ignore opt-out flag
 
 ## Open naming
-
 Working title **hwfl** / CLI `hwfl` / fence `hwfl` is provisional.
