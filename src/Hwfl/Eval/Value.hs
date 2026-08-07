@@ -10,6 +10,7 @@ module Hwfl.Eval.Value
     Builtin (..),
     HostOpId (..),
     hostOpName,
+    finiteFloat,
     renderValue,
   )
 where
@@ -38,6 +39,13 @@ extendEnv = Map.insert
 
 extendEnvMany :: [(Ident, Value)] -> Env -> Env
 extendEnvMany bs e = foldl' (\acc (k, v) -> Map.insert k v acc) e bs
+
+-- | Construct a Float runtime value only when it has a representation in the
+-- language's JSON and snapshot formats.
+finiteFloat :: Text -> Double -> Either Text Value
+finiteFloat context d
+  | isNaN d || isInfinite d = Left (context <> " produced a non-finite Float")
+  | otherwise = Right (VFloat d)
 
 data Builtin
   = BAdd
@@ -157,7 +165,7 @@ renderValue = \case
   VBool True -> Right "true"
   VBool False -> Right "false"
   VInt n -> Right (T.pack (show n))
-  VFloat d -> Right (renderFloat d)
+  VFloat d -> renderFloat d
   VString t -> Right t
   VList xs -> do
     parts <- traverse renderJsonish xs
@@ -222,10 +230,11 @@ renderJsonish = \case
   VString t -> Right (T.pack (show t)) -- quoted
   v -> renderValue v
 
-renderFloat :: Double -> Text
+renderFloat :: Double -> Either Text Text
 renderFloat d
-  | d == fromIntegral r = T.pack (show r)
-  | otherwise = T.pack (show d)
+  | isNaN d || isInfinite d = Left "cannot render a non-finite Float"
+  | d == fromIntegral r = Right (T.pack (show r))
+  | otherwise = Right (T.pack (show d))
   where
     r = round d :: Integer
 

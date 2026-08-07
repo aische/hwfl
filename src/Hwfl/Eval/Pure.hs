@@ -23,7 +23,7 @@ import Hwfl.Eval.Value
 
 eval :: Env -> Expr -> Either EvalError Value
 eval env = \case
-  ELit lit -> Right (literalValue lit)
+  ELit lit -> literalValue lit
   EVar n ->
     maybe (Left (Trap ("unbound variable: " <> unIdent n))) Right (lookupEnv n env)
   EQName q ->
@@ -64,13 +64,13 @@ eval env = \case
   ETry {} -> Left (Unsupported "try/catch is not pure")
   ESchema {} -> Left (Unsupported "schema(T) is check-time only")
 
-literalValue :: Literal -> Value
+literalValue :: Literal -> Either EvalError Value
 literalValue = \case
-  LUnit -> VUnit
-  LBool b -> VBool b
-  LInt n -> VInt n
-  LFloat d -> VFloat d
-  LString t -> VString t
+  LUnit -> Right VUnit
+  LBool b -> Right (VBool b)
+  LInt n -> Right (VInt n)
+  LFloat d -> either (Left . Trap) Right (finiteFloat "float literal" d)
+  LString t -> Right (VString t)
 
 evalFields :: Env -> [Field] -> Either EvalError [(Ident, Value)]
 evalFields env = traverse $ \case
@@ -206,8 +206,9 @@ matchPat :: Pattern -> Value -> Maybe [(Ident, Value)]
 matchPat p v = case (p, v) of
   (PWild, _) -> Just []
   (PVar n, _) -> Just [(n, v)]
-  (PLit lit, _) ->
-    if literalValue lit `valueStructEq` v then Just [] else Nothing
+  (PLit lit, _) -> case literalValue lit of
+    Right expected | expected `valueStructEq` v -> Just []
+    _ -> Nothing
   (PList ps, VList xs)
     | length ps /= length xs -> Nothing
     | otherwise -> concat <$> traverse (uncurry matchPat) (zip ps xs)

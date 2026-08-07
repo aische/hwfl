@@ -20,6 +20,7 @@ import Hwfl.Eval.Value
   ( Builtin (..),
     Env,
     Value (..),
+    finiteFloat,
   )
 import Hwfl.Json.Encode (valueToJsonText)
 import Hwfl.Text.Corpus
@@ -121,7 +122,9 @@ applyBuiltin b args = case (b, args) of
   (BMdSections, [VString s]) -> case extractSections s of
     Left err -> Left (Trap ("md.sections: " <> err))
     Right secs -> Right (VList (map sectionValue secs))
-  (BJsonEncode, [v]) -> Right (VString (valueToJsonText v))
+  (BJsonEncode, [v]) -> case valueToJsonText v of
+    Left err -> Left (Trap ("json.encode: " <> err))
+    Right json -> Right (VString json)
   (BAnd, _) -> arityOrType "&&" 2 args
   (BOr, _) -> arityOrType "||" 2 args
   (BNot, _) -> arityOrType "not" 1 args
@@ -167,7 +170,7 @@ num2 ::
   Either EvalError Value
 num2 fi ff a b = case (a, b) of
   (VInt x, VInt y) -> Right (VInt (fi x y))
-  (VFloat x, VFloat y) -> Right (VFloat (ff x y))
+  (VFloat x, VFloat y) -> checkedFloat "arithmetic" (ff x y)
   _ -> Left (Trap "arithmetic expects Int+Int or Float+Float")
 
 div2 :: Value -> Value -> Either EvalError Value
@@ -175,8 +178,13 @@ div2 a b = case (a, b) of
   (VInt _, VInt 0) -> Left (Trap "division by zero")
   (VInt x, VInt y) -> Right (VInt (x `div` y))
   (VFloat _, VFloat 0) -> Left (Trap "division by zero")
-  (VFloat x, VFloat y) -> Right (VFloat (x / y))
+  (VFloat x, VFloat y) -> checkedFloat "division" (x / y)
   _ -> Left (Trap "division expects Int+Int or Float+Float")
+
+-- | 'Float' values must remain finite: JSON, snapshots, and rendering cannot
+-- represent IEEE NaN or infinity. Reject overflow at its arithmetic source.
+checkedFloat :: Text -> Double -> Either EvalError Value
+checkedFloat operation = either (Left . Trap) Right . finiteFloat operation
 
 ord2 ::
   (Integer -> Integer -> Bool) ->

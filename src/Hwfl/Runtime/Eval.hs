@@ -783,7 +783,16 @@ stepAgentTool ctx mode m ag tr
              in case bm'.mStatus of
                   MsCompleted ->
                     let v = fromMaybe VUnit bm'.mLastResult
-                     in completeToolCall ctx mode m ag tr (valueToJsonText v)
+                     in case valueToJsonText v of
+                          Left err ->
+                            recoverableTool
+                              ctx
+                              mode
+                              m
+                              ag
+                              tr
+                              (EvalErr (Trap ("cannot encode tool result: " <> err)))
+                          Right content -> completeToolCall ctx mode m ag tr content
                   MsFailed ->
                     recoverableTool
                       ctx
@@ -979,7 +988,16 @@ runSkillLoadTool ctx mode m ag tr tc =
                   Left _ -> ag1
                   Right ts ->
                     ag1 {agTools = insertSkillTool ag1.agTools ts}
-        completeToolCall ctx mode m ag2 tr (valueToJsonText load.aslResult)
+        case valueToJsonText load.aslResult of
+          Left err ->
+            recoverableTool
+              ctx
+              mode
+              m
+              ag2
+              tr
+              (EvalErr (Trap ("cannot encode tool result: " <> err)))
+          Right content -> completeToolCall ctx mode m ag2 tr content
       _ ->
         completeToolCall ctx mode m ag tr "invalid arguments: missing id"
 
@@ -2215,7 +2233,7 @@ crunchOnce ctx m = case m.mStatus of
 
 crunchEval :: RunCtx -> Machine -> Expr -> Env -> Either RuntimeError (Maybe Machine)
 crunchEval ctx m e env = case e of
-  ELit lit -> ret m (literalValue lit)
+  ELit lit -> literalValue lit >>= ret m
   EVar n -> case lookupEnv n env of
     Nothing -> Left (EvalErr (Trap ("unbound variable: " <> unIdent n)))
     Just v -> ret m v
@@ -2523,13 +2541,13 @@ indexList v ix = case (v, ix) of
   (VList _, _) -> Left (Trap "list index is not Int")
   _ -> Left (Trap "index on non-list")
 
-literalValue :: Literal -> Value
+literalValue :: Literal -> Either RuntimeError Value
 literalValue = \case
-  LUnit -> VUnit
-  LBool b -> VBool b
-  LInt n -> VInt n
-  LFloat d -> VFloat d
-  LString t -> VString t
+  LUnit -> Right VUnit
+  LBool b -> Right (VBool b)
+  LInt n -> Right (VInt n)
+  LFloat d -> either (Left . EvalErr . Trap) Right (finiteFloat "float literal" d)
+  LString t -> Right (VString t)
 
 confirmFromValue :: Value -> Either RuntimeError ConfirmRequest
 confirmFromValue = \case

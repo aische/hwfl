@@ -1,13 +1,14 @@
 module Hwfl.Eval.PureSpec (spec) where
 
 import Data.Text (Text)
+import Data.Text qualified as T
 import Hwfl.Ast.Decl (ModuleBody)
 import Hwfl.Ast.Expr (Expr, Param (..))
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Module (callFun, evalExpr, loadModuleBody)
-import Hwfl.Eval.Prelude (preludeEnv)
+import Hwfl.Eval.Prelude (applyBuiltin, preludeEnv)
 import Hwfl.Eval.Pure (bindParams)
 import Hwfl.Eval.Value
 import Hwfl.Parse.Expr (parseExprText)
@@ -65,6 +66,18 @@ spec = describe "pure evaluator" $ do
 
     it "Float arithmetic" $
       evalE "1.5 + 2.5" `shouldBe` Right (VFloat 4.0)
+
+    it "traps Float arithmetic overflow" $
+      applyBuiltin BMul [VFloat 1e308, VFloat 10]
+        `shouldBe` Left (Trap "arithmetic produced a non-finite Float")
+
+    it "traps Float division overflow" $
+      applyBuiltin BDiv [VFloat 1, VFloat 5e-324]
+        `shouldBe` Left (Trap "division produced a non-finite Float")
+
+    it "traps non-finite Float literals" $
+      evalE (T.replicate 400 "9" <> ".0")
+        `shouldBe` Left "Trap \"float literal produced a non-finite Float\""
 
     it "rejects mixed Int/Float arithmetic" $
       evalE "1 + 2.0" `shouldSatisfy` isLeft

@@ -117,12 +117,17 @@ Every JSON number funnels through `Double`. An integer ≥ 2⁵³ (`900719925474
 ### H-4 — Non-finite floats from ordinary language code crash persist/encode
 
 - **Location:** `src/Hwfl/Json/Encode.hs:43` (`VFloat d -> Aeson.Number (realToFrac d)`), `src/Hwfl/Runtime/Snapshot.hs:683` (`"v" .= d`), `src/Hwfl/Eval/Value.hs:225-229` (`renderFloat`); overflow source `src/Hwfl/Eval/Prelude.hs:169-170` (`num2` float ops)
-- **Verification:** `[Verified]` (mechanism)
+- **Verification:** `[Verified]` (mechanism); **fixed 2026-08-07**
 
 `1e308 * 10.0` produces `VFloat Infinity` — no NaN/Inf guard anywhere in the arithmetic builtins. The value then reaches Aeson via `realToFrac d :: Scientific` (or `renderFloat`'s `round d :: Integer`), both of which **throw on NaN/Infinity**. Any snapshot persist or `json.encode` of the value crashes the run (escapes per H-2).
 
 - **Impact:** Float overflow → process crash with stale snapshot → duplicate side effects on resume.
-- **Fix:** Guard `isNaN`/`isInfinite` at arithmetic results and/or at encode/render, converting to a `Trap`/`RuntimeError`.
+- **Fix applied:** `finiteFloat` now rejects NaN/Infinity from float literals
+  and arithmetic operations as `Trap`s, preventing invalid values from
+  reaching snapshot persistence. `valueToJsonText`/`valueToAeson` and
+  interpolation rendering are fallible and recursively reject a non-finite
+  `VFloat` supplied by an internal caller; agent tool-result encoding reports
+  that failure as a recoverable tool error rather than throwing.
 
 ### H-5 — `nextPow2` non-termination (DoS) on large budget values
 

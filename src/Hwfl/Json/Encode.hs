@@ -20,9 +20,10 @@ import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameToText)
 import Hwfl.Eval.Value (ToolSpecValue (..), Value (..), hostOpName)
 import Hwfl.Runtime.Turn (turnToJson)
 
-valueToJsonText :: Value -> Text
-valueToJsonText v =
-  TE.decodeUtf8 (BL.toStrict (Aeson.encode (valueToAeson v)))
+valueToJsonText :: Value -> Either Text Text
+valueToJsonText v = do
+  json <- valueToAeson v
+  pure (TE.decodeUtf8 (BL.toStrict (Aeson.encode json)))
 
 -- | Decode JSON numbers without losing integral precision. JSON numbers may
 -- exceed the finite range of hwfl's 'Double'-backed 'Float'; reject those
@@ -44,25 +45,33 @@ jsonToValue = \case
   where
     decodeField (k, v) = (Ident (Key.toText k),) <$> jsonToValue v
 
-valueToAeson :: Value -> Aeson.Value
+-- | Encode a runtime value as JSON. Non-finite IEEE floats have no JSON
+-- representation, so reject them instead of letting Aeson throw later.
+valueToAeson :: Value -> Either Text Aeson.Value
 valueToAeson = \case
-  VUnit -> Aeson.Null
-  VBool b -> Aeson.Bool b
-  VInt n -> Aeson.Number (fromIntegral n)
-  VFloat d -> Aeson.Number (realToFrac d)
-  VString s -> Aeson.String s
-  VList xs -> Aeson.Array (V.fromList (map valueToAeson xs))
-  VRecord fs -> object [Key.fromText (unIdent k) .= valueToAeson v | (k, v) <- fs]
-  VVariant (TypeName tag) Nothing -> Aeson.String tag
-  VVariant (TypeName tag) (Just p) ->
-    object ["tag" .= Aeson.String tag, "value" .= valueToAeson p]
-  VSecret _ -> Aeson.String "[REDACTED]"
-  VClosure {} -> Aeson.String "<closure>"
-  VTopFun (Ident n) -> Aeson.String ("<fun:" <> n <> ">")
-  VBuiltin {} -> Aeson.String "<builtin>"
-  VHostOp op -> Aeson.String ("<" <> hostOpName op <> ">")
-  VToolSpec ts -> Aeson.String ("<tool:" <> ts.tvsName <> ">")
-  VSkillMain q -> Aeson.String ("<skill:" <> qnameToText q <> ">")
-  VEntryMain q -> Aeson.String ("<entry:" <> qnameToText q <> ">")
-  VSchema schema -> schema
-  VTurn t -> turnToJson t
+  VUnit -> Right Aeson.Null
+  VBool b -> Right (Aeson.Bool b)
+  VInt n -> Right (Aeson.Number (fromIntegral n))
+  VFloat d
+    | isNaN d || isInfinite d -> Left "cannot encode a non-finite Float as JSON"
+    | otherwise -> Right (Aeson.Number (realToFrac d))
+  VString s -> Right (Aeson.String s)
+  VList xs -> Aeson.Array . V.fromList <$> traverse valueToAeson xs
+  VRecord fs -> Aeson.Object . KM.fromList <$> traverse encodeField fs
+  VVariant (TypeName tag) Nothing -> Right (Aeson.String tag)
+  VVariant (TypeName tag) (Just p) -> do
+    payload <- valueToAeson p
+    pure (object ["tag" .= Aeson.String tag, "value" .= payload])
+  VSecret _ -> Right (Aeson.String "[REDACTED]")
+  VClosure {} -> Right (Aeson.String "<closure>")
+  VTopFun (Ident n) -> Right (Aeson.String ("<fun:" <> n <> ">"))
+  VBuiltin {} -> Right (Aeson.String "<builtin>")
+  VHostOp op -> Right (Aeson.String ("<" <> hostOpName op <> ">"))
+  VToolSpec ts -> Right (Aeson.String ("<tool:" <> ts.tvsName <> ">"))
+  VSkillMain q -> Right (Aeson.String ("<skill:" <> qnameToText q <> ">"))
+  VEntryMain q -> Right (Aeson.String ("<entry:" <> qnameToText q <> ">"))
+  VSchema schema -> Right schema
+  VTurn t -> Right (turnToJson t)
+  where
+    encodeField (Ident name, value) =
+      (Key.fromText name,) <$> valueToAeson value

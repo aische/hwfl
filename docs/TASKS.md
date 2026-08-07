@@ -20,7 +20,8 @@ Order matters; do not skip ahead of H-6.
       single record parameters pack positional or named fields
 - [x] **H-3** — `jsonToValue` via `Scientific`; exact integers preserved and
       overflowing fractional `Double`s rejected
-- [ ] **H-4** — Guard NaN/Inf at float arith and/or encode/render
+- [x] **H-4** — Reject non-finite floats at literal/arithmetic construction
+      and JSON/render boundaries
 - [ ] **H-5** + **L-19** — Bounded `nextPow2`; fix `max_rounds` /
       `agMaxRounds + extra` wrap
 

@@ -6,8 +6,8 @@ import Data.Either (isLeft)
 import Data.Scientific (scientific)
 import Data.Vector qualified as V
 import Hwfl.Ast.Name (Ident (..))
-import Hwfl.Eval.Value (Value (..))
-import Hwfl.Json.Encode (jsonToValue)
+import Hwfl.Eval.Value (Value (..), renderValue)
+import Hwfl.Json.Encode (jsonToValue, valueToJsonText)
 import Test.Hspec
 
 spec :: Spec
@@ -38,4 +38,12 @@ spec = describe "jsonToValue" $ do
 
   it "rejects fractional values that overflow Float" $
     jsonToValue (Aeson.Number (scientific (10 ^ (1000 :: Int) + 1) (-1)))
+      `shouldSatisfy` isLeft
+
+  it "rejects non-finite floats during JSON encoding" $
+    valueToJsonText (VRecord [(Ident "nested", VFloat (1 / 0))])
+      `shouldSatisfy` isLeft
+
+  it "rejects non-finite floats during rendering" $
+    renderValue (VFloat (1 / 0))
       `shouldSatisfy` isLeft
