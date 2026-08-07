@@ -2,12 +2,66 @@
 
 Active work only. Archive completed sections to `log/archive/` weekly.
 
-## Now (P1) — post-exemplar substrate
+Findings live in [BUG_REPORT.md](BUG_REPORT.md) (IDs H-/M-/L-). Mark done
+here and in the report when fixed; do not re-litigate severity in this file.
 
-Credible skill-driven coding-agent shipped (`examples/coding-agent`).
-Flat one-shot retained as `examples/simple-coding-agent`.
+## Now (P0) — security / crash / trust
 
-## Next (P1–P2) — agent substrate
+Order matters; do not skip ahead of H-1 / H-7 / H-2.
+
+- [ ] **H-1** — Leaf `lstat` / `O_NOFOLLOW` on `fs.write` / `fs.copy` targets
+      (dangling-symlink sandbox escape). Touches L-24.
+- [ ] **H-7** — Sanitize run-id (single path component); reject reuse unless
+      explicit
+- [ ] **H-2** — `SomeException` barrier at run-loop + `try` around `llmChat`
+- [ ] **H-6** — Align checker `applyPositional` / `applyNamed` with `bindParams`
+- [ ] **H-3** — `jsonToValue` via `Scientific` (no Double detour); trap
+      non-finite
+- [ ] **H-4** — Guard NaN/Inf at float arith and/or encode/render
+- [ ] **H-5** + **L-19** — Bounded `nextPow2`; fix `max_rounds` /
+      `agMaxRounds + extra` wrap
+
+## Next (P1) — correctness / adjacent security
+
+- [ ] **M-1** — Validate `llm.object` JSON against schema (agent submit already
+      does)
+- [ ] **M-5** — `fs.find` / `fs.grep`: no directory-symlink descent; cycle /
+      containment checks
+- [ ] **M-13** — Persist failed machine; keep meta/snapshot status aligned
+- [ ] **M-14** — `text.split_sentences` must keep the final sentence
+- [ ] **M-2** + **M-11(b)** — Redaction hardening; re-wrap `TSecret` model
+      fields as `VSecret`
+- [ ] **M-7** — Contained, locale-safe module / project / catalog reads →
+      diagnostics (no raw IOException in `--json`)
+
+## Then (P2) — remaining Medium + author footguns
+
+- [ ] **M-8** — Resource limits: YAML alias bomb, parse depth, digit `read`,
+      pure-eval / machine step budget, type-alias memoization
+- [ ] **M-6** — `exec.run`: stream/truncate before full buffer; process-group
+      kill; validate timeout / max_output numerics
+- [ ] **M-10** — Effect residuals through let-aliases of top-level funs
+- [ ] **M-12** — Par: treat `PauseAwaitingAgent` / crash-recovery as not
+      runnable
+- [ ] **M-9** — Diagnose YAML duplicate frontmatter keys
+- [ ] **M-15** — Surface pricing/catalog decode failure (do not silent-zero)
+- [ ] **M-4** — `requestToTurns`: preserve all `RoleSystem` messages
+- [ ] **M-11(a)** — Optional schema fields / `null` → option representation
+- [ ] **M-3** — Skill-body prompt trust boundary (when third-party skills)
+- [ ] **M-17** — Structured tool/provider errors vs string-sniff span status
+- [ ] **M-18** — Project-hash / resume UX (only if prose edits brick resume
+      too often)
+- [ ] **L-5, L-6, L-14, L-16** — Parser/eval footguns: `a/b` QName, sequential
+      let sugar, eager `&&`/`||`, duplicate record fields
+
+## Later (P2–P3) — remaining Lows + deferred product
+
+### Remaining Low (hygiene; fix opportunistically)
+
+- [ ] **L-1–L-4, L-7–L-13, L-15, L-17–L-18, L-20–L-25** — spans, snapshot
+      parse, fsync, slugs, CLI, variants, ignore/glob, etc. See report.
+
+### Agent substrate (after bug pass)
 
 Prefer MCP / workflow modules over growing the host-op set.
 
@@ -15,48 +69,18 @@ Prefer MCP / workflow modules over growing the host-op set.
 - [ ] Git (read-heavy host ops or MCP) — status / diff / log
 - [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot
       `exec.run`
+- [ ] Opt-in `exec.runtime` = `host` \| `docker` behind `exec.run`
+      (spec [05-host-ops.md](spec/05-host-ops.md) §3.1)
 
-### Exec isolation (when coding-agent / untrusted spawn needs it)
+### Coding-agent / observability / research
 
-- [ ] Opt-in `exec.runtime` = `host` \| `docker` behind existing
-      `exec.run` — bind-mount workspace, allowlist + confirm retained.
-      Spec: [spec/05-host-ops.md](spec/05-host-ops.md) §3.1. Default stays
-      host; coding-agent examples may pin an image later. Not a new effect.
-
-## Later (P2–P3)
-
-### Coding-agent variants
-
-- [ ] Workflow-driven skills variant of the credible coding-agent —
-      **separate example project** (not a mode switch). Session module
-      loads skills outside the agent and injects instruction `content`
-      into `system` for plan / do_task; agents have no `skill.*` tools.
-      Duplication OK until `lib/`.
-
-### Observability
-
-- [ ] Opt-in LangSmith-style LLM transcripts — durable messages in/out
-      keyed by `span_id` (`transcripts.jsonl` or `payloads/`); spans stay
-      the thin index. CLI `--trace` / run option; redact + size caps.
-      See [spec/07-observability.md](spec/07-observability.md) §10.
-
-### Research / optional
-
-- [ ] Semantic-check S4 / S6 — parked; see
-      [semantic-check-plan.md](semantic-check-plan.md); optional fitness
-      filter for lab candidates
-- [ ] Optional: lab fitness sum `cost_micros` (spans already counted)
-- [ ] Skills phase D (optional) — `examples/skills/` writer; no hidden
-      `skill.extract` host
-- [ ] Optional: omit / `latest` run-id for approve / choose / reply / show
-      (resolve from workspace run store by status + recency)
-
-### Parallelism
-
-- [ ] Concurrent host transitions in `par` — overlap blocking IO across
-      branches; **or** run lab candidates as external parallel processes.
-      See [spec/06-runtime.md](spec/06-runtime.md) §10.
-- [ ] Multi-process run-store locking (only if external parallel lab
+- [ ] Workflow-driven skills coding-agent variant (separate example project)
+- [ ] Opt-in LangSmith-style LLM transcripts
+      ([07-observability.md](spec/07-observability.md) §10)
+- [ ] Semantic-check S4 / S6; skills phase D; lab fitness `cost_micros`
+- [ ] Omit / `latest` run-id for approve / choose / reply / show
+- [ ] Concurrent host transitions in `par`
+- [ ] Multi-process run-store locking (**M-16** — only when parallel lab
       processes share a run dir)
 
 ## Low priority
