@@ -15,6 +15,7 @@ module Hwfl.Runtime.Run
     replyRun,
     extendAgentRun,
     loadRunEnv,
+    loadRunEnvWithTypes,
     parseCliInputs,
     projectHashOf,
     newRunId,
@@ -35,10 +36,11 @@ import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word8)
 import Numeric (showHex)
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
+import Hwfl.Ast.Expr (Arg (..), Expr (..), ExprF (..), Field (..), MatchArm (..), Param (..), StringPart (..))
 import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), Section (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), Slug, qnameToText)
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
-import Hwfl.Check.Env (TypeEnv)
+import Hwfl.Check.Env (TypeEnv, resolveType)
 import Hwfl.Check.Error (CheckError, renderLocatedCheckError)
 import Hwfl.Check.Infer (inferModuleEnv)
 import Hwfl.Check.Module (checkLoadedModule, elaborateMainIO)
@@ -341,6 +343,71 @@ loadRunEnv (ModuleBody decls _) =
           (Map.union hostOpsEnv preludeEnv)
    in (env, table)
 
+-- | Resolve function parameter aliases before evaluation. The checker already
+-- expands aliases while deciding call shape; retaining source aliases here
+-- would make runtime Unit/record packing disagree with checked calls.
+loadRunEnvWithTypes :: TypeEnv -> ModuleBody -> (Env, FunTable)
+loadRunEnvWithTypes typeEnv = loadRunEnv . normalizeModuleParams typeEnv
+
+normalizeModuleParams :: TypeEnv -> ModuleBody -> ModuleBody
+normalizeModuleParams typeEnv (ModuleBody decls finalExpr) =
+  ModuleBody (map normalizeDecl decls) (normalizeExpr <$> finalExpr)
+  where
+    normalizeDecl = \case
+      DFun pos name params result body ->
+        DFun pos name (map normalizeParam params) result (normalizeExpr body)
+      decl -> decl
+
+    normalizeParam p =
+      p
+        { paramType =
+            fmap
+              (\ty -> either (const ty) id (resolveType typeEnv ty))
+              p.paramType
+        }
+
+    normalizeExpr expr =
+      expr
+        { eKind = case expr.eKind of
+            FList es -> FList (map normalizeExpr es)
+            FRecord fields -> FRecord (map normalizeField fields)
+            FInterp parts -> FInterp (map normalizePart parts)
+            FApp f args -> FApp (normalizeExpr f) (map normalizeArg args)
+            FProj e field -> FProj (normalizeExpr e) field
+            FIndex e index -> FIndex (normalizeExpr e) (normalizeExpr index)
+            FLet name annotation value body ->
+              FLet name annotation (normalizeExpr value) (normalizeExpr body)
+            FFun params result body ->
+              FFun (map normalizeParam params) result (normalizeExpr body)
+            FIf condition yes no ->
+              FIf (normalizeExpr condition) (normalizeExpr yes) (normalizeExpr no)
+            FMatch scrutinee arms ->
+              FMatch scrutinee (map normalizeArm arms)
+            FPar options name values body ->
+              FPar options name (normalizeExpr values) (normalizeExpr body)
+            FJoin es -> FJoin (map normalizeExpr es)
+            FConfirm e -> FConfirm (normalizeExpr e)
+            FChoice e -> FChoice (normalizeExpr e)
+            FTry attempt name handler ->
+              FTry (normalizeExpr attempt) name (normalizeExpr handler)
+            other -> other
+        }
+
+    normalizeField = \case
+      Field name value -> Field name (normalizeExpr value)
+      field -> field
+
+    normalizePart = \case
+      SInterp e -> SInterp (normalizeExpr e)
+      part -> part
+
+    normalizeArg = \case
+      ArgPos e -> ArgPos (normalizeExpr e)
+      ArgNamed name e -> ArgNamed name (normalizeExpr e)
+
+    normalizeArm (MatchArm pattern body) =
+      MatchArm pattern (normalizeExpr body)
+
 -- | Type env for @schema(T)@ at runtime (aliases from the loaded module).
 -- Elaborates @main@ I/O from frontmatter first — same as check — so untyped
 -- @main(inputs)@ does not fail infer and drop aliases.
@@ -409,8 +476,8 @@ startRun opts loaded ws meta store = do
   seqRef <- newIORef (0 :: Int)
   spans <- newSpanStateWith opts.roObserver
   pricing <- loadModelPricing opts.roModelCatalog
-  let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
-      typeEnv = loadTypeEnv loaded
+  let typeEnv = loadTypeEnv loaded
+      (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
       skillFuns = buildSkillFunTables opts.roSkillModules
       entryFuns = buildEntryFunTables opts.roEntryModules
@@ -611,8 +678,8 @@ mkCtx ::
   IO RunCtx
 mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods entryMods execPol modelCatalog = do
   ws <- newWorkspace wsRoot
-  let (baseEnv0, funs) = loadRunEnv (lmBody loaded)
-      typeEnv = loadTypeEnv loaded
+  let typeEnv = loadTypeEnv loaded
+      (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
       resumeOpts =
         RunOptions
@@ -829,7 +896,7 @@ buildSkillFunTables =
   Map.mapMaybeWithKey $ \_q m ->
     case smKind (skillMetaForModule m) of
       SkillInstruction -> Nothing
-      SkillCallable -> Just (loadRunEnv (lmBody m))
+      SkillCallable -> Just (loadRunEnvWithTypes (loadTypeEnv m) (lmBody m))
 
 -- | Build runtime tables for imported entry modules (non-skill, has @main@).
 -- Used to populate 'rcEntryModules' for same-project entry calls (E11).
@@ -840,7 +907,7 @@ buildEntryFunTables =
      in if null fm.fmInputs && null fm.fmOutputs
           then Nothing
           else
-            let (env, funs) = loadRunEnv (lmBody m)
+            let (env, funs) = loadRunEnvWithTypes (loadTypeEnv m) (lmBody m)
              in if Map.member (Ident "main") funs
                   then
                     Just

@@ -29,9 +29,6 @@ Order matters; do not skip ahead of H-6.
 
 - [x] **M-1** — `llm.object` validates provider JSON against schema before
       converting it to a runtime value
-- [ ] **M-19** — H-6 residuals: host parsers that still require names
-      (`fs.move`, `exec.run`, …); whole-record call to multi-param; Unit/record
-      packing that ignores type aliases (and bare `fun (x)` as `Unit -> T`)
 - [ ] **M-5** — `fs.find` / `fs.grep`: no directory-symlink descent; cycle /
       containment checks
 - [ ] **M-13** — Persist failed machine; keep meta/snapshot status aligned
@@ -113,6 +110,10 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-19** — Record-domain host calls normalize packed records; `fs.move` /
+  `exec.run` accept checked positionals; lone records unpack to multi-parameter
+  functions; runtime parameters resolve aliases; bare singleton parameters are
+  Unit thunks (2026-08)
 - **M-1** — `llm.object` validates provider responses with
   `validateAgainstSchema` before `jsonToValue`; malformed or mistyped output
   becomes a normal `HostErr` and cannot violate the checked result type

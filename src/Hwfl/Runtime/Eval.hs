@@ -237,8 +237,16 @@ openApply ctx fv argv = case fv of
         Right binds -> Right (CurEval body (extendEnvMany binds env))
   -- Same-project entry call (E11): the caller drives a nested BranchMachine.
   VEntryMain q -> Right (CurEntryInvoke q argv)
-  VHostOp op -> Right (CurHost op argv)
+  VHostOp op -> Right (CurHost op (normalizeHostArgs argv))
   _ -> Left (EvalErr (Trap "applied a non-function value"))
+
+-- | Record-domain host operations share the language call ABI: a single
+-- positional record is equivalent to its named fields. Host implementations
+-- otherwise receive raw arguments and cannot use 'bindParams'.
+normalizeHostArgs :: [(Maybe Ident, Value)] -> [(Maybe Ident, Value)]
+normalizeHostArgs = \case
+  [(Nothing, VRecord fields)] -> [(Just name, value) | (name, value) <- fields]
+  args -> args
 
 -------------------------------------------------------------------------------
 -- Driver

@@ -125,6 +125,9 @@ bindParams params args
         [p] <- params,
         isUnitParam p =
           Right [(paramName p, VUnit)]
+      | [VRecord fields] <- values,
+        length params > 1 =
+          traverse (bindRecordParam fields) params
       | [p] <- params,
         Just fields <- recordParamFields p,
         length values == length fields =
@@ -150,6 +153,10 @@ bindParams params args
       Just value -> Right (name, value)
       Nothing -> Left (Trap ("missing named argument: " <> unIdent name))
 
+    bindRecordParam fields p = case lookup (paramName p) fields of
+      Just value -> Right (paramName p, value)
+      Nothing -> Left (Trap ("missing record argument: " <> unIdent (paramName p)))
+
 arityMismatch :: Int -> Int -> EvalError
 arityMismatch expected given =
   Trap
@@ -161,6 +168,7 @@ arityMismatch expected given =
 
 isUnitParam :: Param -> Bool
 isUnitParam (Param (Ident "_") Nothing) = True
+isUnitParam (Param _ Nothing) = True
 isUnitParam (Param _ (Just (TName (TypeName "Unit")))) = True
 isUnitParam _ = False
 

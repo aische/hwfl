@@ -16,6 +16,9 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **M-19 fixed** — Record-domain host calls normalize packed records and accept
+  checked positionals; multi-parameter functions unpack lone records; runtime
+  parameters resolve aliases and bare singleton parameters are Unit thunks
 - **M-1 fixed** — `llm.object` validates decoded provider JSON against its
   schema before runtime conversion, so malformed or mistyped model output is a
   normal `HostErr` rather than a checker-soundness violation
@@ -63,7 +66,7 @@ None.
 
 ## Next up
 
-1. P1 Medium: M-19, M-5, M-13, M-14, M-2/M-11b, M-7
+1. P1 Medium: M-5, M-13, M-14, M-2/M-11b, M-7
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 

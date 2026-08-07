@@ -47,9 +47,15 @@ echoSrc =
       "## body",
       "",
       "```hwfl",
+      "type Command = { program: String, args: List<String>, stdin: String }",
+      "type Start = Unit",
+      "fun zero(_: Start): Int = 0",
+      "fun run_command(command: Command): { code: Int, out: String } =",
+      "  let result = exec.run({ program = command.program, args = command.args, stdin = command.stdin })",
+      "  { code = result.exit_code, out = result.stdout }",
       "fun main(_): { code: Int, out: String } =",
-      "  let r = exec.run(program = \"echo\", args = [\"hi\"], stdin = \"\")",
-      "  { code = r.exit_code, out = r.stdout }",
+      "  let _ = zero()",
+      "  run_command(\"echo\", [\"hi\"], \"\")",
       "```"
     ]
 
@@ -221,7 +227,7 @@ fsTreeSrc =
       "  let _ = fs.mkdir(\"out/nested\")",
       "  let _ = fs.copy(src = \"tree\", dst = \"out/tree\", exclude = [\"skip\"])",
       "  let st = fs.stat(\"out/tree/a.txt\")",
-      "  let _ = fs.move(src = \"out/tree/a.txt\", dst = \"out/nested/a.txt\")",
+      "  let _ = fs.move(\"out/tree/a.txt\", \"out/nested/a.txt\")",
       "  let moved = fs.exists(\"out/nested/a.txt\")",
       "  let skipped = fs.exists(\"out/tree/skip/hidden.txt\")",
       "  { existed = st.exists, kind = st.kind, size = st.size, after_move = moved, skipped = skipped }",

@@ -930,10 +930,14 @@ parseMoveArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text)
 parseMoveArgs args = do
   src <- case lookupNamed (Ident "src") args of
     Just v -> fileRefValue v
-    Nothing -> Left (HostErr "fs.move expects src: FileRef")
+    Nothing -> case lookupPositional 0 args of
+      Just v -> fileRefValue v
+      Nothing -> Left (HostErr "fs.move expects src: FileRef")
   dst <- case lookupNamed (Ident "dst") args of
     Just v -> fileRefValue v
-    Nothing -> Left (HostErr "fs.move expects dst: FileRef")
+    Nothing -> case lookupPositional 1 args of
+      Just v -> fileRefValue v
+      Nothing -> Left (HostErr "fs.move expects dst: FileRef")
   pure (src, dst)
 
 parseGrepArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text)
@@ -960,19 +964,25 @@ parseReadSliceArgs args = do
 
 parseExecArgs :: [(Maybe Ident, Value)] -> Either RuntimeError ExecArgs
 parseExecArgs args = do
-  program <- expectString (Ident "program") args
-  argv <- expectStringList (Ident "args") args
+  program <- expectStringOrPos (Ident "program") 0 args
+  argv <- expectStringListOrPos (Ident "args") 1 args
   stdin <- case lookupNamed (Ident "stdin") args of
     Just (VString t) -> Right t
     Just _ -> Left (HostErr "expected String for stdin")
-    Nothing -> Right ""
+    Nothing -> case lookupPositional 2 args of
+      Just (VString t) -> Right t
+      Just _ -> Left (HostErr "expected String for stdin")
+      Nothing -> Right ""
   pure ExecArgs {eaProgram = program, eaArgs = argv, eaStdin = stdin}
 
-expectStringList :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError [Text]
-expectStringList n args = case lookupNamed n args of
+expectStringListOrPos :: Ident -> Int -> [(Maybe Ident, Value)] -> Either RuntimeError [Text]
+expectStringListOrPos n i args = case lookupNamed n args of
   Just (VList xs) -> traverse asString xs
   Just _ -> Left (HostErr ("expected List<String> for " <> unIdent n))
-  Nothing -> Left (HostErr ("missing named argument: " <> unIdent n))
+  Nothing -> case lookupPositional i args of
+    Just (VList xs) -> traverse asString xs
+    Just _ -> Left (HostErr ("expected List<String> for " <> unIdent n))
+    Nothing -> Left (HostErr ("missing argument: " <> unIdent n))
   where
     asString = \case
       VString t -> Right t

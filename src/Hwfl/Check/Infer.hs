@@ -79,9 +79,8 @@ paramsDomain :: TypeEnv -> [Param] -> Either CheckError TypeExpr
 paramsDomain env = \case
   [] -> Right tUnit
   [Param _ (Just ty)] -> resolveType env ty
-  -- Bare @_@ defaults to Unit (E01-style entry stub).
-  [Param (Ident "_") Nothing] -> Right tUnit
-  [Param _ Nothing] -> Left (CannotInfer "parameter type")
+  -- A lone bare parameter is a Unit thunk. Runtime binds it to VUnit for f().
+  [Param _ Nothing] -> Right tUnit
   ps -> do
     fs <- traverse paramField ps
     pure (TRecord fs)

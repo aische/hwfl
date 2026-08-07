@@ -119,6 +119,10 @@ spec = describe "pure evaluator" $ do
       bindParams [Param (Ident "x") (Just (TName (TypeName "Unit")))] []
         `shouldBe` Right [(Ident "x", VUnit)]
 
+    it "supplies Unit for an omitted bare parameter" $
+      bindParams [Param (Ident "x") Nothing] []
+        `shouldBe` Right [(Ident "x", VUnit)]
+
     it "packs positional fields for a single record parameter" $
       bindParams
         [Param (Ident "input") (Just (TRecord [(Ident "a", TName (TypeName "Int")), (Ident "b", TName (TypeName "Int"))]))]
@@ -130,6 +134,14 @@ spec = describe "pure evaluator" $ do
         [Param (Ident "input") (Just (TRecord [(Ident "a", TName (TypeName "Int")), (Ident "b", TName (TypeName "Int"))]))]
         [(Just (Ident "a"), VInt 1), (Just (Ident "b"), VInt 2)]
         `shouldBe` Right [(Ident "input", VRecord [(Ident "a", VInt 1), (Ident "b", VInt 2)])]
+
+    it "unpacks a whole record for multiple parameters" $
+      bindParams
+        [ Param (Ident "a") (Just (TName (TypeName "Int"))),
+          Param (Ident "b") (Just (TName (TypeName "Int")))
+        ]
+        [(Nothing, VRecord [(Ident "a", VInt 1), (Ident "b", VInt 2)])]
+        `shouldBe` Right [(Ident "a", VInt 1), (Ident "b", VInt 2)]
 
 isLeft :: Either a b -> Bool
 isLeft = \case
