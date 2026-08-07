@@ -16,6 +16,9 @@ product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
 
+- **M-1 fixed** — `llm.object` validates decoded provider JSON against its
+  schema before runtime conversion, so malformed or mistyped model output is a
+  normal `HostErr` rather than a checker-soundness violation
 - **H-5 + L-19 fixed** — Agent-budget suggestions use bounded power-of-two
   growth and stop at `Int` headroom; source/snapshot budgets and extensions
   reject invalid or overflowing values
@@ -60,7 +63,7 @@ None.
 
 ## Next up
 
-1. P1 Medium: M-1, M-19, M-5, M-13, M-14, M-2/M-11b, M-7
+1. P1 Medium: M-19, M-5, M-13, M-14, M-2/M-11b, M-7
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 

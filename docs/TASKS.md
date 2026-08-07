@@ -27,8 +27,8 @@ Order matters; do not skip ahead of H-6.
 
 ## Next (P1) — correctness / adjacent security
 
-- [ ] **M-1** — Validate `llm.object` JSON against schema (agent submit already
-      does)
+- [x] **M-1** — `llm.object` validates provider JSON against schema before
+      converting it to a runtime value
 - [ ] **M-19** — H-6 residuals: host parsers that still require names
       (`fs.move`, `exec.run`, …); whole-record call to multi-param; Unit/record
       packing that ignores type aliases (and bare `fun (x)` as `Unit -> T`)
@@ -113,6 +113,10 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-1** — `llm.object` validates provider responses with
+  `validateAgainstSchema` before `jsonToValue`; malformed or mistyped output
+  becomes a normal `HostErr` and cannot violate the checked result type
+  (2026-08)
 - **H-5** + **L-19** — Bounded agent-budget suggestion; source and snapshot
   `max_rounds` validation; checked extension arithmetic (2026-08)
 - **H-3** — JSON `Scientific` decode keeps all integral values as arbitrary-

@@ -26,6 +26,7 @@ import Hwfl.Check.Project (checkProject, renderProjectCheckError)
 import Hwfl.Eval.Value
 import Hwfl.Exception (describeException, trySync)
 import Hwfl.Json.Encode (jsonToValue)
+import Hwfl.Json.Validate (validateAgainstSchema)
 import Hwfl.Llm.Pricing (ModelPricing, providerCloseAttrs)
 import Hwfl.Llm.Provider (LlmProvider (..), safeLlmChat)
 import Hwfl.Llm.Types
@@ -1056,7 +1057,7 @@ doLlmObject env args = case parseObjectArgs args of
     result <- safeLlmChat env.heProvider req
     pure $ case result of
       Left pe -> Left (ProviderErr (renderProviderError pe))
-      Right pr -> case decodeJsonObject pr.prContent of
+      Right pr -> case decodeJsonObject schema pr.prContent of
         Left err -> Left (HostErr err)
         Right val ->
           Right
@@ -1065,11 +1066,12 @@ doLlmObject env args = case parseObjectArgs args of
                 (providerCloseAttrs env.hePricing model pr)
             )
 
-decodeJsonObject :: Text -> Either Text Value
-decodeJsonObject txt =
+decodeJsonObject :: Aeson.Value -> Text -> Either Text Value
+decodeJsonObject schema txt =
   case Aeson.eitherDecodeStrict' (TE.encodeUtf8 txt) of
     Left err -> Left ("llm.object: invalid JSON response: " <> T.pack err)
-    Right (v :: Aeson.Value) ->
+    Right (v :: Aeson.Value) -> do
+      first ("llm.object: schema validation failed: " <>) (validateAgainstSchema schema v)
       first ("llm.object: invalid JSON number: " <>) (jsonToValue v)
 
 parseChatArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text, Text)

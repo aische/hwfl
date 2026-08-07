@@ -183,12 +183,18 @@ Related: **explicit run-id reuse merges runs** (`Run.hs:373-375`, `Store.hs:284-
 
 ## Medium
 
-### M-1 — `llm.object` never validates model JSON against the schema
+### M-1 — `llm.object` response schema validation
 
-- **Location:** `src/Hwfl/Runtime/Host.hs:1031-1045`; `src/Hwfl/Json/Validate.hs` wired only to agent submit (`Agent.hs:372-374`)
-- **Verification:** `[Reported]`, corroborated by code read at `Host.hs:1042-1045`
+- **Location:** `src/Hwfl/Runtime/Host.hs` (`doLlmObject` /
+  `decodeJsonObject`); `src/Hwfl/Json/Validate.hs`
+- **Verification:** **Fixed** (2026-08-07)
 
-The schema is passed to the provider only as a `chatResponseFormat` hint; `decodeJsonObject` → `jsonToValue` accepts anything. A model returning `{"score": "high"}` for `schema({score: Int})` flows to user code as `VString` where the checker promised `Int` — checker soundness voided (H-6 family).
+`llm.object` now validates decoded provider JSON with
+`validateAgainstSchema` before `jsonToValue`, matching the existing
+`llm.agent_object` submit boundary. A model response such as
+`{"score": "high"}` for `schema({score: Int})` returns a normal `HostErr`
+rather than reaching user code as a `VString` where the checker promised
+`Int`.
 
 ### M-2 — Redaction gaps: embedded, short, and oddly-keyed secrets leak to events and stderr
 
