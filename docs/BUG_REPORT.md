@@ -296,9 +296,11 @@ trap, rather than an exception or host-operation failure path.
 ### M-14 — `splitSentences` drops the final sentence
 
 - **Location:** `src/Hwfl/Text/Corpus.hs:101-106`
-- **Verification:** `[Reported]`
+- **Verification:** **Fixed** (2026-08-07)
 
-`consume [] acc cur` returns `reverse acc`, discarding the trailing `cur`: `text.split_sentences("One. Two")` → `["One."]` — data loss in a user-facing builtin.
+`consume [] acc cur` now appends a non-blank trailing `cur` after the completed
+sentences. Regression coverage includes terminated and unterminated final
+sentences, a single fragment, and whitespace-only input.
 
 ### M-15 — Pricing/catalog decode failure silently disables all cost accounting
 

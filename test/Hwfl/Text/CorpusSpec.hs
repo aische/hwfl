@@ -3,7 +3,8 @@
 module Hwfl.Text.CorpusSpec (spec) where
 
 import Hwfl.Text.Corpus
-  ( textIsQname,
+  ( splitSentences,
+    textIsQname,
     textNormalizeToken,
     textStartsWith,
     textTrim,
@@ -21,6 +22,12 @@ spec = describe "text corpus helpers" $ do
   it "starts_with matches prefixes" $ do
     textStartsWith "workflows/main.md" "workflows/" `shouldBe` True
     textStartsWith "README.md" "workflows/" `shouldBe` False
+
+  it "keeps unterminated final sentences" $ do
+    splitSentences "One. Two" `shouldBe` ["One.", "Two"]
+    splitSentences "One. Two." `shouldBe` ["One.", "Two."]
+    splitSentences "A final fragment" `shouldBe` ["A final fragment"]
+    splitSentences " \n\t " `shouldBe` []
 
   it "is_qname accepts module roots and rejects noise" $ do
     textIsQname "workflows/missing" `shouldBe` True

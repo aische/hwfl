@@ -12,6 +12,9 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **M-14 fixed** — `text.split_sentences` retains an unterminated final
+  sentence after completed ones; regression tests cover both sentence forms,
+  one fragment, and whitespace-only input
 - **M-13 fixed** — Ordinary evaluator failures persist their failed root
   machine before finalization; `meta.json` and `snapshot.json` report the same
   terminal status, and resume cannot replay the failed step
@@ -65,7 +68,7 @@ product. Broader lab framing in [idea.md](idea.md).
 None.
 
 ## Next up
-1. P1 Medium: M-14, M-2/M-11b, M-7
+1. P1 Medium: M-2/M-11b, M-7
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 

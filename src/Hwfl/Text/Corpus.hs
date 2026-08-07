@@ -100,9 +100,7 @@ splitSentences text =
     space = [' ', '\n', '\t'] :: [Char]
     consume [] acc cur =
       let sent = T.pack (reverse cur)
-       in if not (null acc)
-            then reverse acc
-            else [T.strip sent | not (T.null (T.strip sent))]
+       in reverse acc <> [sent | not (T.null (T.strip sent))]
     consume (c : cs) acc cur
       | c `elem` punct && (null cs || head cs `elem` space) =
           let sent = T.pack (reverse (c : cur))
