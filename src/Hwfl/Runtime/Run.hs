@@ -101,12 +101,18 @@ import Hwfl.Runtime.Machine
 import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..))
 import Hwfl.Runtime.Store
   ( RunStore,
-    openRunDir,
-    openRunStore,
+    createRun,
+    detachedRunStore,
+    openRun,
     persistTransition,
     readRunMeta,
     readRunSnapshot,
+    renderRunIdError,
+    renderRunStoreError,
+    runRef,
+    runStoreHandle,
     storeRunId,
+    validateRunId,
     writeRunMeta,
   )
 import Hwfl.Runtime.Workspace
@@ -127,7 +133,7 @@ import Hwfl.SkillCatalog
   )
 import Hwfl.Source (Diagnostic, Pos (..), mkDiagnostic, renderDiagnostics)
 import System.Directory (doesFileExist, doesPathExist)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (takeDirectory)
 import System.IO (IOMode (..), hPutStrLn, stderr, withBinaryFile)
 
 data RunOptions = RunOptions
@@ -367,23 +373,40 @@ sectionMap loaded =
   Map.fromList
     [(secSlug s, secBody s) | s <- lmSections loaded]
 
+-- | Start a new run. The run id (caller-supplied or generated) must be a
+-- single path component and must not already name a run: reusing an id would
+-- merge the new run into the old run's directory.
 runLoadedModule :: RunOptions -> LoadedModule -> IO RunOutcome
 runLoadedModule opts loaded = do
   ws <- newWorkspace opts.roWorkspace
   runId <- maybe newRunId pure opts.roRunId
   let hash = fromMaybe (projectHashOf loaded) opts.roProjectHash
-  store <- openRunStore (workspaceRoot ws) runId
   now <- getCurrentTime
   let started = T.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now)
-  writeRunMeta
-    store
-    RunMeta
-      { rmRunId = runId,
-        rmProjectHash = hash,
-        rmEntry = opts.roEntry,
-        rmStartedAt = started,
-        rmStatus = "running"
-      }
+      meta =
+        RunMeta
+          { rmRunId = runId,
+            rmProjectHash = hash,
+            rmEntry = opts.roEntry,
+            rmStartedAt = started,
+            rmStatus = "running"
+          }
+  created <- createRun (runRef (workspaceRoot ws) runId) meta
+  case created of
+    Left err ->
+      pure
+        ( OutcomeFailed
+            (ConfigErr (renderRunStoreError err))
+            (detachedRunStore runId)
+            0
+        )
+    Right store -> startRun opts loaded ws meta store
+
+startRun :: RunOptions -> LoadedModule -> Workspace -> RunMeta -> RunStore -> IO RunOutcome
+startRun opts loaded ws meta store = do
+  let runId = meta.rmRunId
+      started = meta.rmStartedAt
+      hash = meta.rmProjectHash
   seqRef <- newIORef (0 :: Int)
   spans <- newSpanStateWith opts.roObserver
   pricing <- loadModelPricing opts.roModelCatalog
@@ -868,7 +891,22 @@ loadExisting ::
 loadExisting workspace runId provider catalogPath observer = do
   ws <- newWorkspace workspace
   let root = workspaceRoot ws
-  store <- openRunStore root runId
+  case validateRunId runId of
+    Left e -> pure (Left (ConfigErr (renderRunIdError e)))
+    Right _ -> do
+      mStore <- openRun (runRef root runId)
+      case mStore of
+        Nothing -> pure (Left (ConfigErr ("unknown run id: " <> runId)))
+        Just store -> loadExistingFrom store root provider catalogPath observer
+
+loadExistingFrom ::
+  RunStore ->
+  FilePath ->
+  LlmProvider ->
+  FilePath ->
+  Observer ->
+  IO (Either RuntimeError (RunCtx, Machine, RunStore, IORef Int))
+loadExistingFrom store root provider catalogPath observer = do
   mMeta <- readRunMeta store
   mSnap <- readRunSnapshot store
   case (mMeta, mSnap) of
@@ -986,17 +1024,14 @@ stepRun workspace runId provider catalogPath observer = do
           closeModuleIfTerminal ctx store m1.mStatus
           finalizeOutcome store seqNo m1 observer
   where
-    failed e = do
-      store <- openRunDir (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
-      pure (OutcomeFailed e store 0)
+    failed e = pure (OutcomeFailed e (runStoreHandle (runRef workspace runId)) 0)
 
 resumeRun :: FilePath -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
 resumeRun workspace runId provider catalogPath observer = do
   loaded <- loadExisting workspace runId provider catalogPath observer
   case loaded of
-    Left e -> do
-      store0 <- openRunDir (workspace </> ".hwfl" </> "runs" </> T.unpack runId) runId
-      pure (OutcomeFailed e store0 0)
+    Left e ->
+      pure (OutcomeFailed e (runStoreHandle (runRef workspace runId)) 0)
     Right (ctx, machine0, store, seqRef) ->
       case machine0.mStatus of
         MsPaused (PauseAwaitingConfirm _) -> do
@@ -1030,9 +1065,8 @@ approveRun workspace runId yes provider catalogPath observer = do
   let root = workspaceRoot ws
   loaded <- loadExisting root runId provider catalogPath observer
   case loaded of
-    Left e -> do
-      store <- openRunDir (root </> ".hwfl" </> "runs" </> T.unpack runId) runId
-      pure (OutcomeFailed e store 0)
+    Left e ->
+      pure (OutcomeFailed e (runStoreHandle (runRef root runId)) 0)
     Right (ctx, machine0, store, seqRef) ->
       case approveMachine yes machine0 of
         Left e -> pure (OutcomeFailed e store 0)
@@ -1071,9 +1105,8 @@ chooseRun workspace runId selected provider catalogPath observer = do
   let root = workspaceRoot ws
   loaded <- loadExisting root runId provider catalogPath observer
   case loaded of
-    Left e -> do
-      store <- openRunDir (root </> ".hwfl" </> "runs" </> T.unpack runId) runId
-      pure (OutcomeFailed e store 0)
+    Left e ->
+      pure (OutcomeFailed e (runStoreHandle (runRef root runId)) 0)
     Right (ctx, machine0, store, seqRef) ->
       case chooseMachine selected machine0 of
         Left e -> pure (OutcomeFailed e store 0)
@@ -1112,9 +1145,8 @@ replyRun workspace runId text provider catalogPath observer = do
   let root = workspaceRoot ws
   loaded <- loadExisting root runId provider catalogPath observer
   case loaded of
-    Left e -> do
-      store <- openRunDir (root </> ".hwfl" </> "runs" </> T.unpack runId) runId
-      pure (OutcomeFailed e store 0)
+    Left e ->
+      pure (OutcomeFailed e (runStoreHandle (runRef root runId)) 0)
     Right (ctx, machine0, store, seqRef) ->
       case replyMachine text machine0 of
         Left e -> pure (OutcomeFailed e store 0)
@@ -1154,9 +1186,8 @@ extendAgentRun workspace runId extra provider catalogPath observer = do
   let root = workspaceRoot ws
   loaded <- loadExisting root runId provider catalogPath observer
   case loaded of
-    Left e -> do
-      store <- openRunDir (root </> ".hwfl" </> "runs" </> T.unpack runId) runId
-      pure (OutcomeFailed e store 0)
+    Left e ->
+      pure (OutcomeFailed e (runStoreHandle (runRef root runId)) 0)
     Right (ctx, machine0, store, seqRef) ->
       case extendAgentMachine extra machine0 of
         Left e -> pure (OutcomeFailed e store 0)

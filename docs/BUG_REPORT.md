@@ -143,13 +143,17 @@ For `n > 2^62`, `2^63` overflows `Int` to `minBound` (negative); no element ever
 ### H-7 — Unsanitized run-id is joined into a filesystem path (library API)
 
 - **Location:** `src/Hwfl/Runtime/Run.hs:373` (`maybe newRunId pure opts.roRunId`), `src/Hwfl/Runtime/Store.hs:192-194` (`openRunStore` → `T.unpack runId </>` + `createDirectoryIfMissing True`), `:183-186` (`openRunDir`)
-- **Verification:** `[Verified]`
+- **Verification:** `[Verified]` — reproduced on the CLI. **Fixed** (2026-08-07)
 
 `runTarget`/`resumeRun`/`approveRun`/… take the run-id verbatim and join it into `workspace/.hwfl/runs/<run-id>`, creating directories with `createDirectoryIfMissing True`. A run-id of `../../x` gives **arbitrary directory creation plus `meta.json`/`snapshot.json` read/write outside the workspace**. The CLI only exposes run-id positionally (operator-trusted), but the library API — the control-plane surface per `docs/architecture.md` — accepts caller-supplied ids.
 
 Related: **explicit run-id reuse merges runs** (`Run.hs:373-375`, `Store.hs:284-289`) — no existence check; old `snapshot.json`/`spans.jsonl` survive while `meta.json` is atomically clobbered and the seq resets to 0, so a crash before first persist leaves new meta + previous run's machine (same project hash) → duplicated execution and mixed spans.
 
-- **Fix:** Validate run-id as a single path component (no `/`, `.`, `..`); reject reuse of an existing run id unless explicitly intended.
+- **Fix applied:** `validateRunId` in `Store.hs` accepts only a single portable path component (`A-Za-z0-9._-`, no leading `.`, ≤ 128 chars) and every id→path mapping goes through `runDirFor`, which validates first. `hwfl resume . ../../pwned` now prints `config: run id must not start with '.'` and creates nothing.
+
+  The number of id→path entry points shrank with it: `openRunStore` / `tryOpenRunStore` are gone; a start goes through `createRun` (validate → `createDirectory`, so reuse loses the check/create race) and a continue goes through `openRun` (invalid or unknown id → `Nothing`). Resume no longer materialises a directory for an id it cannot open; the failure paths take a pure, non-creating handle (`runStoreHandle`) or a detached one that drops writes and reads empty.
+
+- **Deviation:** reuse of an existing run id is rejected **unconditionally**, with no "explicitly intended" opt-in. Starting a run into a live run directory has no correct semantics — old snapshot / spans survive while meta is replaced and the sequence restarts, which is exactly the corruption above — so continuing an existing run stays the job of resume / step / approve.
 
 ---
 
@@ -325,7 +329,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 - **Division by zero** — `div2` (`Eval/Prelude.hs:173-177`) guards **both** `Int` and `Float` zero divisors with `Trap`. _One review claimed Int div-by-zero was unguarded; direct read shows it is guarded — corrected here to prevent re-reporting._ `/` routes `BDiv → div2`.
 - **Alias cycle detection** — `resolveAliasDef`/`resolveTypeFrom` stack-seeded, self-/mutual-/deep cycles all produce `AliasCycle`; `DuplicateType`/`DuplicateFun` cover redecls.
 - **Secrets in snapshots** — `VSecret` persists as `"[REDACTED]"` (`Snapshot.hs:715-716`); span attrs redacted at write time.
-- **Run-id auto-generation** — wall-clock second + 64-bit hex nonce (`Run.hs:1237-1241`); collision-resistant; hazard is only explicit reuse (H-7).
+- **Run-id auto-generation** — wall-clock second + 64-bit hex nonce (`Run.hs:1237-1241`); collision-resistant; hazard was only explicit reuse (H-7, fixed).
 - **Lexer/parser core** — `tripleString` safe (megaparsec `tokens` restores state), `attachSourcePos errorOffset` correct, unterminated strings/comments give clean EOF diagnostics, position seeding consistent; no reachable unguarded `head`/`fromJust`/`read` on CLI input; `last xs` sites guarded.
 - **Torn-line tolerance** — spans/events/transitions readers use `mapMaybe decode`; torn trailing lines are skipped.
 
@@ -336,7 +340,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 1. **Exception barrier** at the run-loop boundary + `try` around `llmChat` (fixes H-2; converts H-3/H-4 from crashes into `RuntimeError`s).
 2. **`jsonToValue` via `Scientific`** — coefficient/exponent to `Integer`/`Double`, trap non-finite (fixes H-3, half of H-4).
 3. ~~**Leaf-level `O_NOFOLLOW`/`lstat`** on write/copy targets (fixes H-1).~~ **Done** — H-1 retracted; the real fix was check-before-create on parent chains (H-1a).
-4. **Sanitize run-id** (single path component) + existence check before reuse (H-7).
+4. ~~**Sanitize run-id** (single path component) + existence check before reuse (H-7).~~ **Done** — validation in the store, create-only start path.
 5. **`nextPow2`** — `ceiling (logBase 2 …)` or bounded search (H-5).
 6. **Align `applyPositional`/`applyNamed` with `bindParams`** or reject divergent shapes at check time (H-6, M-1).
 7. Redaction hardening (M-2), then the resource-exhaustion cluster (M-8), then the rest.

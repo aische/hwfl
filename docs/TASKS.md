@@ -7,13 +7,13 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 ## Now (P0) — security / crash / trust
 
-Order matters; do not skip ahead of H-7 / H-2.
+Order matters; do not skip ahead of H-2.
 
 - [x] **H-1** — Retracted, not reproducible (see report). **H-1a** fixed
       instead: check containment before creating each parent component.
       Touches L-24.
-- [ ] **H-7** — Sanitize run-id (single path component); reject reuse unless
-      explicit
+- [x] **H-7** — Run-id validated as a single path component; start is
+      create-only (reuse rejected)
 - [ ] **H-2** — `SomeException` barrier at run-loop + `try` around `llmChat`
 - [ ] **H-6** — Align checker `applyPositional` / `applyNamed` with `bindParams`
 - [ ] **H-3** — `jsonToValue` via `Scientific` (no Double detour); trap
@@ -107,6 +107,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **H-7** — `validateRunId` (single path component) in the store; `createRun`
+  is the only start path and rejects reuse; `openRunStore` /
+  `tryOpenRunStore` removed; failure paths no longer create run dirs (2026-08)
 - **H-1a** / **L-24** — Check-before-create parent chains; `O_NOFOLLOW` writes
   and `rename` copies; `fs.remove` unlinks leaf symlinks; `"symlink"` stat
   kind. H-1 itself retracted as not reproducible (2026-08)

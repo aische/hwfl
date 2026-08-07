@@ -9,6 +9,16 @@ module Hwfl.Runtime.Store
     storeRunId,
     RunRef (..),
     runRef,
+    runStoreHandle,
+    detachedRunStore,
+
+    -- * Run ids
+    RunIdError (..),
+    validateRunId,
+    renderRunIdError,
+    maxRunIdLength,
+    RunStoreError (..),
+    renderRunStoreError,
 
     -- * Filters / events
     SpanFilter (..),
@@ -36,8 +46,6 @@ module Hwfl.Runtime.Store
     persistTransition,
 
     -- * Compat aliases used by runtime / obs
-    openRunStore,
-    tryOpenRunStore,
     writeRunMeta,
     readRunMeta,
     writeRunSnapshot,
@@ -48,11 +56,13 @@ module Hwfl.Runtime.Store
   )
 where
 
+import Control.Exception (throwIO, try)
 import Control.Monad (filterM)
 import Data.Aeson (Value (..), object, withObject, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types (Parser, parseEither)
 import Data.ByteString.Lazy qualified as LBS
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.IORef (IORef, modifyIORef', readIORef)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Data.Text (Text)
@@ -79,17 +89,21 @@ import Hwfl.Runtime.Snapshot
     valueToJson,
   )
 import System.Directory
-  ( createDirectoryIfMissing,
+  ( createDirectory,
+    createDirectoryIfMissing,
     doesDirectoryExist,
     doesFileExist,
     listDirectory,
     renamePath,
   )
 import System.FilePath ((</>))
+import System.IO.Error (isAlreadyExistsError)
 
--- | Opaque per-run handle. FS backend stores a directory path internally.
+-- | Opaque per-run handle. 'Nothing' is a detached handle (see
+-- 'detachedRunStore'): it is backed by no directory, so writes are dropped
+-- and reads are empty.
 data RunStore = RunStore
-  { storeRoot :: FilePath,
+  { storeRoot :: Maybe FilePath,
     storeRunId :: Text,
     storeNotify :: StoreEvent -> IO ()
   }
@@ -106,6 +120,68 @@ data RunRef = RunRef
 
 runRef :: FilePath -> Text -> RunRef
 runRef = RunRef
+
+-------------------------------------------------------------------------------
+-- Run ids
+
+-- | Why a run id cannot be used as a store key.
+--
+-- The FS backend joins the run id into @.hwfl/runs/<id>@, and the library
+-- API takes run ids from callers (control plane, workflow code via
+-- @meta.read_*@), so ids are untrusted input and must denote a single path
+-- component.
+data RunIdError
+  = RunIdEmpty
+  | RunIdTooLong Int
+  | -- | Leading @.@ — also rules out @.@ and @..@.
+    RunIdLeadingDot
+  | RunIdBadChar Char
+  deriving stock (Eq, Show)
+
+renderRunIdError :: RunIdError -> Text
+renderRunIdError = \case
+  RunIdEmpty -> "run id must not be empty"
+  RunIdTooLong n ->
+    "run id is "
+      <> T.pack (show n)
+      <> " characters; maximum is "
+      <> T.pack (show maxRunIdLength)
+  RunIdLeadingDot -> "run id must not start with '.'"
+  RunIdBadChar c ->
+    "run id contains invalid character "
+      <> T.pack (show c)
+      <> "; allowed: A-Z a-z 0-9 '.' '_' '-'"
+
+maxRunIdLength :: Int
+maxRunIdLength = 128
+
+-- | Accept a run id only if it is a single, portable path component.
+validateRunId :: Text -> Either RunIdError Text
+validateRunId rid
+  | T.null rid = Left RunIdEmpty
+  | T.length rid > maxRunIdLength = Left (RunIdTooLong (T.length rid))
+  | "." `T.isPrefixOf` rid = Left RunIdLeadingDot
+  | otherwise = case T.find (not . isRunIdChar) rid of
+      Just c -> Left (RunIdBadChar c)
+      Nothing -> Right rid
+  where
+    isRunIdChar c =
+      isAsciiUpper c || isAsciiLower c || isDigit c || c == '.' || c == '_' || c == '-'
+
+-- | Failures of the create/open path that are the caller's fault.
+data RunStoreError
+  = RseRunId RunIdError
+  | -- | Starting a run into an id that already has a run directory. Reusing
+    -- an id would merge two runs (old snapshot / spans survive while meta is
+    -- replaced and the sequence restarts); continue an existing run with
+    -- resume / step instead.
+    RseAlreadyExists Text
+  deriving stock (Eq, Show)
+
+renderRunStoreError :: RunStoreError -> Text
+renderRunStoreError = \case
+  RseRunId e -> renderRunIdError e
+  RseAlreadyExists rid -> "run id already exists: " <> rid
 
 data SpanFilter = SpanFilter
   { sfNamePrefix :: Maybe Text,
@@ -126,7 +202,9 @@ data StoreEvent
 
 -- | Record-of-functions so lab / control-plane frontends can swap backends.
 data RunStoreBackend = RunStoreBackend
-  { rsCreate :: RunRef -> RunMeta -> IO RunStore,
+  { -- | Create a *new* run; fails on an invalid or already-used run id.
+    rsCreate :: RunRef -> RunMeta -> IO (Either RunStoreError RunStore),
+    -- | Open an existing run; 'Nothing' when the id is invalid or unknown.
     rsOpen :: RunRef -> IO (Maybe RunStore),
     rsWriteMeta :: RunStore -> RunMeta -> IO (),
     rsReadMeta :: RunStore -> IO (Maybe RunMeta),
@@ -146,7 +224,7 @@ defaultRunStoreBackend = fsRunStoreBackend
 -------------------------------------------------------------------------------
 -- Convenience over the default FS backend
 
-createRun :: RunRef -> RunMeta -> IO RunStore
+createRun :: RunRef -> RunMeta -> IO (Either RunStoreError RunStore)
 createRun = rsCreate fsRunStoreBackend
 
 openRun :: RunRef -> IO (Maybe RunStore)
@@ -180,21 +258,26 @@ readEventValues :: RunStore -> IO [Aeson.Value]
 readEventValues = rsReadEvents fsRunStoreBackend
 
 -- | Open (create) a run directory at an absolute path — tests / placeholders.
+-- The run id is not part of the path here, so it is not validated.
 openRunDir :: FilePath -> Text -> IO RunStore
 openRunDir root runId = do
   createDirectoryIfMissing True root
-  pure (mkHandle root runId (const (pure ())))
+  pure (mkHandle (Just root) runId (const (pure ())))
+
+-- | Pure handle for a run that may not exist. Creates nothing; an invalid
+-- run id yields a detached handle. Failure paths use this to report an
+-- outcome for a run they could not open, without materialising a directory.
+runStoreHandle :: RunRef -> RunStore
+runStoreHandle ref = case runDirFor ref.rrWorkspace ref.rrRunId of
+  Left _ -> detachedRunStore ref.rrRunId
+  Right root -> mkHandle (Just root) ref.rrRunId (const (pure ()))
+
+-- | Handle backed by no directory: writes are dropped, reads are empty.
+detachedRunStore :: Text -> RunStore
+detachedRunStore runId = mkHandle Nothing runId (const (pure ()))
 
 -------------------------------------------------------------------------------
 -- Compat names (runtime / obs call sites)
-
-openRunStore :: FilePath -> Text -> IO RunStore
-openRunStore workspace runId = do
-  let root = runsRoot workspace </> T.unpack runId
-  openRunDir root runId
-
-tryOpenRunStore :: FilePath -> Text -> IO (Maybe RunStore)
-tryOpenRunStore workspace runId = openRun (runRef workspace runId)
 
 writeRunMeta :: RunStore -> RunMeta -> IO ()
 writeRunMeta = writeMeta
@@ -269,7 +352,7 @@ fsRunStoreBackend =
       rsNotify = \store ev -> store.storeNotify ev
     }
 
-mkHandle :: FilePath -> Text -> (StoreEvent -> IO ()) -> RunStore
+mkHandle :: Maybe FilePath -> Text -> (StoreEvent -> IO ()) -> RunStore
 mkHandle root runId notify =
   RunStore
     { storeRoot = root,
@@ -277,35 +360,58 @@ mkHandle root runId notify =
       storeNotify = notify
     }
 
+-- | Run the action against the store's directory; detached handles yield the
+-- fallback without touching the filesystem.
+withStoreRoot :: RunStore -> a -> (FilePath -> IO a) -> IO a
+withStoreRoot store fallback act = case store.storeRoot of
+  Nothing -> pure fallback
+  Just root -> act root
+
 runsRoot :: FilePath -> FilePath
 runsRoot workspace = workspace </> ".hwfl" </> "runs"
 
-fsCreate :: RunRef -> RunMeta -> IO RunStore
-fsCreate ref meta = do
-  let root = runsRoot ref.rrWorkspace </> T.unpack ref.rrRunId
-  createDirectoryIfMissing True root
-  let store = mkHandle root ref.rrRunId (const (pure ()))
-  fsWriteMeta store meta
-  pure store
+-- | Run directory for a validated id. The id must be a single path
+-- component: an id like @../../x@ would otherwise read and write outside the
+-- workspace.
+runDirFor :: FilePath -> Text -> Either RunIdError FilePath
+runDirFor workspace rid = (\r -> runsRoot workspace </> T.unpack r) <$> validateRunId rid
+
+fsCreate :: RunRef -> RunMeta -> IO (Either RunStoreError RunStore)
+fsCreate ref meta = case runDirFor ref.rrWorkspace ref.rrRunId of
+  Left e -> pure (Left (RseRunId e))
+  Right root -> do
+    createDirectoryIfMissing True (runsRoot ref.rrWorkspace)
+    -- createDirectory (not …IfMissing) so an id already in use is rejected
+    -- without a check/create race.
+    created <- try (createDirectory root)
+    case created of
+      Left err
+        | isAlreadyExistsError err -> pure (Left (RseAlreadyExists ref.rrRunId))
+        | otherwise -> throwIO err
+      Right () -> do
+        let store = mkHandle (Just root) ref.rrRunId (const (pure ()))
+        fsWriteMeta store meta
+        pure (Right store)
 
 fsOpen :: RunRef -> IO (Maybe RunStore)
-fsOpen ref = do
-  let root = runsRoot ref.rrWorkspace </> T.unpack ref.rrRunId
-  exists <- doesDirectoryExist root
-  if not exists
-    then pure Nothing
-    else do
-      let store = mkHandle root ref.rrRunId (const (pure ()))
-      mMeta <- fsReadMeta store
-      mSnap <- fsReadSnapshot store
-      pure $ case (mMeta, mSnap) of
-        (Nothing, Nothing) -> Nothing
-        _ -> Just store
+fsOpen ref = case runDirFor ref.rrWorkspace ref.rrRunId of
+  Left _ -> pure Nothing
+  Right root -> do
+    exists <- doesDirectoryExist root
+    if not exists
+      then pure Nothing
+      else do
+        let store = mkHandle (Just root) ref.rrRunId (const (pure ()))
+        mMeta <- fsReadMeta store
+        mSnap <- fsReadSnapshot store
+        pure $ case (mMeta, mSnap) of
+          (Nothing, Nothing) -> Nothing
+          _ -> Just store
 
 fsWriteMeta :: RunStore -> RunMeta -> IO ()
-fsWriteMeta store meta = do
+fsWriteMeta store meta = withStoreRoot store () $ \root -> do
   atomicEncodeFile
-    (store.storeRoot </> "meta.json")
+    (root </> "meta.json")
     ( object
         [ "run_id" .= meta.rmRunId,
           "project_hash" .= meta.rmProjectHash,
@@ -317,8 +423,8 @@ fsWriteMeta store meta = do
   store.storeNotify (SeStatusChanged meta.rmStatus)
 
 fsReadMeta :: RunStore -> IO (Maybe RunMeta)
-fsReadMeta store = do
-  let path = store.storeRoot </> "meta.json"
+fsReadMeta store = withStoreRoot store Nothing $ \root -> do
+  let path = root </> "meta.json"
   exists <- doesFileExist path
   if not exists
     then pure Nothing
@@ -331,11 +437,11 @@ fsReadMeta store = do
           Right m -> Just m
 
 fsWriteSnapshot :: RunStore -> RunSnapshot -> IO ()
-fsWriteSnapshot store snap = do
+fsWriteSnapshot store snap = withStoreRoot store () $ \root -> do
   -- Snapshot first (atomic replace), then append the transition line.
   -- Progress is defined by snapshot; a crash after rename but before
   -- append leaves transitions lagging, which is recoverable.
-  atomicEncodeFile (store.storeRoot </> "snapshot.json") (snapshotToJson snap)
+  atomicEncodeFile (root </> "snapshot.json") (snapshotToJson snap)
   let line =
         Aeson.encode $
           object
@@ -344,7 +450,7 @@ fsWriteSnapshot store snap = do
               "status" .= statusText snap.rsStatus,
               "at" .= snap.rsAt
             ]
-  LBS.appendFile (store.storeRoot </> "transitions.jsonl") (line <> "\n")
+  LBS.appendFile (root </> "transitions.jsonl") (line <> "\n")
   store.storeNotify (SeSnapshotSeq snap.rsSeq)
 
 -- | Write JSON via temp file + rename so a crash mid-encode cannot
@@ -357,8 +463,8 @@ atomicEncodeFile path value = do
   renamePath tmp path
 
 fsReadSnapshot :: RunStore -> IO (Maybe RunSnapshot)
-fsReadSnapshot store = do
-  let path = store.storeRoot </> "snapshot.json"
+fsReadSnapshot store = withStoreRoot store Nothing $ \root -> do
+  let path = root </> "snapshot.json"
   exists <- doesFileExist path
   if not exists
     then pure Nothing
@@ -371,13 +477,13 @@ fsReadSnapshot store = do
           Right s -> Just s
 
 fsAppendSpan :: RunStore -> Aeson.Value -> IO ()
-fsAppendSpan store v = do
-  LBS.appendFile (store.storeRoot </> "spans.jsonl") (Aeson.encode v <> "\n")
+fsAppendSpan store v = withStoreRoot store () $ \root -> do
+  LBS.appendFile (root </> "spans.jsonl") (Aeson.encode v <> "\n")
   store.storeNotify (SeSpan v)
 
 fsAppendEvent :: RunStore -> Aeson.Value -> IO ()
-fsAppendEvent store v = do
-  LBS.appendFile (store.storeRoot </> "events.jsonl") (Aeson.encode v <> "\n")
+fsAppendEvent store v = withStoreRoot store () $ \root -> do
+  LBS.appendFile (root </> "events.jsonl") (Aeson.encode v <> "\n")
   store.storeNotify (SeEvent v)
 
 fsListRuns :: FilePath -> IO [RunMeta]
@@ -393,17 +499,17 @@ fsListRuns workspace = do
       pure (catMaybes metas)
   where
     readMetaForDir root name = do
-      let store = mkHandle (root </> name) (T.pack name) (const (pure ()))
+      let store = mkHandle (Just (root </> name)) (T.pack name) (const (pure ()))
       fsReadMeta store
 
 fsReadSpans :: RunStore -> SpanFilter -> IO [SpanRecord]
-fsReadSpans store filt = do
-  records <- readSpanRecordsAt store.storeRoot
+fsReadSpans store filt = withStoreRoot store [] $ \root -> do
+  records <- readSpanRecordsAt root
   pure (applySpanFilter filt records)
 
 fsReadEvents :: RunStore -> IO [Aeson.Value]
-fsReadEvents store = do
-  let path = store.storeRoot </> "events.jsonl"
+fsReadEvents store = withStoreRoot store [] $ \root -> do
+  let path = root </> "events.jsonl"
   exists <- doesFileExist path
   if not exists
     then pure []

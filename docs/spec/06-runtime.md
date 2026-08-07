@@ -123,6 +123,21 @@ auto-skip of work (hwfi abandoned cache-as-resume).
 `runTargetModule` stores `projectHashOf`. Resume must not recompute the
 entry-only hash for a project-shaped run — that always mismatches.
 
+### Run ids
+
+A run id is a store key, and callers (control plane, workflow code via
+`meta.read_*`) may choose it, so it is untrusted input:
+
+- Valid ids are a single portable path component: `A-Za-z0-9._-`, no leading
+  `.`, at most 128 characters. Anything else is refused before a path is
+  built — a store backend must never join a raw id itself.
+- Starting a run is **create-only**. An id that already names a run is
+  refused; reuse would merge two runs into one directory (old snapshot and
+  spans survive, meta is replaced, `seq` restarts). Continuing an existing
+  run is `resume` / `step` / `approve`, never a second start.
+- Opening a run creates nothing: an unknown, invalid, or unopenable run
+  leaves no directory behind.
+
 ## 5. `par` policy
 
 ```text

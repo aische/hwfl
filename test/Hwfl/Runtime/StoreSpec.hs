@@ -1,5 +1,6 @@
 module Hwfl.Runtime.StoreSpec (spec) where
 
+import Data.Either (isRight)
 import Data.Maybe (isJust, isNothing)
 import Data.Set qualified as Set
 import Data.Text qualified as T
@@ -11,17 +12,22 @@ import Hwfl.Driver
     driverReadMeta,
     driverReadSnapshot,
     driverReadSpans,
+    driverResume,
     driverRun,
     emptySpanFilter,
+    noopObserver,
     runRef,
   )
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Span (SpanRecord (..))
+import Hwfl.Runtime.Error (renderRuntimeError)
 import Hwfl.Runtime.Machine (MachineStatus (..))
 import Hwfl.Runtime.Run (newRunId)
 import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..))
 import Hwfl.Runtime.Store
-  ( SpanFilter (..),
+  ( RunIdError (..),
+    RunStoreError (..),
+    SpanFilter (..),
     createRun,
     listRuns,
     openRun,
@@ -29,10 +35,11 @@ import Hwfl.Runtime.Store
     readMeta,
     readSnapshot,
     readSpans,
+    validateRunId,
     writeMeta,
     writeSnapshot,
   )
-import System.Directory (doesFileExist, listDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -112,7 +119,9 @@ spec = describe "run-store interface (FS)" $ do
                   rmStartedAt = "2026-07-17T00:00:00Z",
                   rmStatus = "running"
                 }
-        _ <- createRun (runRef dir "c1") meta
+        createRun (runRef dir "c1") meta >>= \case
+          Left err -> expectationFailure ("expected create, got: " <> show err)
+          Right _ -> pure ()
         listed <- listRuns dir
         map (.rmRunId) listed `shouldBe` ["c1"]
         mStore <- openRun (runRef dir "c1")
@@ -219,6 +228,59 @@ spec = describe "run-store interface (FS)" $ do
         names <- listDirectory (dir </> "run-x")
         any (".tmp" `T.isSuffixOf`) (map T.pack names) `shouldBe` False
 
+    it "rejects run ids that are not a single path component" $ do
+      validateRunId "run-1" `shouldBe` Right "run-1"
+      validateRunId "" `shouldBe` Left RunIdEmpty
+      validateRunId "." `shouldBe` Left RunIdLeadingDot
+      validateRunId ".." `shouldBe` Left RunIdLeadingDot
+      validateRunId ".hidden" `shouldBe` Left RunIdLeadingDot
+      validateRunId "../../x" `shouldBe` Left RunIdLeadingDot
+      validateRunId "a/b" `shouldBe` Left (RunIdBadChar '/')
+      validateRunId "a\\b" `shouldBe` Left (RunIdBadChar '\\')
+      validateRunId "a b" `shouldBe` Left (RunIdBadChar ' ')
+      validateRunId (T.pack (replicate 129 'a'))
+        `shouldBe` Left (RunIdTooLong 129)
+
+    it "createRun refuses a traversal run id and writes nothing outside runs" $
+      withSystemTempDirectory "hwfl-store-escape" $ \dir -> do
+        let workspace = dir </> "ws"
+            meta =
+              RunMeta
+                { rmRunId = "../../escape",
+                  rmProjectHash = "h",
+                  rmEntry = "entry.md",
+                  rmStartedAt = "2026-08-07T00:00:00Z",
+                  rmStatus = "running"
+                }
+        createDirectoryIfMissing True workspace
+        created <- createRun (runRef workspace "../../escape") meta
+        case created of
+          Left err -> err `shouldBe` RseRunId RunIdLeadingDot
+          Right _ -> expectationFailure "expected the run id to be rejected"
+        openRun (runRef workspace "../../escape") >>= (`shouldSatisfy` isNothing)
+        doesDirectoryExist (workspace </> ".hwfl") `shouldReturn` False
+        listDirectory dir `shouldReturn` ["ws"]
+
+    it "createRun refuses to reuse an existing run id" $
+      withSystemTempDirectory "hwfl-store-reuse" $ \dir -> do
+        let meta =
+              RunMeta
+                { rmRunId = "dup",
+                  rmProjectHash = "h",
+                  rmEntry = "entry.md",
+                  rmStartedAt = "2026-08-07T00:00:00Z",
+                  rmStatus = "running"
+                }
+        first <- createRun (runRef dir "dup") meta
+        first `shouldSatisfy` isRight
+        second <- createRun (runRef dir "dup") meta {rmProjectHash = "other"}
+        case second of
+          Left err -> err `shouldBe` RseAlreadyExists "dup"
+          Right _ -> expectationFailure "expected the reused run id to be rejected"
+        -- The first run's meta must survive the rejected second create.
+        mMeta <- driverReadMeta (runRef dir "dup")
+        fmap (.rmProjectHash) mMeta `shouldBe` Just "h"
+
     it "generates unique collision-resistant run ids within the same second" $ do
       ids <- mapM (const newRunId) [1 .. 40 :: Int]
       length (Set.fromList ids) `shouldBe` 40
@@ -227,7 +289,73 @@ spec = describe "run-store interface (FS)" $ do
         ids
         `shouldBe` True
       all hasEntropySuffix ids `shouldBe` True
+
+  describe "run-id sanitization at the runtime boundary" $ do
+    it "driverRun rejects a traversal run id before touching the filesystem" $
+      withSystemTempDirectory "hwfl-run-escape" $ \dir -> do
+        let workspace = dir </> "ws"
+            path = dir </> "pure.md"
+        createDirectoryIfMissing True workspace
+        writeFile path (T.unpack pureModule)
+        let req =
+              (defaultDriverRunRequest path workspace mockProvider)
+                { drrRunId = Just "../../escape"
+                }
+        result <- driverRun req
+        case result of
+          Right (OutcomeFailed err _ _) ->
+            renderRuntimeError err `shouldSatisfy` T.isInfixOf "run id"
+          other -> expectationFailure ("expected failure, got: " <> show other)
+        doesDirectoryExist (dir </> "escape") `shouldReturn` False
+        doesDirectoryExist (workspace </> ".hwfl") `shouldReturn` False
+
+    it "driverRun refuses to start a second run under the same id" $
+      withSystemTempDirectory "hwfl-run-reuse" $ \dir -> do
+        let path = dir </> "pure.md"
+        writeFile path (T.unpack pureModule)
+        let req =
+              (defaultDriverRunRequest path dir mockProvider)
+                { drrRunId = Just "same"
+                }
+        first <- driverRun req
+        case first of
+          Right (OutcomeCompleted {}) -> pure ()
+          other -> expectationFailure ("expected completed, got: " <> show other)
+        second <- driverRun req
+        case second of
+          Right (OutcomeFailed err _ _) ->
+            renderRuntimeError err `shouldSatisfy` T.isInfixOf "already exists"
+          other -> expectationFailure ("expected failure, got: " <> show other)
+        -- One run directory, still holding the first run's completed snapshot.
+        metas <- driverListRuns dir
+        map (.rmRunId) metas `shouldBe` ["same"]
+        mSnap <- driverReadSnapshot (runRef dir "same")
+        fmap (.rsStatus) mSnap `shouldBe` Just MsCompleted
+
+    it "driverResume rejects an invalid run id and creates no run dir" $
+      withSystemTempDirectory "hwfl-resume-escape" $ \dir -> do
+        outcome <- driverResume dir "../../escape" mockProvider "model-catalog.json" noopObserver
+        case outcome of
+          OutcomeFailed err _ _ ->
+            renderRuntimeError err `shouldSatisfy` T.isInfixOf "run id"
+          other -> expectationFailure ("expected failure, got: " <> show other)
+        doesDirectoryExist (dir </> ".hwfl") `shouldReturn` False
+        listDirectory dir `shouldReturn` []
   where
+    pureModule =
+      T.unlines
+        [ "---",
+          "name: workflows/store",
+          "inputs: {}",
+          "outputs:",
+          "  n: Int",
+          "effects: []",
+          "---",
+          "",
+          "```hwfl",
+          "fun main(_): { n: Int } = { n = 1 }",
+          "```"
+        ]
     hasEntropySuffix rid =
       case T.splitOn "-" rid of
         ["run", ymd, hms, nonce] ->
