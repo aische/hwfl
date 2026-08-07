@@ -199,9 +199,14 @@ rather than reaching user code as a `VString` where the checker promised
 ### M-2 — Redaction gaps: embedded, short, and oddly-keyed secrets leak to events and stderr
 
 - **Location:** `src/Hwfl/Obs/Redact.hs:53-86`; `src/Hwfl/Obs/Stream.hs:143-147` (unredacted `debugLog` of LLM deltas); `src/Hwfl/Obs/Observer.hs:64` (raw stderr); `Run.hs:626` (host-op logs unredacted to stderr)
-- **Verification:** `[Reported]`
+- **Verification:** **Fixed** (2026-08-07)
 
-`Aeson.String` values are redacted only when the _whole string_ looks like a secret; a tool-call arg or `obs.log` field containing `{"api_key":"sk-...","password":"x"}` passes through. Key detection misses `private_key`, `passphrase`, `pwd`, `pem` (not in the list, don't contain the infix substrings). Token heuristics miss 40+ char lowercase hex, JWTs (contain `.`), and short tokens. `--debug` writes raw delta text and host-op lines to stderr unredacted; `snapshot.json` itself is `VSecret`-safe (`Snapshot.hs:715-716`), and span attrs are redacted at write time (`Trace.hs:89-90`), but embedded secrets in plain `VString` args/stdout are not.
+Sensitive keys are now normalized before matching (`private_key`, `passphrase`,
+`pwd`, and `pem` included). Text redaction handles JSON embedded in strings,
+common key/JWT/hex credential forms, and PEM blocks. Streaming event fields are
+redacted before durable append; the stderr observer and host-progress logger
+also redact as a final boundary. This is defence in depth: only `VSecret`
+taint can soundly protect arbitrary short plaintext.
 
 ### M-3 — Skill bodies injected verbatim into the system prompt (prompt injection with agent powers)
 
@@ -270,9 +275,9 @@ glob-less `fs.grep`.
 ### M-11 — `TOption` fields forced `required`; `TSecret` flattened to inner schema
 
 - **Location:** `src/Hwfl/Check/Schema.hs:84-88`
-- **Verification:** `[Reported]`
+- **Verification:** **Partially fixed** (2026-08-07; M-11(b))
 
-(a) `required` lists every field, so an absent optional field fails validation while runtime `jsonToValue` maps `null` → `VUnit` — no `Nothing` representation, downstream matches on options trap. (b) Secret fields emit the _inner_ schema and nothing re-wraps the model's response in `VSecret`, so secrets round-trip as plain `VString`, **bypassing redaction** (M-2).
+(a) `required` lists every field, so an absent optional field fails validation while runtime `jsonToValue` maps `null` → `VUnit` — no `Nothing` representation, downstream matches on options trap. (b) **Fixed:** `TSecret` emits an internal schema annotation. Provider-bound schemas strip it, while `llm.object` and agent submit decode structurally and restore `VSecret` at every annotated node.
 
 ### M-12 — Par branch agent-budget exhaustion misclassified as "no progress"
 

@@ -31,7 +31,7 @@ Order matters; do not skip ahead of H-6.
       converting it to a runtime value
 - [x] **M-13** — Persist failed machine before finalizing the outcome; snapshot
       and meta both report failed, and resume cannot replay the failed step
-- [ ] **M-2** + **M-11(b)** — Redaction hardening; re-wrap `TSecret` model
+- [x] **M-2** + **M-11(b)** — Redaction hardening; re-wrap `TSecret` model
       fields as `VSecret`
 - [ ] **M-7** — Contained, locale-safe module / project / catalog reads →
       diagnostics (no raw IOException in `--json`)
@@ -108,6 +108,10 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-2 + M-11(b)** — Reflected secret schema nodes retain an internal marker;
+  `llm.object` and agent submit decoding restore `VSecret`, while provider
+  requests strip the marker. Events and stderr redact sensitive-key,
+  embedded-JSON, and common credential text (2026-08)
 - **M-14** — `text.split_sentences` retains a non-blank unterminated final
   sentence after completed sentences; corpus tests cover final fragments and
   whitespace-only input (2026-08)

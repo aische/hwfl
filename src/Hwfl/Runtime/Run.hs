@@ -64,6 +64,7 @@ import Hwfl.Obs.Observer
     PauseInfo (..),
     noopObserver,
   )
+import Hwfl.Obs.Redact (redactText)
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
 import Hwfl.Obs.Trace
   ( SpanState (..),
@@ -650,7 +651,7 @@ mkHostLog showCost spans msg = do
         prefix <- runCostPrefix spans
         pure (prefix <> msg)
       else pure msg
-  hPutStrLn stderr (T.unpack line)
+  hPutStrLn stderr (T.unpack (redactText line))
 
 closeModuleSpan :: RunStore -> SpanState -> Text -> MachineStatus -> IO ()
 closeModuleSpan store spans sid status = case status of

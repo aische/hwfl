@@ -12,6 +12,8 @@ import Hwfl.Check.Env (TypeEnv (..), emptyTypeEnv)
 import Hwfl.Check.Infer (infer)
 import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Check.Schema (schemaType, typeToSchema, typeToSchemaWithDocs)
+import Hwfl.Eval.Value (Value (..))
+import Hwfl.Json.Encode (jsonToValueWithSchema, schemaForProvider)
 import Hwfl.Parse.Expr (parseExprText)
 import Hwfl.Parse.Type (parseTypeText)
 import Test.Hspec
@@ -66,6 +68,25 @@ spec = describe "schema(T)" $ do
                   "items" .= object ["type" .= String "string"]
                 ]
             )
+
+  it "preserves Secret annotations internally but omits them for providers" $
+    case parseT "{ key: Secret<String> }" of
+      Left err -> expectationFailure err
+      Right ty -> do
+        let json = object ["key" .= String "hunter2"]
+        case typeToSchema emptyTypeEnv ty of
+          Left err -> expectationFailure (show err)
+          Right schema -> do
+            jsonToValueWithSchema schema json
+              `shouldBe` Right (VRecord [(Ident "key", VSecret (VString "hunter2"))])
+            schemaForProvider schema
+              `shouldBe`
+                object
+                  [ "type" .= String "object",
+                    "properties" .= object ["key" .= object ["type" .= String "string"]],
+                    "required" .= Array (V.fromList [String "key"]),
+                    "additionalProperties" .= False
+                  ]
 
   it "adds field descriptions from schema docs for named aliases" $ do
     let env =

@@ -81,7 +81,9 @@ typeToSchemaWithDocs env docs te = go [] te
                       ]
                   )
             ]
-      TSecret e -> go stack e
+      -- Preserve this runtime-only annotation so model responses can recover
+      -- the secret taint after JSON decoding. Provider-facing schemas strip it.
+      TSecret e -> markSecret <$> go stack e
       TRecord fs -> do
         propPairs <- traverse (\(Ident k, ty) -> (k,) <$> go stack ty) fs
         let required = arrStr [k | (Ident k, _) <- fs]
@@ -102,6 +104,13 @@ typeToSchemaWithDocs env docs te = go [] te
 
 arrStr :: [Text] -> Value
 arrStr xs = Array (V.fromList (map String xs))
+
+markSecret :: Value -> Value
+markSecret = \case
+  Object o -> Object (KM.insert "x-hwfl-secret" (Bool True) o)
+  -- Every schema emitted above is an object. Keep this defensive case so a
+  -- future schema form cannot silently erase the taint annotation.
+  other -> object ["x-hwfl-secret" .= Bool True, "allOf" .= Array (V.singleton other)]
 
 applyFieldDocs :: Map Ident Text -> Value -> Value
 applyFieldDocs docs = \case

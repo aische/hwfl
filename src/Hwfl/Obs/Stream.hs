@@ -15,6 +15,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
 import Hwfl.Llm.Types (StreamDelta (..), ToolCall (..))
+import Hwfl.Obs.Redact (redactJson, redactText)
 import Hwfl.Obs.Trace (SpanState, appendEvent, debugLog)
 import Hwfl.Runtime.Store (RunStore)
 
@@ -145,11 +146,11 @@ flushBuffer store st bufRef lastFlushRef = do
             ( "llm Δ     "
                 <> label
                 <> "="
-                <> compactText b.bufText
+                <> compactText (redactText b.bufText)
             )
 
 emitEvent :: RunStore -> SpanState -> Aeson.Value -> IO ()
-emitEvent store st = appendEvent store st "debug" "llm.delta"
+emitEvent store st = appendEvent store st "debug" "llm.delta" . redactJson
 
 toolCallFields :: ToolCall -> Aeson.Value
 toolCallFields tc =
@@ -157,7 +158,7 @@ toolCallFields tc =
     [ "kind" .= ("tool_call" :: Text),
       "id" .= tc.tcId,
       "name" .= tc.tcName,
-      "arguments" .= tc.tcArguments
+      "arguments" .= redactJson tc.tcArguments
     ]
 
 compactText :: Text -> Text

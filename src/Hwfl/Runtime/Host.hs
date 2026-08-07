@@ -25,7 +25,7 @@ import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Check.Project (checkProject, renderProjectCheckError)
 import Hwfl.Eval.Value
 import Hwfl.Exception (describeException, trySync)
-import Hwfl.Json.Encode (jsonToValue)
+import Hwfl.Json.Encode (jsonToValue, jsonToValueWithSchema, schemaForProvider)
 import Hwfl.Json.Validate (validateAgainstSchema)
 import Hwfl.Llm.Pricing (ModelPricing, providerCloseAttrs)
 import Hwfl.Llm.Provider (LlmProvider (..), safeLlmChat)
@@ -1062,7 +1062,7 @@ doLlmObject env args = case parseObjectArgs args of
     let req =
           (emptyChatRequest model)
             { chatMessages = [Message RoleUser prompt],
-              chatResponseFormat = Just schema
+              chatResponseFormat = Just (schemaForProvider schema)
             }
     result <- safeLlmChat env.heProvider req
     pure $ case result of
@@ -1082,7 +1082,7 @@ decodeJsonObject schema txt =
     Left err -> Left ("llm.object: invalid JSON response: " <> T.pack err)
     Right (v :: Aeson.Value) -> do
       first ("llm.object: schema validation failed: " <>) (validateAgainstSchema schema v)
-      first ("llm.object: invalid JSON number: " <>) (jsonToValue v)
+      first ("llm.object: invalid JSON number: " <>) (jsonToValueWithSchema schema v)
 
 parseChatArgs :: [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text, Text)
 parseChatArgs args = do

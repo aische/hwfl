@@ -37,7 +37,7 @@ import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Check.Schema (typeToSchema)
 import Hwfl.Eval.Value
-import Hwfl.Json.Encode (jsonToValue, valueToJsonText)
+import Hwfl.Json.Encode (jsonToValue, jsonToValueWithSchema, schemaForProvider, valueToJsonText)
 import Hwfl.Json.Validate (validateAgainstSchema)
 import Hwfl.Llm.Types qualified as Llm
 import Hwfl.Runtime.Error (RuntimeError (..))
@@ -351,7 +351,7 @@ providerToolSpecs =
         Llm.ToolSpec
           { Llm.tsName = ts.tvsName,
             Llm.tsDescription = ts.tvsDescription,
-            Llm.tsParameters = ts.tvsParameters
+            Llm.tsParameters = schemaForProvider ts.tvsParameters
           }
     )
 
@@ -371,7 +371,7 @@ mixesSubmit ag calls =
 validateSubmit :: Aeson.Value -> Aeson.Value -> Either Text Value
 validateSubmit schema args = do
   validateAgainstSchema schema args
-  jsonToValue args
+  jsonToValueWithSchema schema args
 
 parseAgentArgs ::
   [(Maybe Ident, Value)] ->

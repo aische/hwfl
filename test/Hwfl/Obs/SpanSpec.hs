@@ -16,7 +16,7 @@ import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Eval.Value (HostOpId (..), Value (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Observer (noopObserver)
-import Hwfl.Obs.Redact (hostOpenAttrs, redactJson, redactMarker, redactValue)
+import Hwfl.Obs.Redact (hostOpenAttrs, redactJson, redactMarker, redactText, redactValue)
 import Hwfl.Obs.Span (SpanKind (..), SpanRecord (..), SpanStatus (..))
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Obs.Trace
@@ -136,6 +136,14 @@ spec = describe "observability (M6)" $ do
         other -> expectationFailure ("expected object, got " <> show other)
       redactJson (object ["api_key" .= Aeson.String "tok", "n" .= Aeson.Number 1])
         `shouldBe` object ["api_key" .= Aeson.String redactMarker, "n" .= Aeson.Number 1]
+
+    it "redacts embedded JSON, credential-shaped keys, and token text" $ do
+      redactText "{\"private_key\":\"short\",\"passphrase\":\"also-short\"}"
+        `shouldBe` "{\"passphrase\":\"[REDACTED]\",\"private_key\":\"[REDACTED]\"}"
+      redactText "authorization: sk-this-is-a-secret-token"
+        `shouldBe` "authorization: [REDACTED]"
+      redactText "bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature"
+        `shouldBe` "bearer [REDACTED]"
 
     it "host open attrs never include llm prompt text" $ do
       let args =

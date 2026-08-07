@@ -26,6 +26,7 @@ import Hwfl.Obs.Span
     spanKindText,
     spanStatusText,
   )
+import Hwfl.Obs.Redact (redactText)
 import System.IO (hPutStrLn, stderr)
 
 -- | Callback invoked on the hot path for live observability.
@@ -120,7 +121,7 @@ stderrDebugObserver = \case
             <> " "
             <> compactAttrs i.scAttrs
       )
-  ObsProgress msg -> hPutStrLn stderr (T.unpack msg)
+  ObsProgress msg -> hPutStrLn stderr (T.unpack (redactText msg))
   ObsPaused i ->
     hPutStrLn
       stderr

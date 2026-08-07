@@ -3,6 +3,7 @@ module Hwfl.Obs.Redact
   ( redactMarker,
     redactValue,
     redactJson,
+    redactText,
     summarizeJson,
     toolCallOpenAttrs,
     hostOpenAttrs,
@@ -20,7 +21,9 @@ import Data.Vector qualified as V
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Eval.Value (HostOpId (..), ToolSpecValue (..), Value (..), hostOpName)
 import Hwfl.Llm.Types (ToolCall (..))
-import Data.Char (isDigit, isAsciiUpper, isAsciiLower)
+import Data.ByteString.Lazy qualified as BL
+import Data.Char (isAlphaNum, isAsciiLower, isAsciiUpper, isDigit, isHexDigit, isSpace)
+import Data.Text.Encoding qualified as TE
 
 redactMarker :: Text
 redactMarker = "[REDACTED]"
@@ -51,45 +54,91 @@ redactJson = \case
             ]
   Aeson.Array xs -> Aeson.Array (fmap redactJson xs)
   Aeson.String t
-    | looksLikeSecret t -> Aeson.String redactMarker
-    | otherwise -> Aeson.String t
+    | otherwise -> Aeson.String (redactText t)
   other -> other
 
 sensitiveKey :: Text -> Bool
 sensitiveKey k =
-  let n = T.toLower k
+  let n = T.filter isAlphaNum (T.toLower k)
    in -- Allow observability counters (token_in / token_out) while scrubbing
       -- credential-shaped keys.
-      n `notElem` ["token_in", "token_out", "tokens", "cost_usd", "cost_micros"]
+      n `notElem` ["tokenin", "tokenout", "tokens", "costusd", "costmicros"]
         && ( n
                `elem` [ "secret",
                         "password",
                         "passwd",
-                        "api_key",
+                        "passphrase",
+                        "pwd",
                         "apikey",
+                        "privatekey",
+                        "pem",
                         "authorization",
                         "token",
                         "credential",
-                        "access_token",
-                        "refresh_token"
+                        "accesstoken",
+                        "refreshtoken"
                       ]
                || any
                  (`T.isInfixOf` n)
-                 ["password", "passwd", "secret", "api_key", "apikey", "credential"]
+                 ["password", "passwd", "passphrase", "privatekey", "apikey", "secret", "credential"]
            )
+
+-- | Best-effort protection for untyped text channels. Typed @VSecret@ values
+-- are the confidentiality boundary; this additionally catches common
+-- credential forms and JSON embedded in a text field.
+redactText :: Text -> Text
+redactText = redactEmbeddedJson . redactTokens . redactPem
+  where
+    redactEmbeddedJson t
+      | T.isPrefixOf "{" stripped || T.isPrefixOf "[" stripped =
+          case Aeson.eitherDecodeStrict' (TE.encodeUtf8 stripped) of
+            Right (v :: Aeson.Value) ->
+              T.takeWhile isSpace t <> TE.decodeUtf8 (BL.toStrict (Aeson.encode (redactJson v)))
+            Left _ -> t
+      | otherwise = t
+      where
+        stripped = T.stripStart t
+
+    redactPem t =
+      case T.breakOn "-----BEGIN " t of
+        (before, rest)
+          | T.null rest -> t
+          | otherwise ->
+              case T.breakOn "-----END " rest of
+                (_, endStart)
+                  | T.null endStart -> before <> redactMarker
+                  | otherwise ->
+                      let (_, afterEnd) = T.breakOn "-----" (T.drop (T.length "-----END ") endStart)
+                       in before <> redactMarker <> T.drop (T.length "-----") afterEnd
+
+    redactTokens = go
+      where
+        go text =
+          if T.null text
+            then ""
+            else
+              let (plain, rest) = T.span (not . tokenChar) text
+                  (token, remaining) = T.span tokenChar rest
+               in plain
+                    <> if T.null token then "" else scrub token
+                    <> go remaining
+
+    tokenChar c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_' || c == '-' || c == '.'
+    scrub token
+      | looksLikeSecret token || looksLikeJwt token = redactMarker
+      | otherwise = token
+
+    looksLikeJwt token =
+      case T.splitOn "." token of
+        [a, b, c] -> all (not . T.null) [a, b, c] && all (T.all base64UrlChar) [a, b, c]
+        _ -> False
+    base64UrlChar c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_' || c == '-'
 
 looksLikeSecret :: Text -> Bool
 looksLikeSecret t =
   T.isPrefixOf "sk-" t
     || T.isPrefixOf "rk-" t
-    || (T.length t >= 40 && T.all isSecretChar t && T.any isAsciiUpper t)
-  where
-    isSecretChar c =
-      isAsciiLower c
-        || isAsciiUpper c
-        || isDigit c
-        || c == '_'
-        || c == '-'
+    || (T.length t >= 40 && T.all isHexDigit t && T.any isDigit t)
 
 -- | Compact JSON for span attrs: redact secrets, truncate long strings.
 summarizeJson :: Aeson.Value -> Aeson.Value
