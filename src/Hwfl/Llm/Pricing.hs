@@ -17,7 +17,6 @@ import Data.Aeson (FromJSON, Value (..), object, withObject, (.:), (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
-import Data.ByteString.Lazy qualified as LBS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Scientific (toBoundedInteger, toRealFloat)
@@ -25,7 +24,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
 import Hwfl.Llm.Types (ProviderResult (..), TokenUsage (..))
-import System.Directory (doesFileExist)
+import Hwfl.SafeIO (ReadError (..), readBytesFile, renderReadError)
 import Text.Printf (printf)
 
 data ModelRates = ModelRates
@@ -56,19 +55,22 @@ newtype ModelPricing = ModelPricing {mpRates :: Map Text ModelRates}
 emptyModelPricing :: ModelPricing
 emptyModelPricing = ModelPricing Map.empty
 
-loadModelPricing :: FilePath -> IO ModelPricing
+-- | Missing catalogs are optional (for example mock-provider runs). Existing
+-- catalogs must be readable and valid; silently treating a broken catalog as
+-- zero pricing hides configuration errors.
+loadModelPricing :: FilePath -> IO (Either Text ModelPricing)
 loadModelPricing path = do
-  exists <- doesFileExist path
-  if not exists
-    then pure emptyModelPricing
-    else do
-      bs <- LBS.readFile path
-      pure $
-        case Aeson.eitherDecode bs of
-          Left _ -> emptyModelPricing
-          Right (entries :: [CatalogEntry]) ->
-            ModelPricing
+  bytesE <- readBytesFile path
+  pure $ case bytesE of
+    Left (ReadNotFound _) -> Right emptyModelPricing
+    Left err -> Left ("cannot read model catalog: " <> renderReadError err)
+    Right bs -> case Aeson.eitherDecodeStrict bs of
+      Left err -> Left ("invalid model catalog: " <> T.pack err)
+      Right (entries :: [CatalogEntry]) ->
+        Right
+          ( ModelPricing
               (Map.fromList [(e.ceName, e.cePricing) | e <- entries])
+          )
 
 tokenCostMicros :: ModelPricing -> Text -> Int -> Int -> Maybe Int
 tokenCostMicros (ModelPricing rates) model tin tout =

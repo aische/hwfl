@@ -476,61 +476,74 @@ startRun opts loaded ws meta store = do
       hash = meta.rmProjectHash
   seqRef <- newIORef (0 :: Int)
   spans <- newSpanStateWith opts.roObserver
-  pricing <- loadModelPricing opts.roModelCatalog
-  let typeEnv = loadTypeEnv loaded
-      (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
-      baseEnv = withRunCtx runId started baseEnv0
-      skillFuns = buildSkillFunTables opts.roSkillModules
-      entryFuns = buildEntryFunTables opts.roEntryModules
-      host =
-        mkHostEnv
-          ws
-          opts.roProvider
-          opts.roExec
-          opts.roSkillCatalog
-          pricing
-          (mkHostLog opts.roCost spans)
-          (metaInvokeHandler ws opts)
-      ctx =
-        RunCtx
-          { rcHost = host,
-            rcSections = sectionMap loaded,
-            rcFuns = funs,
-            rcBaseEnv = baseEnv,
-            rcTypeEnv = typeEnv,
-            rcSchemaDocs = lmSchemaDocs loaded,
-            rcStore = store,
-            rcProjectHash = hash,
-            rcSeq = seqRef,
-            rcSpans = spans,
-            rcSkillFuns = skillFuns,
-            rcSkillModules = opts.roSkillModules,
-            rcEntryModules = entryFuns,
-            rcNestDepth = 0
-          }
-      modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
-  hPutStrLn stderr ("hwfl run: run_id=" <> T.unpack runId)
-  moduleSid <- openSpan store spans modName SkModule (object [])
-  case startMain funs baseEnv opts.roInputs of
-    Left err -> do
-      let m0 = initialMachine hash (CurReturn VUnit)
-          m =
-            m0
+  pricingE <- loadModelPricing opts.roModelCatalog
+  case pricingE of
+    Left msg -> do
+      let err = ConfigErr msg
+          machine =
+            (initialMachine hash (CurReturn VUnit))
               { mStatus = MsFailed,
                 mError = Just err
               }
       stack <- getSpanStack spans
       counter <- readIORef spans.ssCounter
-      persistTransition store seqRef hash Nothing Nothing MsFailed (Just m) stack counter
-      closeSpan store spans moduleSid SsError (object []) Nothing
-      notifyFinished store opts.roObserver "failed" (Just (renderRuntimeError err))
-      pure (OutcomeFailed err store 0)
-    Right current -> do
-      let m0 = initialMachine hash current
-      m1 <- runUntilPause ctx opts.roMode m0
-      seqNo <- readIORef seqRef
-      closeModuleSpan store spans moduleSid m1.mStatus
-      finalizeOutcome store seqNo m1 opts.roObserver
+      persistTransition store seqRef hash Nothing Nothing MsFailed (Just machine) stack counter
+      finalizeOutcome store 0 machine opts.roObserver
+    Right pricing -> do
+      let typeEnv = loadTypeEnv loaded
+          (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
+          baseEnv = withRunCtx runId started baseEnv0
+          skillFuns = buildSkillFunTables opts.roSkillModules
+          entryFuns = buildEntryFunTables opts.roEntryModules
+          host =
+            mkHostEnv
+              ws
+              opts.roProvider
+              opts.roExec
+              opts.roSkillCatalog
+              pricing
+              (mkHostLog opts.roCost spans)
+              (metaInvokeHandler ws opts)
+          ctx =
+            RunCtx
+              { rcHost = host,
+                rcSections = sectionMap loaded,
+                rcFuns = funs,
+                rcBaseEnv = baseEnv,
+                rcTypeEnv = typeEnv,
+                rcSchemaDocs = lmSchemaDocs loaded,
+                rcStore = store,
+                rcProjectHash = hash,
+                rcSeq = seqRef,
+                rcSpans = spans,
+                rcSkillFuns = skillFuns,
+                rcSkillModules = opts.roSkillModules,
+                rcEntryModules = entryFuns,
+                rcNestDepth = 0
+              }
+          modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
+      hPutStrLn stderr ("hwfl run: run_id=" <> T.unpack runId)
+      moduleSid <- openSpan store spans modName SkModule (object [])
+      case startMain funs baseEnv opts.roInputs of
+        Left err -> do
+          let m0 = initialMachine hash (CurReturn VUnit)
+              m =
+                m0
+                  { mStatus = MsFailed,
+                    mError = Just err
+                  }
+          stack <- getSpanStack spans
+          counter <- readIORef spans.ssCounter
+          persistTransition store seqRef hash Nothing Nothing MsFailed (Just m) stack counter
+          closeSpan store spans moduleSid SsError (object []) Nothing
+          notifyFinished store opts.roObserver "failed" (Just (renderRuntimeError err))
+          pure (OutcomeFailed err store 0)
+        Right current -> do
+          let m0 = initialMachine hash current
+          m1 <- runUntilPause ctx opts.roMode m0
+          seqNo <- readIORef seqRef
+          closeModuleSpan store spans moduleSid m1.mStatus
+          finalizeOutcome store seqNo m1 opts.roObserver
 
 startMain :: FunTable -> Env -> [(Ident, Value)] -> Either RuntimeError Current
 startMain funs env inputs = case Map.lookup (Ident "main") funs of
@@ -996,25 +1009,28 @@ loadExistingFrom store root provider catalogPath observer = do
                 spans <- newSpanStateWith observer
                 writeIORef spans.ssCounter snap.rsSpanCounter
                 setSpanStack spans snap.rsSpanStack
-                pricing <- loadModelPricing catalogPath
-                ctx <-
-                  mkCtx
-                    provider
-                    pricing
-                    root
-                    loaded
-                    store
-                    hash
-                    meta.rmRunId
-                    meta.rmStartedAt
-                    seqRef
-                    spans
-                    catalog
-                    skillMods
-                    entryMods
-                    execPol
-                    catalogPath
-                pure (Right (ctx, machine, store, seqRef))
+                pricingE <- loadModelPricing catalogPath
+                case pricingE of
+                  Left err -> pure (Left (ConfigErr err))
+                  Right pricing -> do
+                    ctx <-
+                      mkCtx
+                        provider
+                        pricing
+                        root
+                        loaded
+                        store
+                        hash
+                        meta.rmRunId
+                        meta.rmStartedAt
+                        seqRef
+                        spans
+                        catalog
+                        skillMods
+                        entryMods
+                        execPol
+                        catalogPath
+                    pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 
 -- | Match the hash / skill tables / exec policy used at start for project vs

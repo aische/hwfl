@@ -240,12 +240,18 @@ glob-less `fs.grep`.
 
 `truncateStream` runs **after** typed-process has accumulated the child's entire output in memory — a child printing gigabytes for the full 120 s timeout OOMs the host despite `execMaxOutputBytes`. `System.Timeout.timeout` interrupts the thread and `withProcessTerm` terminates only the direct pid, not the process group: grandchildren (`sh -c 'server &'`, `make` children) survive, keep the pipes open, and their output is discarded on timeout (empty stdout/stderr in the timed-out outcome). Policy numerics unvalidated: negative `timeout_ms` → 1 µs timeout; negative `max_output_bytes` → empty output.
 
-### M-7 — `loadModule` uses uncaught, locale-dependent `TIO.readFile`
+### M-7 — Fixed: module / project / catalog reads return stable diagnostics
 
-- **Location:** `src/Hwfl/Parse/Load.hs:29`
-- **Verification:** `[Reported]` (text-2.0.2 semantics verified)
+- **Location:** `src/Hwfl/SafeIO.hs`, `Parse/Load.hs`, `Project.hs`, `Llm/Pricing.hs`
+- **Verification:** `[Fixed]` (2026-08-07)
 
-`TIO.readFile` is locale-dependent and throws on invalid byte sequences; a missing file, directory, binary, or invalid-UTF-8 module yields a **raw uncaught IOException** instead of `Left [Diagnostic]` — no `--json` envelope even in `--json` mode. Same class: `BS.readFile project.json` (`Project.hs:147-148`), `LBS.readFile` catalog, `listDirectory`.
+Module source now reads bytes and decodes with explicit UTF-8. Read failures
+and invalid byte sequences become stable English diagnostics at `1:1`, so the
+existing `--json` diagnostic envelope is preserved. `project.json` and module
+discovery reads use the same contained I/O layer; an unreadable catalog reaches
+the run API as `ConfigErr`, while a missing catalog remains optional for mock
+runs. Existing malformed catalogs now report configuration failure rather than
+silently producing zero pricing.
 
 ### M-8 — Resource exhaustion on untrusted input (parse/eval/check)
 
@@ -307,12 +313,14 @@ trap, rather than an exception or host-operation failure path.
 sentences. Regression coverage includes terminated and unterminated final
 sentences, a single fragment, and whitespace-only input.
 
-### M-15 — Pricing/catalog decode failure silently disables all cost accounting
+### M-15 — Fixed with M-7: catalog decode failures are surfaced
 
-- **Location:** `src/Hwfl/Llm/Pricing.hs:66-70`
-- **Verification:** `[Reported]`
+- **Location:** `src/Hwfl/Llm/Pricing.hs`
+- **Verification:** `[Fixed]` (2026-08-07)
 
-`Aeson.eitherDecode` failure → `emptyModelPricing` — all costs report zero with no diagnostic. Whole-file catalog corruption is invisible.
+An existing catalog now returns a configuration error if it cannot be decoded;
+it no longer becomes `emptyModelPricing`. Missing catalogs remain intentionally
+optional for mock-provider runs.
 
 ### M-16 — Concurrent approve/choose/reply on one run: no lock, double execution, torn snapshot
 

@@ -2,12 +2,15 @@ module Hwfl.Parse.LoadSpec (spec) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.ByteString qualified as BS
 import Hwfl.Ast.Decl (ModuleBody (..))
 import Hwfl.Ast.Module
 import Hwfl.Ast.Name
 import Hwfl.Ast.Type (Effect (..))
-import Hwfl.Parse.Load (loadModuleText)
+import Hwfl.Parse.Load (loadModule, loadModuleText)
 import Hwfl.Source (renderDiagnostics)
+import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 
 summariseMd :: Text
@@ -48,6 +51,18 @@ summariseMd =
 
 spec :: Spec
 spec = describe "markdown module loader" $ do
+  it "returns a diagnostic for a missing module file" $
+    withSystemTempDirectory "hwfl-load-missing" $ \dir -> do
+      result <- loadModule (dir </> "missing.md")
+      result `shouldSatisfy` isLeft
+
+  it "returns a diagnostic for non-UTF-8 module bytes" $
+    withSystemTempDirectory "hwfl-load-utf8" $ \dir -> do
+      let path = dir </> "invalid.md"
+      BS.writeFile path (BS.pack [0xff, 0xfe])
+      result <- loadModule path
+      result `shouldSatisfy` isLeft
+
   it "loads summarise frontmatter, sections, and kernel AST" $ do
     case loadModuleText "summarise.md" summariseMd of
       Left diags -> expectationFailure (T.unpack (renderDiagnostics diags))
@@ -77,3 +92,8 @@ lookupSection slug = find ((== Slug slug) . secSlug)
   where
     find _ [] = Nothing
     find p (x : xs) = if p x then Just x else find p xs
+
+isLeft :: Either a b -> Bool
+isLeft = \case
+  Left _ -> True
+  Right _ -> False

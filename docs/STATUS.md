@@ -12,6 +12,10 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **M-7 + M-15 fixed** — Module reads use explicit UTF-8 decoding and report
+  stable diagnostics; project / discovery / pricing-catalog I/O is contained,
+  and an existing malformed catalog is a surfaced configuration error, never
+  silent zero pricing.
 - **M-2 + M-11(b) fixed** — `Secret` schema annotations survive internally and
   restore `VSecret` after structured model decoding; providers receive standard
   schemas. Events and debug stderr redact sensitive keys, embedded JSON, and
@@ -72,7 +76,7 @@ product. Broader lab framing in [idea.md](idea.md).
 None.
 
 ## Next up
-1. P1 Medium: M-7
+1. P2: M-8
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 

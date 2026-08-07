@@ -16,11 +16,11 @@ module Hwfl.Project
   )
 where
 
+import Control.Exception (IOException, try)
 import Control.Monad (filterM)
 import Data.Aeson (FromJSON (..), withObject, (.:), (.:?))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types ((.!=))
-import Data.ByteString qualified as BS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -29,12 +29,12 @@ import Hwfl.Ast.Module (LoadedModule (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), qnameFromParts, qnameToText)
 import Hwfl.Ast.Type (Effect (..), parseEffectName)
 import Hwfl.Parse.Load (loadModule)
+import Hwfl.SafeIO (ReadError (..), listDirectorySafe, readBytesFile, renderReadError)
 import Hwfl.SkillCatalog (SkillPolicy (..), defaultSkillPolicy)
 import Hwfl.Source (Diagnostic (..), renderDiagnostics)
 import System.Directory
   ( doesDirectoryExist,
     doesFileExist,
-    listDirectory,
   )
 import System.FilePath
   ( dropExtension,
@@ -140,17 +140,16 @@ instance FromJSON ProjectConfig where
 loadProjectConfig :: FilePath -> IO (Either Text ProjectConfig)
 loadProjectConfig root = do
   let path = root </> "project.json"
-  exists <- doesFileExist path
-  if not exists
-    then pure (Left "project.json not found")
-    else do
-      bs <- BS.readFile path
-      pure $ case Aeson.eitherDecodeStrict bs of
-        Left err -> Left ("invalid project.json: " <> T.pack err)
-        Right cfg -> Right cfg {pcRoot = normalise root}
+  bsE <- readBytesFile path
+  pure $ case bsE of
+    Left (ReadNotFound _) -> Left "project.json not found"
+    Left err -> Left ("cannot read project.json: " <> renderReadError err)
+    Right bs -> case Aeson.eitherDecodeStrict bs of
+      Left err -> Left ("invalid project.json: " <> T.pack err)
+      Right cfg -> Right cfg {pcRoot = normalise root}
 
 isProjectDir :: FilePath -> IO Bool
-isProjectDir path = doesFileExist (path </> "project.json")
+isProjectDir path = safeDoesFileExist (path </> "project.json")
 
 qnameFromText :: Text -> QName
 qnameFromText t = qnameFromParts (T.splitOn "/" t)
@@ -178,47 +177,64 @@ modulePathForQname root q = root </> moduleRelPath q
 
 discoverModules :: FilePath -> IO (Either Text ProjectIndex)
 discoverModules root = do
-  paths <- findMarkdownModules root
-  let pairs =
-        [ (q, p)
-          | p <- paths,
-            Just q <- [qnameFromRelPath (makeRelative root p)]
-        ]
-      dupes =
-        [ q
-          | q <- map fst pairs,
-            length (filter ((== q) . fst) pairs) > 1
-        ]
-  if not (null dupes)
-    then pure (Left ("duplicate module qname: " <> qnameToText (head dupes)))
-    else pure (Right ProjectIndex {piRoot = normalise root, piModules = Map.fromList pairs})
+  pathsE <- findMarkdownModules root
+  pure $ do
+    paths <- pathsE
+    let pairs =
+          [ (q, p)
+            | p <- paths,
+              Just q <- [qnameFromRelPath (makeRelative root p)]
+          ]
+        dupes =
+          [ q
+            | q <- map fst pairs,
+              length (filter ((== q) . fst) pairs) > 1
+          ]
+    if not (null dupes)
+      then Left ("duplicate module qname: " <> qnameToText (head dupes))
+      else Right ProjectIndex {piRoot = normalise root, piModules = Map.fromList pairs}
   where
     -- Spec layout: only these trees contain modules (skip README.md etc.).
     moduleRoots = ["workflows", "lib", "tools", "types", "skills"]
     findMarkdownModules dir = do
       existing <-
         filterM
-          (\name -> doesDirectoryExist (dir </> name))
+          (\name -> safeDoesDirectoryExist (dir </> name))
           moduleRoots
-      concat <$> mapM (\name -> go (dir </> name)) existing
+      results <- mapM (\name -> go (dir </> name)) existing
+      pure (concat <$> sequence results)
       where
         go d = do
-          entries <- listDirectory d
-          let visible = filter (not . isHiddenDir) entries
-          concat <$> mapM (classify d) visible
+          entriesE <- listDirectorySafe d
+          case entriesE of
+            Left err -> pure (Left (renderReadError err))
+            Right entries -> do
+              let visible = filter (not . isHiddenDir) entries
+              results <- mapM (classify d) visible
+              pure (concat <$> sequence results)
         isHiddenDir x = "." `T.isPrefixOf` T.pack x && x /= "."
         classify d name = do
           let path = d </> name
-          isDir <- doesDirectoryExist path
+          isDir <- safeDoesDirectoryExist path
           if isDir
             then
               if name == ".hwfl"
-                then pure []
+                then pure (Right [])
                 else go path
             else
               if isExtensionOf "md" path
-                then pure [normalise path]
-                else pure []
+                then pure (Right [normalise path])
+                else pure (Right [])
+
+safeDoesFileExist :: FilePath -> IO Bool
+safeDoesFileExist path = do
+  result <- try (doesFileExist path) :: IO (Either IOException Bool)
+  pure (either (const False) id result)
+
+safeDoesDirectoryExist :: FilePath -> IO Bool
+safeDoesDirectoryExist path = do
+  result <- try (doesDirectoryExist path) :: IO (Either IOException Bool)
+  pure (either (const False) id result)
 
 loadProject :: FilePath -> IO (Either Text LoadedProject)
 loadProject root = do

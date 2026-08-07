@@ -4,7 +4,8 @@ import Data.Aeson (encode, object, (.=))
 import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Maybe (fromMaybe, mapMaybe)
 import Hwfl.Llm.Pricing
-  ( attrsCostMicros,
+  ( ModelPricing,
+    attrsCostMicros,
     formatCostDollars,
     formatCostUsd,
     loadModelPricing,
@@ -32,7 +33,7 @@ spec = describe "LLM pricing" $ do
                     ]
               ]
           ]
-      pricing <- loadModelPricing path
+      pricing <- loadPricing path
       let pr =
             ProviderResult
               { prContent = "x",
@@ -62,7 +63,7 @@ spec = describe "LLM pricing" $ do
                     ]
               ]
           ]
-      pricing <- loadModelPricing path
+      pricing <- loadPricing path
       let pr =
             ProviderResult
               { prContent = "hi",
@@ -88,7 +89,7 @@ spec = describe "LLM pricing" $ do
                     ]
               ]
           ]
-      pricing <- loadModelPricing path
+      pricing <- loadPricing path
       -- 14 rounds × ~3.5k in / ~186 out ≈ 49k / 2.6k; each round is under half a cent.
       let tinPer = 3_500
           toutPer = 186
@@ -119,3 +120,22 @@ spec = describe "LLM pricing" $ do
       -- Full-precision cost_usd present (not pre-rounded away)
       LBS8.unpack (encode (head closes)) `shouldContain` "cost_usd"
       LBS8.unpack (encode (head closes)) `shouldContain` "cost_micros"
+
+  it "reports malformed catalogs instead of silently using zero pricing" $
+    withSystemTempDirectory "hwfl-pricing-invalid" $ \dir -> do
+      let path = dir </> "catalog.json"
+      LBS8.writeFile path "not json"
+      result <- loadModelPricing path
+      result `shouldSatisfy` isLeft
+
+loadPricing :: FilePath -> IO ModelPricing
+loadPricing path = do
+  result <- loadModelPricing path
+  case result of
+    Left err -> expectationFailure ("expected valid catalog: " <> show err) >> error "unreachable"
+    Right pricing -> pure pricing
+
+isLeft :: Either a b -> Bool
+isLeft = \case
+  Left _ -> True
+  Right _ -> False

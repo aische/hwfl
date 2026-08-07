@@ -33,7 +33,7 @@ Order matters; do not skip ahead of H-6.
       and meta both report failed, and resume cannot replay the failed step
 - [x] **M-2** + **M-11(b)** — Redaction hardening; re-wrap `TSecret` model
       fields as `VSecret`
-- [ ] **M-7** — Contained, locale-safe module / project / catalog reads →
+- [x] **M-7** — Contained, locale-safe module / project / catalog reads →
       diagnostics (no raw IOException in `--json`)
 
 ## Then (P2) — remaining Medium + author footguns
@@ -46,7 +46,7 @@ Order matters; do not skip ahead of H-6.
 - [ ] **M-12** — Par: treat `PauseAwaitingAgent` / crash-recovery as not
       runnable
 - [ ] **M-9** — Diagnose YAML duplicate frontmatter keys
-- [ ] **M-15** — Surface pricing/catalog decode failure (do not silent-zero)
+- [x] **M-15** — Surface pricing/catalog decode failure (do not silent-zero)
 - [ ] **M-4** — `requestToTurns`: preserve all `RoleSystem` messages
 - [ ] **M-11(a)** — Optional schema fields / `null` → option representation
 - [ ] **M-3** — Skill-body prompt trust boundary (when third-party skills)
@@ -108,6 +108,12 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-7** — Module files decode from explicit UTF-8 bytes and turn read /
+  decode failures into diagnostics; project discovery and pricing-catalog reads
+  contain I/O errors. Existing malformed catalogs are config errors rather than
+  silently zero-priced (2026-08)
+- **M-15** — Superseded by M-7's catalog-read hardening: malformed existing
+  catalogs now return a surfaced configuration error (2026-08)
 - **M-2 + M-11(b)** — Reflected secret schema nodes retain an internal marker;
   `llm.object` and agent submit decoding restore `VSecret`, while provider
   requests strip the marker. Events and stderr redact sensitive-key,

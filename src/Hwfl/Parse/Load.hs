@@ -12,7 +12,6 @@ import Data.List (dropWhileEnd)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.IO qualified as TIO
 import Hwfl.Ast.Decl (ModuleBody (..))
 import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), SchemaDoc (..), Section (..))
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
@@ -22,12 +21,15 @@ import Hwfl.Parse.Lexer (bundleToDiagnostics)
 import Hwfl.Parse.Markdown (MarkdownFile (..), MdFence (..), parseMarkdown)
 import Hwfl.Parse.Module (parseModuleBodyFromLine)
 import Hwfl.Parse.Section (buildSections)
+import Hwfl.SafeIO (readUtf8File, renderReadError)
 import Hwfl.Source (Diagnostic (..), Pos (..), mkDiagnostic)
 
 loadModule :: FilePath -> IO (Either [Diagnostic] LoadedModule)
 loadModule path = do
-  src <- TIO.readFile path
-  pure (loadModuleText path src)
+  srcE <- readUtf8File path
+  pure $ case srcE of
+    Left err -> Left [mkDiagnostic path (Pos 1 1) (renderReadError err)]
+    Right src -> loadModuleText path src
 
 loadModuleText :: FilePath -> Text -> Either [Diagnostic] LoadedModule
 loadModuleText path src = do
