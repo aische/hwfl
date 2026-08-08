@@ -12,21 +12,22 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **L-5 / L-6 / L-14 / L-16 fixed** — Tight `a/b` qnames vs spaced `/`
+  division; newline-gated sequential let; `&&`/`||` short-circuit via
+  `if` desugar; duplicate record fields rejected
 - **M-17 fixed** — Structured `ToolOk`/`ToolErr` for tool span status;
   `finish_reason` on LLM close attrs; `FinishLength` fails the agent
 - **M-11(a) fixed** — Option fields omitted from schema `required`;
   `null`/absent decode to `None`, present values to `Some`; language
   `Some`/`None` constructors + match
-- **M-4 fixed** — `requestToTurns` joins all `RoleSystem` texts into the
-  provider system prompt (no silent drop); Host prepend not double-counted
-- **M-12 / M-9 / M-10 / M-6 / M-8 / M-7 / M-2 / M-11(b)** — See report
+- **M-4 / M-12 / M-9 / M-10 / M-6 / M-8 / M-7 / M-2 / M-11(b)** — See report
 
 ## Blockers
 None.
 
 ## Next up
 1. Remaining Medium: M-3, M-18
-2. Selected Lows (L-5 / L-6 / L-14 / L-16 and opportunistic hygiene)
+2. Remaining Low hygiene (L-1–4, L-7–13, …) opportunistically
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 
 ## Deferred

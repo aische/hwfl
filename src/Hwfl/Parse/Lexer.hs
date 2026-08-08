@@ -7,6 +7,7 @@ module Hwfl.Parse.Lexer
     reservedWords,
     isReserved,
     pIdent,
+    pIdentRaw,
     pFieldIdent,
     pTypeName,
     pKeyword,
@@ -103,7 +104,11 @@ pKeyword w = lexeme $ try $ do
   pure ()
 
 pIdent :: Parser Ident
-pIdent = lexeme $ try $ do
+pIdent = lexeme $ try pIdentRaw
+
+-- | Identifier without trailing whitespace — used for tight qnames (@a/b@).
+pIdentRaw :: Parser Ident
+pIdentRaw = try $ do
   c <- satisfy isIdentStart <?> "identifier"
   cs <- takeWhileP (Just "ident char") isIdentCont
   let name = T.cons c cs

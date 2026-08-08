@@ -13,6 +13,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString.Lazy.Char8 qualified as BL
+import Data.Map.Strict qualified as Map
 import Data.Scientific (floatingOrInteger)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -172,7 +173,10 @@ valueToAeson = \case
     | otherwise -> Right (Aeson.Number (realToFrac d))
   VString s -> Right (Aeson.String s)
   VList xs -> Aeson.Array . V.fromList <$> traverse valueToAeson xs
-  VRecord fs -> Aeson.Object . KM.fromList <$> traverse encodeField fs
+  VRecord fs
+    | length fs /= Map.size (Map.fromList fs) ->
+        Left "duplicate record field in JSON encode"
+    | otherwise -> Aeson.Object . KM.fromList <$> traverse encodeField fs
   VVariant (TypeName "None") Nothing -> Right Aeson.Null
   VVariant (TypeName "Some") (Just p) -> valueToAeson p
   VVariant (TypeName "Some") Nothing -> Left "Some requires a payload"

@@ -120,6 +120,11 @@ spec = describe "pure evaluator" $ do
     it "if / bool" $
       evalE "if true then 1 else 0" `shouldBe` Right (VInt 1)
 
+    it "short-circuits && / || (L-14)" $ do
+      evalE "false && (1 / 0 == 0)" `shouldBe` Right (VBool False)
+      evalE "true || (1 / 0 == 0)" `shouldBe` Right (VBool True)
+      evalE "true && (1 / 0 == 0)" `shouldSatisfy` isLeft
+
     it "fun application" $
       evalE "(fun (x: Int): Int => x + 1)(41)" `shouldBe` Right (VInt 42)
 

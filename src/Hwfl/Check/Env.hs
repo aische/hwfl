@@ -13,6 +13,7 @@ module Hwfl.Check.Env
     moduleExportRecord,
     resolveType,
     resolveTypeFrom,
+    checkUniqueRecordFields,
     stripEffects,
     typeEq,
     primitiveNames,
@@ -139,6 +140,7 @@ resolveTypeFrom env stack0 ty0 = fst <$> go stack0 Map.empty ty0
         (t', memo') <- go stack memo t
         Right (TSecret t', memo')
       TRecord fs -> do
+        checkUniqueRecordFields (map fst fs)
         (fs', memo') <- goFields stack memo fs
         Right (TRecord fs', memo')
       TFun a b -> do
@@ -156,6 +158,15 @@ resolveTypeFrom env stack0 ty0 = fst <$> go stack0 Map.empty ty0
         (t', memo1) <- go stack memo t
         (rest', memo2) <- goFields stack memo1 rest
         Right ((f, t') : rest', memo2)
+
+-- | Reject duplicate field names in record types / literals (L-16).
+checkUniqueRecordFields :: [Ident] -> Either CheckError ()
+checkUniqueRecordFields = go Set.empty
+  where
+    go _ [] = Right ()
+    go seen (n : rest)
+      | n `Set.member` seen = Left (DuplicateField n)
+      | otherwise = go (Set.insert n seen) rest
 
 -- | Erase effect annotations (type equality ignores the lattice).
 stripEffects :: TypeExpr -> TypeExpr

@@ -53,9 +53,9 @@ No snapshot boundary.
 | `json.encode` | encodable value → `String` |
 | `tool` | function / host op → `ToolSpec` |
 | `schema` | type → `Schema` |
-| `+` `-` `*` `/` | Int / Float (same-sort) |
+| `+` `-` `*` `/` | Int / Float (same-sort); spaced `a / b` divides, tight `a/b` is a qname |
 | `==` `!=` `<` `<=` `>` `>=` | |
-| `&&` `\|\|` `not` | Bool |
+| `&&` `\|\|` `not` | Bool (`&&` / `\|\|` short-circuit) |
 
 Ambient `ctx.run.id` / `ctx.run.started_at` are injected at runtime.
 

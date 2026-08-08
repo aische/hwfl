@@ -65,6 +65,7 @@ paramsDomain env = \case
   [Param _ Nothing] -> Right tUnit
   ps -> do
     fs <- traverse paramField ps
+    checkUniqueRecordFields (map fst fs)
     pure (TRecord fs)
   where
     paramField (Param n mty) = case mty of
@@ -97,6 +98,7 @@ infer' env = \case
     mapM_ (\x -> check env x te) es
     pure (TList te)
   ERecord fs -> do
+    checkUniqueRecordFields (map fieldName fs)
     typed <- traverse (inferField env) fs
     pure (TRecord typed)
   EInterp parts -> do
@@ -324,9 +326,11 @@ patternBindings env p ty = do
       PList ps -> case expected of
         TList el -> concat <$> traverse (`go` el) ps
         _ -> Left (ExpectedList expected)
-      PRecord pfs -> case expected of
-        TRecord fs -> concat <$> traverse (fieldBind fs) pfs
-        _ -> Left (ExpectedRecord expected)
+      PRecord pfs -> do
+        checkUniqueRecordFields (map fst pfs)
+        case expected of
+          TRecord fs -> concat <$> traverse (fieldBind fs) pfs
+          _ -> Left (ExpectedRecord expected)
       PTag (TypeName "None") Nothing -> case expected of
         TOption _ -> Right []
         _ -> Left (TypeMismatchMsg "None pattern" (TOption tUnit) expected)
@@ -350,6 +354,11 @@ inferField env = \case
   Field n e -> (n,) <$> infer env e
   FieldShorthand n ->
     maybe (Left (UnboundVar n)) (\ty -> Right (n, ty)) (lookupVar n env)
+
+fieldName :: Field -> Ident
+fieldName = \case
+  Field n _ -> n
+  FieldShorthand n -> n
 
 checkInterpPart :: TypeEnv -> StringPart -> Either CheckError ()
 checkInterpPart env = \case

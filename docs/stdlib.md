@@ -29,7 +29,7 @@ builtins (still **Pure**, not host ops):
 - comparisons `== !=` — comparable sorts (bases, plus structural `List` /
   records); `String` ≅ `FileRef` only via dedicated **path coercibility**
 - ordered `< ≤ > ≥` — same sort among `Int` | `Float` | `String` | `FileRef`
-- boolean `&& || not`
+- boolean `&& || not` — `&&` / `||` short-circuit (desugar to `if`)
 
 Overloading is resolved at applications of these ops (`Hwfl.Check.Overload`);
 bare operator references have no principal type. Prefer overloading only

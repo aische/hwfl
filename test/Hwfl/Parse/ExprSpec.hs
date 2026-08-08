@@ -43,6 +43,17 @@ spec = describe "expression parser" $ do
     parseE "lib/text.trim"
       `shouldBe` Right (EProj (EQName (qnameFromParts ["lib", "text"])) (Ident "trim"))
 
+  it "parses spaced slash as division, not qname (L-5)" $
+    parseE "a / b"
+      `shouldBe` Right
+        ( EApp
+            (EVar (Ident "/"))
+            [ArgPos (EVar (Ident "a")), ArgPos (EVar (Ident "b"))]
+        )
+
+  it "parses tight slash as qname (L-5)" $
+    parseE "a/b" `shouldBe` Right (EQName (qnameFromParts ["a", "b"]))
+
   it "parses interpolation" $
     parseE "$\"hi {name}\""
       `shouldBe` Right (EInterp [SLit "hi ", SInterp (EVar (Ident "name"))])
@@ -57,6 +68,25 @@ spec = describe "expression parser" $ do
             Nothing
             (ELit (LInt 1))
             (ELet (Ident "y") Nothing (ELit (LInt 2)) (EVar (Ident "y")))
+        )
+
+  it "rejects same-line implicit let body (L-6)" $
+    parseE "let x = a b" `shouldSatisfy` isLeft
+
+  it "desugars && / || to if (L-14)" $ do
+    parseE "a && b"
+      `shouldBe` Right
+        ( EIf
+            (EVar (Ident "a"))
+            (EVar (Ident "b"))
+            (ELit (LBool False))
+        )
+    parseE "a || b"
+      `shouldBe` Right
+        ( EIf
+            (EVar (Ident "a"))
+            (ELit (LBool True))
+            (EVar (Ident "b"))
         )
 
   it "parses match" $
@@ -122,3 +152,8 @@ spec = describe "expression parser" $ do
       case parseE src of
         Left msg -> msg `shouldSatisfy` ("digits" `T.isInfixOf`) . T.pack
         Right _ -> expectationFailure "expected digit-length failure"
+
+isLeft :: Either a b -> Bool
+isLeft = \case
+  Left _ -> True
+  Right _ -> False

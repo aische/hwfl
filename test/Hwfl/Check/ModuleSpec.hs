@@ -81,6 +81,16 @@ spec = describe "type checker" $ do
       inferE "[1, 2] == [1, 2]" `shouldBe` Right (TName (TypeName "Bool"))
       inferE "{ a = 1 } == { a = 1 }" `shouldBe` Right (TName (TypeName "Bool"))
 
+    it "rejects duplicate record fields (L-16)" $ do
+      case parseExpr "{ a = 1, a = 2 }" of
+        Left err -> expectationFailure err
+        Right e -> case infer preludeTypeEnv e of
+          Left err -> errorRoot err `shouldBe` DuplicateField (Ident "a")
+          Right _ -> expectationFailure "expected DuplicateField"
+      case checkBody "type R = { a: Int, a: Int }\nfun main(_: Unit): Int = 1" of
+        Left err -> errorRoot err `shouldBe` DuplicateField (Ident "a")
+        Right _ -> expectationFailure "expected DuplicateField"
+
     it "rejects bare overloaded operator" $
       inferE "==" `shouldSatisfy` isLeft
 

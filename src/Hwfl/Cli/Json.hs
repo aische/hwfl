@@ -192,6 +192,7 @@ checkErrorKindRoot = \case
   CE.AliasCycle {} -> "AliasCycle"
   CE.DuplicateType {} -> "DuplicateType"
   CE.DuplicateFun {} -> "DuplicateFun"
+  CE.DuplicateField {} -> "DuplicateField"
   CE.MissingMain -> "MissingMain"
   CE.MainParamMismatch {} -> "MainParamMismatch"
   CE.MainReturnMismatch {} -> "MainReturnMismatch"

@@ -5,17 +5,18 @@ module Hwfl.Parse.Expr
   )
 where
 
-import Control.Monad (void)
+import Control.Monad (unless, void)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void)
 import Hwfl.Ast.Expr
 import Hwfl.Ast.Name
+import Hwfl.Ast.Pat (Literal (..))
 import Hwfl.Parse.Lexer
 import Hwfl.Parse.Pat (literal, pattern_, stringLit)
 import Hwfl.Parse.Type (typeExpr)
-import Hwfl.Source (Pos)
+import Hwfl.Source (Pos (..))
 import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char (char)
 
@@ -41,12 +42,13 @@ expr =
       orExpr
     ]
 
--- | Infix ops elaborate to @EApp (EVar op) [lhs, rhs]@ for prelude builtins.
+-- | Infix ops elaborate to @EApp (EVar op) [lhs, rhs]@ for prelude builtins,
+-- except @&&@ / @||@ which desugar to @if@ so evaluation short-circuits (L-14).
 orExpr :: Parser Expr
-orExpr = infixl1 andExpr (binApp "||" <$ symbol "||")
+orExpr = infixl1 andExpr (binOr <$ symbol "||")
 
 andExpr :: Parser Expr
-andExpr = infixl1 cmpExpr (binApp "&&" <$ symbol "&&")
+andExpr = infixl1 cmpExpr (binAnd <$ symbol "&&")
 
 cmpExpr :: Parser Expr
 cmpExpr = do
@@ -89,6 +91,16 @@ binApp op l r =
   let opE = located l.ePos (FVar (Ident op))
    in located l.ePos (FApp opE [ArgPos l, ArgPos r])
 
+-- | @a && b@ → @if a then b else false@
+binAnd :: Expr -> Expr -> Expr
+binAnd l r =
+  located l.ePos (FIf l r (located l.ePos (FLit (LBool False))))
+
+-- | @a || b@ → @if a then true else b@
+binOr :: Expr -> Expr -> Expr
+binOr l r =
+  located l.ePos (FIf l (located l.ePos (FLit (LBool True))) r)
+
 infixl1 :: Parser Expr -> Parser (Expr -> Expr -> Expr) -> Parser Expr
 infixl1 p op = do
   x <- p
@@ -115,7 +127,13 @@ letExpr = do
           expr,
         -- sequential `let` block (grammar sketch + summarise sugar)
         try letExpr,
-        expr
+        -- Implicit @in@: body must start on a later line so
+        -- @let x = a b@ is not silently @let x = a in b@ (L-6).
+        do
+          bodyPos <- getPos
+          unless (bodyPos.posLine > e1.ePos.posLine) $
+            fail "missing 'in' after let binding"
+          expr
       ]
   pure (located pos (FLet n mt e1 e2))
 
@@ -309,12 +327,15 @@ sectionRef = lexeme $ do
     isIdentStart x = isAsciiLower x || x == '_'
     isIdentCont x = isIdentStart x || isAsciiUpper x || isDigit x
 
+-- | Module qnames are tight (@a/b@). Spaced @a / b@ is division (L-5).
 qnameExpr :: Parser Expr
 qnameExpr = do
   pos <- getPos
-  first <- pIdent
-  rest <- some (symbol "/" *> pIdent)
-  pure (located pos (FQName (QName (first : rest))))
+  parts <- lexeme $ try $ do
+    first <- pIdentRaw
+    rest <- some (char '/' *> pIdentRaw)
+    pure (first : rest)
+  pure (located pos (FQName (QName parts)))
 
 listLit :: Parser [Expr]
 listLit = between (symbol "[") (symbol "]") (nest expr `sepBy` symbol ",")

@@ -53,8 +53,9 @@ Order matters; do not skip ahead of H-6.
 - [x] **M-17** — Structured tool/provider errors vs string-sniff span status
 - [ ] **M-18** — Project-hash / resume UX (only if prose edits brick resume
       too often)
-- [ ] **L-5, L-6, L-14, L-16** — Parser/eval footguns: `a/b` QName, sequential
-      let sugar, eager `&&`/`||`, duplicate record fields
+- [x] **L-5, L-6, L-14, L-16** — Parser/eval footguns: tight `a/b` QName vs
+      spaced division; newline-gated sequential let; `&&`/`||` → `if`;
+      duplicate record fields rejected
 
 ## Later (P2–P3) — remaining Lows + deferred product
 
@@ -108,6 +109,10 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **L-5 / L-6 / L-14 / L-16** — Tight qnames (`a/b`) vs spaced division;
+  sequential-let body requires a new line (or `in`); `&&`/`||` desugar to
+  `if` (short-circuit); duplicate record fields rejected at check / encode
+  (2026-08)
 - **M-17** — Tool span status from `ToolOk`/`ToolErr` (no result-text
   sniff); `finish_reason` on provider close attrs; `FinishLength` fails
   the agent; finish/tool_calls mismatches tagged in attrs (2026-08)

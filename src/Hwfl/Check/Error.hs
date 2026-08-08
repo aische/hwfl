@@ -38,6 +38,7 @@ data CheckError
   | AliasCycle [TypeName]
   | DuplicateType TypeName
   | DuplicateFun Ident
+  | DuplicateField Ident
   | MissingMain
   | MainParamMismatch TypeExpr TypeExpr
   | MainReturnMismatch TypeExpr TypeExpr
@@ -99,6 +100,7 @@ renderCheckErrorRoot' = \case
     "cyclic type alias: " <> T.intercalate " -> " (map unTypeName ns)
   DuplicateType n -> "duplicate type declaration: " <> unTypeName n
   DuplicateFun n -> "duplicate function declaration: " <> unIdent n
+  DuplicateField n -> "duplicate record field: " <> unIdent n
   MissingMain -> "module has inputs/outputs but no fun main"
   MainParamMismatch want got ->
     "main parameter does not match frontmatter inputs: expected "
