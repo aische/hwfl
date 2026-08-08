@@ -216,4 +216,5 @@ runtimeErrorKind = \case
   HostErr {} -> "HostErr"
   ProviderErr {} -> "ProviderErr"
   ConfigErr {} -> "ConfigErr"
+  StaleProjectErr -> "StaleProjectErr"
   InternalErr {} -> "InternalErr"

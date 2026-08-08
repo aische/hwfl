@@ -632,8 +632,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
           writeFile path (T.unpack (T.replace "Proceed?" "Changed?" confirmSrc))
           resumed <- resumeRun dir "stale1" mockProvider "model-catalog.json" noopObserver
           case resumed of
-            OutcomeFailed (ConfigErr msg) _ _ ->
-              T.isInfixOf "stale project" msg `shouldBe` True
+            OutcomeFailed StaleProjectErr _ _ -> pure ()
             other -> expectationFailure (show other)
 
   it "project confirm → approve (separate project vs workspace)" $
@@ -711,8 +710,7 @@ spec = describe "runtime par/confirm/step (M5)" $ do
           "model-catalog.json"
           noopObserver
       case approved of
-        OutcomeFailed (ConfigErr msg) _ _ ->
-          T.isInfixOf "stale project" msg `shouldBe` True
+        OutcomeFailed StaleProjectErr _ _ -> pure ()
         other -> expectationFailure (show other)
 
 isRight :: Either a b -> Bool

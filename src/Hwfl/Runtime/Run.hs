@@ -1003,7 +1003,7 @@ loadExistingFrom store root provider catalogPath observer = do
             (hash, catalog, skillMods, entryMods, execPol) <-
               resolveResumeProject meta.rmEntry loaded root
             if hash /= snap.rsProjectHash
-              then pure (Left (ConfigErr "stale project: hash mismatch"))
+              then pure (Left StaleProjectErr)
               else do
                 seqRef <- newIORef snap.rsSeq
                 spans <- newSpanStateWith observer

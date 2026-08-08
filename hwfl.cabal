@@ -52,6 +52,7 @@ library
         Hwfl.Check.Overload
         Hwfl.Check.Prelude
         Hwfl.Check.Project
+        Hwfl.Cli.Args
         Hwfl.Cli.Json
         Hwfl.Driver
         Hwfl.Check.Schema
@@ -163,6 +164,7 @@ test-suite hwfl-test
         Hwfl.Check.LocateSpec
         Hwfl.Check.ModuleSpec
         Hwfl.Check.ProjectSpec
+        Hwfl.Cli.ArgsSpec
         Hwfl.Cli.JsonSpec
         Hwfl.Check.SchemaSpec
         Hwfl.Json.EncodeSpec

@@ -55,12 +55,12 @@ spec = describe "CLI JSON errors" $ do
   it "encodes runtime errors with stale-project exit code" $ do
     let txt =
           renderCliError $
-            jsonRuntimeError 4 (ConfigErr "stale project hash mismatch")
+            jsonRuntimeError 4 StaleProjectErr
     parseEnvelope txt
       `shouldSatisfy` ( \env ->
           env.exitCode == 4
             && env.category == Just "runtime"
-            && env.kind == Just "ConfigErr"
+            && env.kind == Just "StaleProjectErr"
       )
 
 data Envelope = Envelope

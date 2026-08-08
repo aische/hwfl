@@ -2,6 +2,7 @@
 module Hwfl.Runtime.Error
   ( RuntimeError (..),
     renderRuntimeError,
+    runtimeExitCode,
     isCatchable,
   )
 where
@@ -20,6 +21,9 @@ data RuntimeError
     ProviderErr Text
   | -- | CLI / configuration problem.
     ConfigErr Text
+  | -- | Resume/approve refused because the project hash no longer matches
+    -- the snapshot (CLI exit code 4 per spec §09).
+    StaleProjectErr
   | -- | A synchronous exception escaped a runtime boundary (host op, provider,
     -- encoder, store). The step aborted at an unknown point.
     InternalErr Text
@@ -33,7 +37,14 @@ renderRuntimeError = \case
   HostErr t -> "host: " <> t
   ProviderErr t -> "provider: " <> t
   ConfigErr t -> "config: " <> t
+  StaleProjectErr -> "config: stale project: hash mismatch"
   InternalErr t -> "internal: " <> t
+
+-- | Process exit code for a failed run (spec §09).
+runtimeExitCode :: RuntimeError -> Int
+runtimeExitCode = \case
+  StaleProjectErr -> 4
+  _ -> 1
 
 -- | Host / provider / sandbox failures recoverable with @try@/@catch@ (spec §02 §8).
 --

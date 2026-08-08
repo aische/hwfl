@@ -8,6 +8,19 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Hwfl.Ast.Pretty (prettyModuleBody)
 import Hwfl.Ast.Module (LoadedModule (lmBody))
+import Hwfl.Cli.Args
+  ( RunFlags (..),
+    flagProviderSet,
+    parseApprove,
+    parseCheckFlags,
+    parseChoose,
+    parseExtend,
+    parseReply,
+    parseRunFlags,
+    parseShow,
+    parseWsRun,
+    wantsJson,
+  )
 import Hwfl.Cli.Json
   ( jsonDriverError,
     jsonPlainError,
@@ -22,7 +35,6 @@ import Hwfl.Driver
     Observer,
     RunOutcome (..),
     ShowMode (..),
-    ShowOptions (..),
     defaultDriverRunRequest,
     driverApprove,
     driverCheck,
@@ -45,7 +57,7 @@ import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Simple (mkSimpleProvider)
 import Hwfl.Obs.Show (showStore)
 import Hwfl.Parse.Load (loadModule)
-import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
+import Hwfl.Runtime.Error (RuntimeError, renderRuntimeError, runtimeExitCode)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Machine
   ( AgentExhaustedRequest (..),
@@ -75,7 +87,7 @@ main = do
       -- means loading, the CLI itself, or reporting threw. Still emit the
       -- normal error shape rather than a raw GHC exception.
       reportPlainFailure
-        ("--json" `elem` args)
+        (wantsJson args)
         1
         "internal"
         "InternalError"
@@ -124,6 +136,7 @@ usage = do
     stderr
     "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug --cost --dump --json --interactive"
   hPutStrLn stderr "  check options: --json"
+  hPutStrLn stderr "  use -- before dash-prefixed paths (e.g. hwfl check -- -odd.md)"
   exitWith (ExitFailure 2)
 
 reportUsage :: Bool -> String -> IO ()
@@ -144,7 +157,7 @@ cmdParse path = do
 cmdCheck :: [String] -> IO ()
 cmdCheck rest = case parseCheckFlags rest of
   Left msg -> do
-    reportUsage ("--json" `elem` rest) msg
+    reportUsage (wantsJson rest) msg
     exitWith (ExitFailure 2)
   Right (path, json) -> do
     result <- driverCheck path
@@ -153,20 +166,6 @@ cmdCheck rest = case parseCheckFlags rest of
         reportDriverFailure json err
         exitWith (ExitFailure 1)
       Right _ -> pure ()
-
-parseCheckFlags :: [String] -> Either String (FilePath, Bool)
-parseCheckFlags = go False Nothing
-  where
-    go json mPath = \case
-      [] -> case mPath of
-        Just path -> Right (path, json)
-        Nothing -> Left "hwfl check: missing <project|module.md>"
-      ("--json" : rest) -> go True mPath rest
-      (x : rest)
-        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
-        | otherwise -> case mPath of
-            Nothing -> go json (Just x) rest
-            Just _ -> Left ("unexpected argument: " <> x)
 
 reportDriverFailure :: Bool -> DriverError -> IO ()
 reportDriverFailure json err =
@@ -186,32 +185,10 @@ reportRuntimeFailure json exitCode err =
     then TIO.hPutStrLn stderr (renderCliError (jsonRuntimeError exitCode err))
     else TIO.hPutStrLn stderr (renderRuntimeError err)
 
-data RunFlags = RunFlags
-  { rfModule :: FilePath,
-    rfWorkspace :: Maybe FilePath,
-    rfInputs :: [String],
-    rfProvider :: String,
-    rfNoCheck :: Bool,
-    rfCatalog :: FilePath,
-    rfStep :: Bool,
-    -- | Print span tree after the run.
-    rfVerbose :: Bool,
-    -- | Live span open/close on stderr (implies verbose tree dump).
-    rfDebug :: Bool,
-    -- | Prefix host progress lines with running LLM cost.
-    rfCost :: Bool,
-    -- | Dump llm-simple request/response JSON under ./dumps.
-    rfDump :: Bool,
-    -- | Machine-readable diagnostics on stderr for failures.
-    rfJson :: Bool,
-    -- | Prompt on stdin for human gates (TTY only; incompatible with --json).
-    rfInteractive :: Bool
-  }
-
 cmdRun :: [String] -> IO ()
 cmdRun rest = case parseRunFlags rest of
   Left msg -> do
-    reportUsage ("--json" `elem` rest) msg
+    reportUsage (wantsJson rest) msg
     exitWith (ExitFailure 2)
   Right flags0 -> do
     let json = flags0.rfJson
@@ -334,7 +311,7 @@ handleOutcome json showTrace = \case
     dumpTrace showTrace store
     exitWith (ExitFailure 3)
   OutcomeFailed err store _ -> do
-    reportRuntimeFailure json (exitCodeFor err) err
+    reportRuntimeFailure json (runtimeExitCode err) err
     dumpTrace showTrace store
     exitWith (exitFor err)
 
@@ -359,7 +336,7 @@ handleOutcomeInteractive showTrace ws provider catalog observer = go
           Right t -> TIO.putStrLn t
         dumpTrace showTrace store
       OutcomeFailed err store _ -> do
-        reportRuntimeFailure False (exitCodeFor err) err
+        reportRuntimeFailure False (runtimeExitCode err) err
         dumpTrace showTrace store
         exitWith (exitFor err)
       OutcomePaused status msg store _ -> case status of
@@ -470,13 +447,7 @@ dumpTrace True store = do
     Right txt -> TIO.hPutStrLn stderr txt
 
 exitFor :: RuntimeError -> ExitCode
-exitFor err = ExitFailure (exitCodeFor err)
-
-exitCodeFor :: RuntimeError -> Int
-exitCodeFor = \case
-  ConfigErr t
-    | "stale project" `T.isInfixOf` t -> 4
-  _ -> 1
+exitFor err = ExitFailure (runtimeExitCode err)
 
 dieUsage :: String -> IO ()
 dieUsage msg = do
@@ -496,196 +467,3 @@ resolveProvider json name catalog dump = case name of
   other -> do
     reportPlainFailure json 2 "usage" "UnknownProvider" ("unknown --llm-provider: " <> T.pack other <> " (use mock|simple)")
     exitWith (ExitFailure 2)
-
-flagProviderSet :: [String] -> Bool
-flagProviderSet = elem "--llm-provider"
-
-parseRunFlags :: [String] -> Either String RunFlags
-parseRunFlags args = do
-  (modPath, flags) <- takeModule args emptyFlags
-  pure flags {rfModule = modPath}
-  where
-    emptyFlags =
-      RunFlags
-        { rfModule = "",
-          rfWorkspace = Nothing,
-          rfInputs = [],
-          rfProvider = "simple",
-          rfNoCheck = False,
-          rfCatalog = "model-catalog.json",
-          rfStep = False,
-          rfVerbose = False,
-          rfDebug = False,
-          rfCost = False,
-          rfDump = False,
-          rfJson = False,
-          rfInteractive = False
-        }
-    takeModule [] _ = Left "hwfl run: missing <module.md>"
-    takeModule (x : xs) f
-      | x == "--workspace" = case xs of
-          (d : rest) -> takeModule rest f {rfWorkspace = Just d}
-          [] -> Left "--workspace needs a directory"
-      | x == "--input" = case xs of
-          (kv : rest) -> takeModule rest f {rfInputs = f.rfInputs ++ [kv]}
-          [] -> Left "--input needs k=v"
-      | x == "--llm-provider" = case xs of
-          (p : rest) -> takeModule rest f {rfProvider = p}
-          [] -> Left "--llm-provider needs a name"
-      | x == "--model-catalog" = case xs of
-          (c : rest) -> takeModule rest f {rfCatalog = c}
-          [] -> Left "--model-catalog needs a path"
-      | x == "--no-check" = takeModule xs f {rfNoCheck = True}
-      | x == "--step" = takeModule xs f {rfStep = True}
-      | x == "-v" || x == "--verbose" = takeModule xs f {rfVerbose = True}
-      | x == "--debug" = takeModule xs f {rfDebug = True, rfVerbose = True}
-      | x == "--cost" = takeModule xs f {rfCost = True}
-      | x == "--dump" = takeModule xs f {rfDump = True}
-      | x == "--json" = takeModule xs f {rfJson = True}
-      | x == "--interactive" = takeModule xs f {rfInteractive = True}
-      | "-" `T.isPrefixOf` T.pack x = Left ("unknown flag: " <> x)
-      | otherwise = consumeOpts xs f {rfModule = x}
-    consumeOpts [] f = Right (f.rfModule, f)
-    consumeOpts (x : xs) f
-      | x == "--workspace" = case xs of
-          (d : rest) -> consumeOpts rest f {rfWorkspace = Just d}
-          [] -> Left "--workspace needs a directory"
-      | x == "--input" = case xs of
-          (kv : rest) -> consumeOpts rest f {rfInputs = f.rfInputs ++ [kv]}
-          [] -> Left "--input needs k=v"
-      | x == "--llm-provider" = case xs of
-          (p : rest) -> consumeOpts rest f {rfProvider = p}
-          [] -> Left "--llm-provider needs a name"
-      | x == "--model-catalog" = case xs of
-          (c : rest) -> consumeOpts rest f {rfCatalog = c}
-          [] -> Left "--model-catalog needs a path"
-      | x == "--no-check" = consumeOpts xs f {rfNoCheck = True}
-      | x == "--step" = consumeOpts xs f {rfStep = True}
-      | x == "-v" || x == "--verbose" = consumeOpts xs f {rfVerbose = True}
-      | x == "--debug" = consumeOpts xs f {rfDebug = True, rfVerbose = True}
-      | x == "--cost" = consumeOpts xs f {rfCost = True}
-      | x == "--dump" = consumeOpts xs f {rfDump = True}
-      | x == "--json" = consumeOpts xs f {rfJson = True}
-      | x == "--interactive" = consumeOpts xs f {rfInteractive = True}
-      | otherwise = Left ("unexpected argument: " <> x)
-
-parseWsRun :: [String] -> Either String (FilePath, T.Text, String, FilePath, Bool)
-parseWsRun = go Nothing Nothing "simple" "model-catalog.json" False
-  where
-    go mWs mId prov catalog dump = \case
-      [] -> case (mWs, mId) of
-        (Just ws, Just rid) -> Right (ws, rid, prov, catalog, dump)
-        _ -> Left "usage: hwfl step|resume <workspace> <run-id> [options]"
-      ("--llm-provider" : p : rest) -> go mWs mId p catalog dump rest
-      ("--model-catalog" : c : rest) -> go mWs mId prov c dump rest
-      ("--dump" : rest) -> go mWs mId prov catalog True rest
-      (x : rest)
-        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
-        | otherwise -> case (mWs, mId) of
-            (Nothing, _) -> go (Just x) mId prov catalog dump rest
-            (Just _, Nothing) -> go mWs (Just (T.pack x)) prov catalog dump rest
-            _ -> Left ("unexpected argument: " <> x)
-
-parseApprove :: [String] -> Either String (FilePath, T.Text, Bool, String, FilePath, Bool)
-parseApprove = go Nothing Nothing Nothing "simple" "model-catalog.json" False
-  where
-    go mWs mId mYes prov catalog dump = \case
-      [] -> case (mWs, mId, mYes) of
-        (Just ws, Just rid, Just yes) -> Right (ws, rid, yes, prov, catalog, dump)
-        (_, _, Nothing) -> Left "hwfl approve needs --yes or --no"
-        _ -> Left "usage: hwfl approve <workspace> <run-id> --yes|--no"
-      ("--yes" : rest) -> go mWs mId (Just True) prov catalog dump rest
-      ("--no" : rest) -> go mWs mId (Just False) prov catalog dump rest
-      ("--llm-provider" : p : rest) -> go mWs mId mYes p catalog dump rest
-      ("--model-catalog" : c : rest) -> go mWs mId mYes prov c dump rest
-      ("--dump" : rest) -> go mWs mId mYes prov catalog True rest
-      (x : rest)
-        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
-        | otherwise -> case (mWs, mId) of
-            (Nothing, _) -> go (Just x) mId mYes prov catalog dump rest
-            (Just _, Nothing) -> go mWs (Just (T.pack x)) mYes prov catalog dump rest
-            _ -> Left ("unexpected argument: " <> x)
-
-parseChoose :: [String] -> Either String (FilePath, T.Text, T.Text, String, FilePath, Bool)
-parseChoose = go Nothing Nothing Nothing "simple" "model-catalog.json" False
-  where
-    go mWs mId mSel prov catalog dump = \case
-      [] -> case (mWs, mId, mSel) of
-        (Just ws, Just rid, Just sel) -> Right (ws, rid, sel, prov, catalog, dump)
-        (_, _, Nothing) -> Left "hwfl choose needs --select <option>"
-        _ -> Left "usage: hwfl choose <workspace> <run-id> --select <option>"
-      ("--select" : s : rest) -> go mWs mId (Just (T.pack s)) prov catalog dump rest
-      ("--llm-provider" : p : rest) -> go mWs mId mSel p catalog dump rest
-      ("--model-catalog" : c : rest) -> go mWs mId mSel prov c dump rest
-      ("--dump" : rest) -> go mWs mId mSel prov catalog True rest
-      (x : rest)
-        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
-        | otherwise -> case (mWs, mId) of
-            (Nothing, _) -> go (Just x) mId mSel prov catalog dump rest
-            (Just _, Nothing) -> go mWs (Just (T.pack x)) mSel prov catalog dump rest
-            _ -> Left ("unexpected argument: " <> x)
-
-parseReply :: [String] -> Either String (FilePath, T.Text, T.Text, String, FilePath, Bool)
-parseReply = go Nothing Nothing Nothing "simple" "model-catalog.json" False
-  where
-    go mWs mId mText prov catalog dump = \case
-      [] -> case (mWs, mId, mText) of
-        (Just ws, Just rid, Just text) -> Right (ws, rid, text, prov, catalog, dump)
-        (_, _, Nothing) -> Left "hwfl reply needs --text <string>"
-        _ -> Left "usage: hwfl reply <workspace> <run-id> --text <string>"
-      ("--text" : text : rest) -> go mWs mId (Just (T.pack text)) prov catalog dump rest
-      ("--llm-provider" : p : rest) -> go mWs mId mText p catalog dump rest
-      ("--model-catalog" : c : rest) -> go mWs mId mText prov c dump rest
-      ("--dump" : rest) -> go mWs mId mText prov catalog True rest
-      (x : rest)
-        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
-        | otherwise -> case (mWs, mId) of
-            (Nothing, _) -> go (Just x) mId mText prov catalog dump rest
-            (Just _, Nothing) -> go mWs (Just (T.pack x)) mText prov catalog dump rest
-            _ -> Left ("unexpected argument: " <> x)
-
-parseExtend :: [String] -> Either String (FilePath, T.Text, Int, String, FilePath, Bool)
-parseExtend = go Nothing Nothing Nothing "simple" "model-catalog.json" False
-  where
-    go mWs mId mRounds prov catalog dump = \case
-      [] -> case (mWs, mId, mRounds) of
-        (Just ws, Just rid, Just n) -> Right (ws, rid, n, prov, catalog, dump)
-        (_, _, Nothing) -> Left "hwfl extend needs --rounds N"
-        _ -> Left "usage: hwfl extend <workspace> <run-id> --rounds N"
-      ("--rounds" : n : rest) -> case reads n of
-        [(i, "")] | i > 0 -> go mWs mId (Just i) prov catalog dump rest
-        _ -> Left ("--rounds must be a positive integer, got: " <> n)
-      ("--llm-provider" : p : rest) -> go mWs mId mRounds p catalog dump rest
-      ("--model-catalog" : c : rest) -> go mWs mId mRounds prov c dump rest
-      ("--dump" : rest) -> go mWs mId mRounds prov catalog True rest
-      (x : rest)
-        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
-        | otherwise -> case (mWs, mId) of
-            (Nothing, _) -> go (Just x) mId mRounds prov catalog dump rest
-            (Just _, Nothing) -> go mWs (Just (T.pack x)) mRounds prov catalog dump rest
-            _ -> Left ("unexpected argument: " <> x)
-
-parseShow :: [String] -> Either String ShowOptions
-parseShow = go Nothing Nothing ShowSummary Nothing
-  where
-    go mWs mId mode filt = \case
-      [] -> case (mWs, mId) of
-        (Just ws, Just rid) ->
-          Right
-            ShowOptions
-              { soWorkspace = ws,
-                soRunId = rid,
-                soMode = mode,
-                soFilter = filt
-              }
-        _ -> Left "usage: hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
-      ("--tree" : rest) -> go mWs mId ShowTree filt rest
-      ("--spans" : rest) -> go mWs mId ShowSpans filt rest
-      ("--snapshot" : rest) -> go mWs mId ShowSnapshot filt rest
-      ("--filter" : p : rest) -> go mWs mId mode (Just (T.pack p)) rest
-      (x : rest)
-        | "-" `T.isPrefixOf` T.pack x -> Left ("unknown flag: " <> x)
-        | otherwise -> case (mWs, mId) of
-            (Nothing, _) -> go (Just x) mId mode filt rest
-            (Just _, Nothing) -> go mWs (Just (T.pack x)) mode filt rest
-            _ -> Left ("unexpected argument: " <> x)
