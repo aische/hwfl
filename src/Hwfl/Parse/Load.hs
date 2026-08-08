@@ -18,9 +18,14 @@ import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Parse.Frontmatter (parseFrontmatter)
 import Hwfl.Parse.Lexer (bundleToDiagnostics)
-import Hwfl.Parse.Markdown (MarkdownFile (..), MdFence (..), parseMarkdown)
+import Hwfl.Parse.Markdown (MarkdownFile (..), MdFence (..), MdHeading (..), parseMarkdown)
 import Hwfl.Parse.Module (parseModuleBodyFromLine)
-import Hwfl.Parse.Section (buildSections)
+import Hwfl.Parse.Section
+  ( SlugIssue (..),
+    buildSections,
+    formatSlugIssue,
+    headingSlugIssues,
+  )
 import Hwfl.SafeIO (readUtf8File, renderReadError)
 import Hwfl.Source (Diagnostic (..), Pos (..), mkDiagnostic)
 
@@ -41,6 +46,7 @@ loadModuleText path src = do
   let prose = proseBodyAfterFrontmatter md.mdFrontmatter md.mdLines
       sections = buildSections md.mdLines md.mdHeadings md.mdFences
       schemaDocs = mapMaybe schemaDocSection sections
+  ensureValidSectionSlugs path md.mdHeadings
   case fmap smKind fm.fmSkill of
     Just SkillInstruction -> do
       ensureNoHwflFence path md.mdFences
@@ -70,6 +76,22 @@ loadModuleText path src = do
             lmBody = body,
             lmProseBody = prose
           }
+
+-- | Reject empty or colliding H2/H3 slugs so @slug bindings stay unambiguous (L-7).
+ensureValidSectionSlugs :: FilePath -> [MdHeading] -> Either [Diagnostic] ()
+ensureValidSectionSlugs path headings =
+  case headingSlugIssues headings of
+    [] -> Right ()
+    issues -> Left (map (slugIssueDiagnostic path) issues)
+
+slugIssueDiagnostic :: FilePath -> SlugIssue -> Diagnostic
+slugIssueDiagnostic path issue =
+  mkDiagnostic path (Pos (issueLine issue) 1) (formatSlugIssue issue)
+  where
+    issueLine = \case
+      EmptySlug _ line -> line
+      DuplicateSlug _ ((_, line) : _) -> line
+      DuplicateSlug _ [] -> 1
 
 -- | Markdown body after YAML frontmatter.
 proseBodyAfterFrontmatter :: Maybe Text -> [Text] -> Text

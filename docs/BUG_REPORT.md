@@ -403,7 +403,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 | L-4  | `Store.hs:336-355,373-380`                                   | No fsync anywhere (tmp + rename only; spans/events plain append). Crash-safe, not power-loss-safe; power loss can lose the rename or persist a torn file → run unrecoverable.          |
 | L-5  | `Parse/Expr.hs`                                              | **Fixed** (2026-08): tight `a/b` is QName; spaced `a / b` is division.                                                                                                                  |
 | L-6  | `Parse/Expr.hs`                                              | **Fixed** (2026-08): implicit let body only when it starts on a later line; `let x = a b` is a parse error.                                                                              |
-| L-7  | `Parse/Section.hs:16-27`                                     | `computeSlug` strips all non-ASCII: `"Über"`→`"ber"`, `"Café"`→`"caf"`; distinct headings and `a b`/`a-b` collapse; no duplicate-slug check — `@slug` refs can bind the wrong section. |
+| L-7  | `Parse/Section.hs`                                           | **Fixed** (2026-08): empty / duplicate H2/H3 slugs rejected at load and `md.sections` (ASCII strip unchanged; collisions fail closed).                                                  |
 | L-8  | `Check/Project.hs`                                           | **Fixed** (2026-08): `findCycle` DFS over remaining nodes with backtracking; reports a closed cycle (not a first-edge dead-end path).                                                  |
 | L-9  | `Parse/Markdown.hs:87-100`                                   | Frontmatter requires `---` on line 1 and `T.strip` doesn't remove U+FEFF: BOM or leading blank hides frontmatter; BOM inside a fence is a lexer error.                                 |
 | L-10 | `Frontmatter.hs:97-146`                                      | All frontmatter errors pinned at `Pos 1 1`; YAML's own line/col info discarded.                                                                                                        |
@@ -449,7 +449,7 @@ Lows (L-1–3, L-5, L-6, L-14, L-16, L-19, L-22, L-24). See [TASKS.md](TASKS.md)
 1. **M-3** — skill-body prompt trust (when third-party skills matter).
 2. **M-18** — project-hash / prose-edit resume UX (if comment edits brick resume often).
 3. **M-16** — multi-process run-store locking (when parallel lab processes share a run dir).
-4. Remaining **Lows** opportunistically (fsync, slugs, CLI, variants, ignore/glob, …).
+4. Remaining **Lows** opportunistically (fsync, CLI, variants, ignore/glob, …).
 
 Active product work has moved to agent substrate (MCP / git / terminals).
 

@@ -12,6 +12,8 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **L-7** — Empty / duplicate H2/H3 slugs fail at load and `md.sections`
+  (ASCII slugify unchanged; no silent last-wins `@slug` binding)
 - **L-13** — CLI: `wantsJson` / `--` end-of-options; typed `StaleProjectErr`
   (exit 4 without substring match)
 - **L-11** — `skill.tags` rejects non-string list entries (no silent drop)
@@ -38,7 +40,7 @@ None.
 - **M-3** skill-body prompt trust (when third-party skills matter)
 - **M-18** project-hash / prose-edit resume UX (only if comment edits brick resume often)
 - **M-16** multi-process run-store locking (until parallel lab processes share a run dir)
-- Remaining Lows (L-4, L-7, L-9–10, L-12, L-15, L-17–18, L-20–21, L-23, L-25)
+- Remaining Lows (L-4, L-9–10, L-12, L-15, L-17–18, L-20–21, L-23, L-25)
 - Opt-in Docker `exec.runtime`; semantic-check S4 / S6; skills phase D;
   concurrent `par` host IO; coding-agent Tier B; `latest` / omit run-id;
   `lib/`; typed `--example`; nested ignore; find/grep ignore opt-out

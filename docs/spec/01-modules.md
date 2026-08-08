@@ -135,7 +135,9 @@ In kernel code, `@section-slug` (or `section("slug")`) evaluates to that
 string. Used for prompts and documentation reuse.
 
 Slug algorithm: lowercase, spaces → `-`, strip non `[a-z0-9-]`, stable.
-Documented and tested.
+Documented and tested. Empty slugs (after strip) and duplicate slugs across
+H2/H3 headings are rejected at load / `md.sections` — last-wins binding is
+not allowed.
 
 ### 2.3 Code fence
 

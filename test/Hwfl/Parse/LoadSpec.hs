@@ -87,6 +87,56 @@ spec = describe "markdown module loader" $ do
         length (mbDecls (lmBody loaded)) `shouldBe` 1
         mbExpr (lmBody loaded) `shouldBe` Nothing
 
+  it "rejects duplicate section slugs (L-7)" $ do
+    let src =
+          T.unlines
+            [ "---",
+              "name: workflows/slug-dup",
+              "inputs: {}",
+              "outputs: {}",
+              "---",
+              "",
+              "## Über",
+              "",
+              "first",
+              "",
+              "## ber",
+              "",
+              "second",
+              "",
+              "```hwfl",
+              "fun main(inputs): {} = {}",
+              "```"
+            ]
+    case loadModuleText "slug-dup.md" src of
+      Left diags ->
+        T.unpack (renderDiagnostics diags)
+          `shouldContain` "duplicate section slug \"ber\""
+      Right _ -> expectationFailure "expected duplicate slug error"
+
+  it "rejects empty section slugs (L-7)" $ do
+    let src =
+          T.unlines
+            [ "---",
+              "name: workflows/slug-empty",
+              "inputs: {}",
+              "outputs: {}",
+              "---",
+              "",
+              "## 你好",
+              "",
+              "body",
+              "",
+              "```hwfl",
+              "fun main(inputs): {} = {}",
+              "```"
+            ]
+    case loadModuleText "slug-empty.md" src of
+      Left diags ->
+        T.unpack (renderDiagnostics diags)
+          `shouldContain` "empty section slug"
+      Right _ -> expectationFailure "expected empty slug error"
+
 lookupSection :: Text -> [Section] -> Maybe Section
 lookupSection slug = find ((== Slug slug) . secSlug)
   where

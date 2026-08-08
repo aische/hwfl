@@ -10,7 +10,7 @@ import Data.Text qualified as T
 import Hwfl.Ast.Module (Section (..))
 import Hwfl.Ast.Name (slugToText)
 import Hwfl.Parse.Markdown (MarkdownFile (..), parseMarkdown)
-import Hwfl.Parse.Section (buildSections)
+import Hwfl.Parse.Section (buildSections, formatSlugIssue, headingSlugIssues)
 import Hwfl.Source (Diagnostic (..))
 
 data MdSection = MdSection
@@ -24,13 +24,15 @@ data MdSection = MdSection
 extractSections :: Text -> Either Text [MdSection]
 extractSections src = case parseMarkdown "<md>" src of
   Left diags -> Left (T.intercalate "; " (map diagMessage diags))
-  Right md ->
-    let secs = buildSections (mdLines md) (mdHeadings md) (mdFences md)
-     in Right
-          [ MdSection
-              { msSlug = slugToText s.secSlug,
-                msTitle = s.secTitle,
-                msBody = s.secBody
-              }
-            | s <- secs
-          ]
+  Right md -> case headingSlugIssues (mdHeadings md) of
+    issue : _ -> Left (formatSlugIssue issue)
+    [] ->
+      let secs = buildSections (mdLines md) (mdHeadings md) (mdFences md)
+       in Right
+            [ MdSection
+                { msSlug = slugToText s.secSlug,
+                  msTitle = s.secTitle,
+                  msBody = s.secBody
+                }
+              | s <- secs
+            ]
