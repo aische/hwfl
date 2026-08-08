@@ -3,12 +3,14 @@
 module Hwfl.Llm.Simple
   ( mkSimpleProvider,
     mkSimpleProviderWithCatalog,
+    requestToTurns,
   )
 where
 
 import Control.Exception (SomeException, try)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy.Char8 qualified as BL
+import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -68,7 +70,7 @@ chatWithCatalog dump catalogPath req = do
           gr =
             GenRequest
               { grSystemPrompt = systemMsg,
-                grMessages = turns,
+                grMessages = map toLLMTurn turns,
                 grTools = map toLLMTool req.chatTools,
                 grAbortSignal = Nothing,
                 grLLMHooks = llmHooks hooks,
@@ -123,26 +125,37 @@ mapStreamChunk onChunk = \case
   RoundTextRoleCommitted _ -> pure ()
   StreamToolCallChunk tc -> onChunk (DeltaToolCall (fromLLMToolCall tc))
 
-requestToTurns :: ChatRequest -> (Maybe Text, [LLM.Turn])
+-- | Collapse a 'ChatRequest' into llm-simple's single system slot + turns.
+-- Message-path requests may carry several 'RoleSystem' entries (and an optional
+-- 'chatSystem'); all non-empty system texts are joined so none are dropped.
+-- When 'chatTurns' is non-empty, 'chatSystem' is used as-is (agent path).
+requestToTurns :: ChatRequest -> (Maybe Text, [Turn])
 requestToTurns req
   | not (null req.chatTurns) =
-      ( req.chatSystem,
-        map toLLMTurn req.chatTurns
-      )
+      (req.chatSystem, req.chatTurns)
   | otherwise =
-      let systems =
+      let fromMsgs = [m.msgContent | m <- req.chatMessages, m.msgRole == RoleSystem]
+          -- Host prepends chatSystem as the first RoleSystem message; avoid
+          -- duplicating that copy when both are present.
+          systems =
             case req.chatSystem of
-              Just s -> [s]
-              Nothing -> [m.msgContent | m <- req.chatMessages, m.msgRole == RoleSystem]
+              Just s
+                | Just s == listToMaybe fromMsgs -> fromMsgs
+                | otherwise -> s : fromMsgs
+              Nothing -> fromMsgs
+          joined =
+            case filter (not . T.null) systems of
+              [] -> Nothing
+              xs -> Just (T.intercalate "\n\n" xs)
           rest =
-            [ case m.msgRole of
-                RoleUser -> LLM.UserTurn m.msgContent
-                RoleAssistant -> LLM.AssistantTurn m.msgContent Nothing []
-                RoleSystem -> LLM.UserTurn m.msgContent
-              | m <- req.chatMessages,
-                m.msgRole /= RoleSystem
-            ]
-       in (case systems of [] -> Nothing; (s : _) -> Just s, rest)
+            mapMaybe
+              ( \m -> case m.msgRole of
+                  RoleUser -> Just (TurnUser m.msgContent)
+                  RoleAssistant -> Just (TurnAssistant m.msgContent [])
+                  RoleSystem -> Nothing
+              )
+              req.chatMessages
+       in (joined, rest)
 
 toLLMTurn :: Turn -> LLM.Turn
 toLLMTurn = \case

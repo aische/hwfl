@@ -6,6 +6,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
 import Hwfl.Llm.Provider (LlmProvider (..))
+import Hwfl.Llm.Simple (requestToTurns)
 import Hwfl.Llm.Types
   ( ChatRequest (..),
     FinishReason (..),
@@ -13,12 +14,72 @@ import Hwfl.Llm.Types
     ProviderResult (..),
     Role (..),
     StreamDelta (..),
+    Turn (..),
     emptyChatRequest,
   )
 import Test.Hspec
 
 spec :: Spec
 spec = describe "LlmProvider" $ do
+  describe "requestToTurns (M-4)" $ do
+    it "joins every RoleSystem message into the system prompt" $ do
+      let req =
+            (emptyChatRequest "gpt-5")
+              { chatMessages =
+                  [ Message RoleSystem "base",
+                    Message RoleUser "u1",
+                    Message RoleSystem "extra",
+                    Message RoleAssistant "a1",
+                    Message RoleSystem "tail"
+                  ]
+              }
+          (sys, turns) = requestToTurns req
+      sys `shouldBe` Just "base\n\nextra\n\ntail"
+      turns
+        `shouldBe` [ TurnUser "u1",
+                     TurnAssistant "a1" []
+                   ]
+
+    it "does not duplicate Host-prepended chatSystem" $ do
+      let req =
+            (emptyChatRequest "gpt-5")
+              { chatMessages =
+                  [ Message RoleSystem "base",
+                    Message RoleSystem "layer",
+                    Message RoleUser "hi"
+                  ],
+                chatSystem = Just "base"
+              }
+          (sys, turns) = requestToTurns req
+      sys `shouldBe` Just "base\n\nlayer"
+      turns `shouldBe` [TurnUser "hi"]
+
+    it "prepends chatSystem when it is not already the first RoleSystem" $ do
+      let req =
+            (emptyChatRequest "gpt-5")
+              { chatMessages =
+                  [ Message RoleSystem "layer",
+                    Message RoleUser "hi"
+                  ],
+                chatSystem = Just "base"
+              }
+          (sys, _) = requestToTurns req
+      sys `shouldBe` Just "base\n\nlayer"
+
+    it "uses chatSystem as-is on the agent turns path" $ do
+      let req =
+            (emptyChatRequest "gpt-5")
+              { chatTurns = [TurnUser "prompt"],
+                chatSystem = Just "agent-sys",
+                chatMessages =
+                  [ Message RoleSystem "ignored",
+                    Message RoleSystem "also-ignored"
+                  ]
+              }
+          (sys, turns) = requestToTurns req
+      sys `shouldBe` Just "agent-sys"
+      turns `shouldBe` [TurnUser "prompt"]
+
   it "mock provider returns a SUMMARY reply" $ do
     let req =
           (emptyChatRequest "gpt-5")

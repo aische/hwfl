@@ -215,10 +215,15 @@ taint can soundly protect arbitrary short plaintext.
 
 Skill markdown bodies are concatenated into the system prompt each round, and skills are loaded **at the model's own request**. Content is project-authored today, but a third-party skill (e.g. cloned from a repo) can instruct the model with tool-calling authority. No trust boundary or instruction-delimiting.
 
-### M-4 — `requestToTurns` drops all but the first `RoleSystem` message
+### M-4 — Fixed: `requestToTurns` preserves all `RoleSystem` messages
 
 - **Location:** `src/Hwfl/Llm/Simple.hs`
-- **Verification:** `[Reported]`
+- **Verification:** **Fixed** (2026-08-08)
+
+Message-path requests join every non-empty system text (`chatSystem` when not
+already the Host-prepended head, then each in-list `RoleSystem`) with `\n\n`
+into llm-simple's single `grSystemPrompt`. User/assistant order is unchanged;
+the agent `chatTurns` path still uses `chatSystem` alone.
 
 ### M-5 — `fs.find`/`fs.grep` descend directory symlinks without canonicalization or cycle checks
 

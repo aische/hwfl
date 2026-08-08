@@ -47,7 +47,7 @@ Order matters; do not skip ahead of H-6.
       runnable
 - [x] **M-9** — Diagnose YAML duplicate frontmatter keys
 - [x] **M-15** — Surface pricing/catalog decode failure (do not silent-zero)
-- [ ] **M-4** — `requestToTurns`: preserve all `RoleSystem` messages
+- [x] **M-4** — `requestToTurns`: preserve all `RoleSystem` messages
 - [ ] **M-11(a)** — Optional schema fields / `null` → option representation
 - [ ] **M-3** — Skill-body prompt trust boundary (when third-party skills)
 - [ ] **M-17** — Structured tool/provider errors vs string-sniff span status
@@ -108,6 +108,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-4** — `requestToTurns` joins every non-empty `RoleSystem` (plus
+  `chatSystem` when not already prepended) into llm-simple's single system
+  slot; agent `chatTurns` path unchanged (2026-08)
 - **M-12** — Par cooperative freeze for agent budget exhaustion: not-runnable
   in `pickRunnable`, absorb/drain like human gates, `extend` bumps the branch
   `agMaxRounds`; crash-recovery branches stay parked (2026-08)

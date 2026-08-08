@@ -12,6 +12,8 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **M-4 fixed** — `requestToTurns` joins all `RoleSystem` texts into the
+  provider system prompt (no silent drop); Host prepend not double-counted
 - **M-12 fixed** — Par treats `PauseAwaitingAgent` / crash-recovery as not
   runnable; agent budget exhaustion freezes the pool like human gates and
   surfaces `awaiting_extend` so `hwfl extend` can bump the branch budget
@@ -26,7 +28,7 @@ product. Broader lab framing in [idea.md](idea.md).
 None.
 
 ## Next up
-1. Remaining Medium: M-4, M-11(a), M-3, M-17, M-18
+1. Remaining Medium: M-11(a), M-3, M-17, M-18
 2. Selected Lows (L-5 / L-6 / L-14 / L-16 and opportunistic hygiene)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 
