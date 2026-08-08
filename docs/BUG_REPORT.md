@@ -280,10 +280,14 @@ alias expansion so DAG-shaped aliases no longer expand exponentially.
 
 ### M-10 — Effects of a top-level fun called through a let-alias are lost
 
-- **Location:** `src/Hwfl/Check/Effects.hs:82-85,123-124`
-- **Verification:** `[Reported]`
+- **Location:** `src/Hwfl/Check/Effects.hs`
+- **Verification:** **Fixed** (2026-08-08)
 
-`calleeResidual (EVar n)` looks up only top-level names; `let g = f in g()` yields `{}` for `f`'s `{Write}`. Module `meEffects` under-reports → an importing module can pass a purity ceiling while executing host writes through the alias.
+`ELet` now binds the RHS callee residual into `EffEnv` and, for alias-shaped
+RHSs (`EVar` / import / projection), extends `TypeEnv` so
+`effectsReleasedByApp` can resolve the alias. `let g = f in g()` charges `f`'s
+effects; a pure let-shadow of an effectful top-level name does not. Regression
+coverage in `ModuleSpec`.
 
 ### M-11 — `TOption` fields forced `required`; `TSecret` flattened to inner schema
 

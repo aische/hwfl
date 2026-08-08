@@ -1,5 +1,6 @@
 module Hwfl.Check.ModuleSpec (spec) where
 
+import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -395,6 +396,62 @@ spec = describe "type checker" $ do
       case loadModuleText "summarise.md" src of
         Left diags -> expectationFailure (show diags)
         Right loaded -> checkLoadedModule loaded `shouldSatisfy` isRight
+
+    it "M-10 charges Write through let-alias of a top-level fun" $ do
+      case checkBody
+        "fun write_it(p: FileRef): Unit =\n\
+        \  fs.write(path = p, text = \"x\")\n\
+        \fun main(p: FileRef): Unit =\n\
+        \  let g = write_it\n\
+        \  g(p)" of
+        Right r ->
+          Map.lookup (Ident "main") r.crEffects
+            `shouldBe` Just (Set.singleton EffWrite)
+        Left err -> expectationFailure (show err)
+
+    it "M-10 rejects effects: [] when Write is reached via let-alias" $ do
+      let src =
+            T.unlines
+              [ "---",
+                "name: workflows/m10",
+                "inputs:",
+                "  path: FileRef",
+                "outputs:",
+                "  ok: Bool",
+                "effects: []",
+                "---",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun write_it(p: FileRef): Unit =",
+                "  fs.write(path = p, text = \"x\")",
+                "fun main(inputs): { ok: Bool } =",
+                "  let g = write_it",
+                "  let _ = g(inputs.path)",
+                "  { ok = true }",
+                "```"
+              ]
+      case loadModuleText "m10.md" src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded ->
+          checkLoadedModule loaded
+            `shouldBe` Left
+              ( EffectsNotAllowed
+                  (Set.singleton EffWrite)
+                  Set.empty
+              )
+
+    it "M-10 does not charge shadowed top-level residual via pure let-alias" $ do
+      case checkBody
+        "fun write_it(p: FileRef): Unit =\n\
+        \  fs.write(path = p, text = \"x\")\n\
+        \fun main(_: Unit): Unit =\n\
+        \  let write_it = fun(_: Unit): Unit => ()\n\
+        \  write_it()" of
+        Right r ->
+          Map.lookup (Ident "main") r.crEffects `shouldBe` Just Set.empty
+        Left err -> expectationFailure (show err)
 
   describe "try/catch" $ do
     it "accepts matching try and catch types" $

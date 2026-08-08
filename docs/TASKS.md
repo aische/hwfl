@@ -42,7 +42,7 @@ Order matters; do not skip ahead of H-6.
       pure-eval / machine step budget, type-alias memoization
 - [x] **M-6** — `exec.run`: stream/truncate before full buffer; process-group
       kill; validate timeout / max_output numerics
-- [ ] **M-10** — Effect residuals through let-aliases of top-level funs
+- [x] **M-10** — Effect residuals through let-aliases of top-level funs
 - [ ] **M-12** — Par: treat `PauseAwaitingAgent` / crash-recovery as not
       runnable
 - [ ] **M-9** — Diagnose YAML duplicate frontmatter keys
@@ -108,6 +108,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-10** — `ELet` propagates callee residuals (and alias types) so
+  `let g = f in g()` cannot under-report `f`'s effects past the module ceiling
+  (2026-08)
 - **M-6** — `exec.run` caps stdout/stderr while reading; timeout SIGTERM/SIGKILL
   the process group and returns partial capture; `timeout_ms` /
   `max_output_bytes` validated at project load and run (2026-08)

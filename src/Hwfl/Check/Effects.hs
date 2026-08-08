@@ -17,7 +17,7 @@ import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Expr
 import Hwfl.Ast.Name (Ident (..), qnameToText)
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
-import Hwfl.Check.Env (ModuleExport (..), TypeEnv, lookupImport, resolveType)
+import Hwfl.Check.Env (ModuleExport (..), TypeEnv, extendVar, lookupImport, lookupVar, resolveType)
 import Hwfl.Check.Error (CheckError (..))
 import Hwfl.Check.Infer (infer)
 import Hwfl.Check.Overload (classifyOp)
@@ -79,9 +79,17 @@ inferExprEffects env effEnv = go
         pure (unions [fEff, aEff, released, callees])
       EProj e _ -> go e
       EIndex e ix -> unions <$> traverse go [e, ix]
-      ELet n _ e1 e2 -> do
+      ELet n mt e1 e2 -> do
         e1e <- go e1
-        e2e <- inferExprEffects env (Map.delete n effEnv) e2
+        -- Propagate callee residual through aliases: `let g = f in g()` must
+        -- still charge `f`'s effects (M-10). Insert replaces any outer binding.
+        aliasResidual <- calleeResidual e1
+        env' <- extendAliasType env n mt e1
+        e2e <-
+          inferExprEffects
+            env'
+            (Map.insert n aliasResidual effEnv)
+            e2
         pure (e1e <> e2e)
       EFun ps _ body -> do
         let ns = [n | Param n _ <- ps]
@@ -137,6 +145,35 @@ inferExprEffects env effEnv = go
             (lookupImport (qnameToText q) env)
       EProj e _ -> calleeResidual e
       _ -> pure emptyEffs
+
+-- | Bind a let-name to an alias RHS type when it can be resolved without
+-- re-inferring (effect analysis does not bind fun parameters into @TypeEnv@).
+extendAliasType :: TypeEnv -> Ident -> Maybe TypeExpr -> Expr -> Either CheckError TypeEnv
+extendAliasType env n mt e1 = case mt of
+  Just ann -> do
+    t1 <- resolveType env ann
+    pure (extendVar n t1 env)
+  Nothing -> case aliasType env e1 of
+    Just t -> pure (extendVar n t env)
+    Nothing -> pure env
+
+aliasType :: TypeEnv -> Expr -> Maybe TypeExpr
+aliasType env = \case
+  EVar v -> lookupVar v env
+  EQName q -> do
+    ex <- lookupImport (qnameToText q) env
+    case ex.meEntryIO of
+      Just (ins, outs) -> Just (TFun ins outs)
+      Nothing -> Map.lookup (Ident "main") ex.meValues
+  EProj (EQName q) field -> do
+    ex <- lookupImport (qnameToText q) env
+    Map.lookup field ex.meValues
+  EProj e field -> do
+    t <- aliasType env e
+    case t of
+      TRecord fs -> lookup field fs
+      _ -> Nothing
+  _ -> Nothing
 
 unions :: [EffSet] -> EffSet
 unions = Set.unions

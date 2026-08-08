@@ -12,23 +12,15 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **M-10 fixed** — Let-aliases of top-level (and import) funs propagate callee
+  residuals into `EffEnv`, so `let g = f in g()` cannot sneak past an effects
+  ceiling; pure shadows still drop the outer residual
 - **M-6 fixed** — `exec.run` stream-caps output while reading; timeout kills
   the process group (SIGTERM then SIGKILL) and returns partial capture;
   `timeout_ms` / `max_output_bytes` rejected when invalid at project load and
   at run
-- **M-8 fixed** — Resource ceilings on untrusted input: YAML aliases forbidden
-  with nesting/node caps; parse depth bounded; linear digit literals; pure-eval
-  fuel and CEK frame depth; memoized type-alias expansion
-- **M-7 + M-15 fixed** — Module reads use explicit UTF-8 decoding and report
-  stable diagnostics; project / discovery / pricing-catalog I/O is contained,
-  and an existing malformed catalog is a surfaced configuration error, never
-  silent zero pricing.
-- **M-2 + M-11(b) fixed** — `Secret` schema annotations survive internally and
-  restore `VSecret` after structured model decoding; providers receive standard
-  schemas. Events and debug stderr redact sensitive keys, embedded JSON, and
-  common credential text before persistence or display.
-- **M-14 fixed** — `text.split_sentences` retains an unterminated final
-  sentence after completed ones; regression coverage for both sentence forms
+- **M-8 / M-7 / M-15 / M-2 / M-11(b) / M-14** — Resource ceilings, contained
+  module/catalog I/O, secret re-wrap + redaction, sentence split; see report
 - **M-13 / M-5 / M-19 / M-1 / H-cluster** — See [BUG_REPORT.md](BUG_REPORT.md);
   P0 High and several Mediums closed
 
@@ -36,7 +28,7 @@ product. Broader lab framing in [idea.md](idea.md).
 None.
 
 ## Next up
-1. P2: M-10 (effect residuals via let-aliases), M-12 (par agent pause), M-9
+1. P2: M-12 (par agent pause), M-9 (YAML duplicate keys)
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 
