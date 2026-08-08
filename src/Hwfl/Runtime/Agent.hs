@@ -40,7 +40,17 @@ import Hwfl.Eval.Value
 import Hwfl.Json.Encode (jsonToValue, jsonToValueWithSchema, schemaForProvider, valueToJsonText)
 import Hwfl.Json.Validate (validateAgainstSchema)
 import Hwfl.Llm.Types qualified as Llm
-import Hwfl.Runtime.Context (defaultMaxToolResultChars, historyToolName)
+import Hwfl.Runtime.Context
+  ( ConsolidateMode (..),
+    consolidateToolName,
+    contextToolsEnabled,
+    defaultMaxPins,
+    defaultMaxSummaryChars,
+    defaultMaxToolResultChars,
+    historyToolName,
+    parseConsolidateMode,
+    pinToolName,
+  )
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Turn (valueToTurns)
 import Hwfl.Runtime.Machine (AgentState (..), FunTable)
@@ -385,7 +395,10 @@ parseAgentArgs ::
       Int,
       [Llm.Turn],
       Maybe Int,
-      Maybe Int
+      Maybe Int,
+      ConsolidateMode,
+      Int,
+      Int
     )
 parseAgentArgs args = do
   system <- expectString (Ident "system") args
@@ -407,7 +420,23 @@ parseAgentArgs args = do
     Just _ -> Right defaultMaxRounds
   ctxWin <- expectPositiveOptInt (Ident "context_window") args
   maxTool <- expectPositiveOptInt (Ident "max_tool_result_chars") args
-  pure (system, prompt, tools, model, maxR, history, ctxWin, maxTool)
+  consol <- expectConsolidate args
+  case (consol, ctxWin) of
+    (ConsolidateHeuristic, Nothing) ->
+      Left
+        ( ConfigErr
+            "consolidate=\"heuristic\" requires context_window"
+        )
+    (ConsolidateHeuristic, Just n) | n <= 0 ->
+      Left (ConfigErr "consolidate=\"heuristic\" requires a positive context_window")
+    _ -> pure ()
+  maxPins <-
+    fromMaybe defaultMaxPins
+      <$> expectPositiveOptInt (Ident "max_pins") args
+  maxSummary <-
+    fromMaybe defaultMaxSummaryChars
+      <$> expectPositiveOptInt (Ident "max_summary_chars") args
+  pure (system, prompt, tools, model, maxR, history, ctxWin, maxTool, consol, maxPins, maxSummary)
 
 parseAgentObjectArgs ::
   [(Maybe Ident, Value)] ->
@@ -421,12 +450,16 @@ parseAgentObjectArgs ::
       Int,
       [Llm.Turn],
       Maybe Int,
-      Maybe Int
+      Maybe Int,
+      ConsolidateMode,
+      Int,
+      Int
     )
 parseAgentObjectArgs args = do
-  (system, prompt, tools, model, maxR, history, ctxWin, maxTool) <- parseAgentArgs args
+  (system, prompt, tools, model, maxR, history, ctxWin, maxTool, consol, maxPins, maxSummary) <-
+    parseAgentArgs args
   schema <- expectSchema (Ident "schema") args
-  pure (system, prompt, tools, schema, model, maxR, history, ctxWin, maxTool)
+  pure (system, prompt, tools, schema, model, maxR, history, ctxWin, maxTool, consol, maxPins, maxSummary)
 
 initAgentState ::
   Text ->
@@ -439,18 +472,22 @@ initAgentState ::
   [Llm.Turn] ->
   Maybe Int ->
   Maybe Int ->
+  ConsolidateMode ->
+  Int ->
+  Int ->
   AgentState
-initAgentState system prompt tools model maxRounds spanId submitSchema priorHistory ctxWin maxTool =
+initAgentState system prompt tools model maxRounds spanId submitSchema priorHistory ctxWin maxTool consol maxPins maxSummary =
   let reserved =
         (case submitSchema of Just _ -> [submitToolName]; Nothing -> [])
           ++ (case ctxWin of Just n | n > 0 -> [historyToolName]; _ -> [])
+          ++ ( if contextToolsEnabled consol
+                 then [pinToolName, consolidateToolName]
+                 else []
+             )
       toolsUniq = uniquifyToolNames reserved tools
       tools' = case submitSchema of
         Just schema -> toolsUniq ++ [submitToolSpec schema]
         Nothing -> toolsUniq
-      -- When windowing, default a wire-side tool-result budget unless the
-      -- caller set max_tool_result_chars explicitly (including an explicit
-      -- omit via absence → default; there is no "disable default" yet).
       maxTool' = case (maxTool, ctxWin) of
         (Just n, _) -> Just n
         (Nothing, Just n) | n > 0 -> Just defaultMaxToolResultChars
@@ -473,11 +510,24 @@ initAgentState system prompt tools model maxRounds spanId submitSchema priorHist
           agInstructionChars = 0,
           agRoundCloseAttrs = Nothing,
           agContextWindow = ctxWin,
-          agMaxToolResultChars = maxTool'
+          agMaxToolResultChars = maxTool',
+          agConsolidate = consol,
+          agPins = [],
+          agCompactSummary = Nothing,
+          agCompactWatermark = 0,
+          agMaxPins = maxPins,
+          agMaxSummaryChars = maxSummary
         }
 
--- | Optional positive Int named arg; absent → Nothing; non-Int → ignore
--- (same softness as max_rounds for wrong types, except we reject ≤0).
+expectConsolidate :: [(Maybe Ident, Value)] -> Either RuntimeError ConsolidateMode
+expectConsolidate args = case lookupNamed (Ident "consolidate") args of
+  Nothing -> Right ConsolidateOff
+  Just (VString s) -> case parseConsolidateMode s of
+    Left err -> Left (ConfigErr err)
+    Right m -> Right m
+  Just _ -> Left (HostErr "expected String for consolidate")
+
+-- | Optional positive Int named arg; absent → Nothing.
 expectPositiveOptInt :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError (Maybe Int)
 expectPositiveOptInt n args = case lookupNamed n args of
   Nothing -> Right Nothing

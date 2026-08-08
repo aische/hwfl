@@ -272,7 +272,10 @@ llmType =
                 (Ident "max_rounds", t "Int"),
                 (Ident "history", TList (t "Turn")),
                 (Ident "context_window", t "Int"),
-                (Ident "max_tool_result_chars", t "Int")
+                (Ident "max_tool_result_chars", t "Int"),
+                (Ident "consolidate", t "String"),
+                (Ident "max_pins", t "Int"),
+                (Ident "max_summary_chars", t "Int")
               ]
           )
           [EffNet]
@@ -295,7 +298,10 @@ llmType =
                 (Ident "max_rounds", t "Int"),
                 (Ident "history", TList (t "Turn")),
                 (Ident "context_window", t "Int"),
-                (Ident "max_tool_result_chars", t "Int")
+                (Ident "max_tool_result_chars", t "Int"),
+                (Ident "consolidate", t "String"),
+                (Ident "max_pins", t "Int"),
+                (Ident "max_summary_chars", t "Int")
               ]
           )
           [EffNet]

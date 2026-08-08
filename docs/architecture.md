@@ -94,10 +94,11 @@ Workflow ──► llm.* host ops ──► LlmProvider ──► llm-simple
 Workflows never import `llm-simple`. Only `Hwfl.Llm.Simple` (or equivalent)
 depends on it. See [spec/08-llm-provider.md](spec/08-llm-provider.md).
 
-**Agent context:** L1 window + `get_history` live in hwfl
-(`Hwfl.Runtime.Context`); full `agHistory` remains snapshot truth. L2
-consolidate/assemble still planned — [TASKS.md](TASKS.md);
-decision: [log/2026-08.md](log/2026-08.md).
+**Agent context:** L1 window + `get_history` and L2 heuristic
+consolidate / pins / assemble live in hwfl (`Hwfl.Runtime.Context`).
+Full `agHistory` remains snapshot truth; wire context is a view.
+`consolidate = "llm"` is documented but not implemented yet —
+[TASKS.md](TASKS.md); decision: [log/2026-08.md](log/2026-08.md).
 
 ## Persistence layout
 

@@ -647,6 +647,15 @@ inferLlmAgentApp env args = case classifyArgs args of
     case lookup (Ident "max_tool_result_chars") nes of
       Nothing -> pure ()
       Just e -> check env e tInt
+    case lookup (Ident "consolidate") nes of
+      Nothing -> pure ()
+      Just e -> check env e tString
+    case lookup (Ident "max_pins") nes of
+      Nothing -> pure ()
+      Just e -> check env e tInt
+    case lookup (Ident "max_summary_chars") nes of
+      Nothing -> pure ()
+      Just e -> check env e tInt
     let known =
           [ Ident "system",
             Ident "prompt",
@@ -655,7 +664,10 @@ inferLlmAgentApp env args = case classifyArgs args of
             Ident "max_rounds",
             Ident "history",
             Ident "context_window",
-            Ident "max_tool_result_chars"
+            Ident "max_tool_result_chars",
+            Ident "consolidate",
+            Ident "max_pins",
+            Ident "max_summary_chars"
           ]
     mapM_
       ( \(n, _) ->
@@ -700,6 +712,15 @@ inferLlmAgentObjectApp env args = do
       case lookup (Ident "max_tool_result_chars") nes of
         Nothing -> pure ()
         Just e -> check env e tInt
+      case lookup (Ident "consolidate") nes of
+        Nothing -> pure ()
+        Just e -> check env e tString
+      case lookup (Ident "max_pins") nes of
+        Nothing -> pure ()
+        Just e -> check env e tInt
+      case lookup (Ident "max_summary_chars") nes of
+        Nothing -> pure ()
+        Just e -> check env e tInt
       let known =
             [ Ident "system",
               Ident "prompt",
@@ -709,7 +730,10 @@ inferLlmAgentObjectApp env args = do
               Ident "max_rounds",
               Ident "history",
               Ident "context_window",
-              Ident "max_tool_result_chars"
+              Ident "max_tool_result_chars",
+              Ident "consolidate",
+              Ident "max_pins",
+              Ident "max_summary_chars"
             ]
       mapM_
         ( \(n, _) ->

@@ -32,12 +32,13 @@ Two separate tasks (do L1 before L2):
       - Tool to fetch older chunks / slices of the full history on demand
       - Prefer also capping / folding huge tool results (otherwise windowing
         alone may not save the context)
-- [ ] **Context L2 — consolidate + assemble**
+- [x] **Context L2 — consolidate + assemble**
       - Helpers to extract pins / structured notes from a droppable span
       - Compact: summary (or synthetic turn) + rewrite working history
       - Assemble: pins + optional summary + recent window → next context
       - Pin / note store shape (workspace FS and/or run-store); projects
         only pass knobs
+      - Follow-up: `consolidate = "llm"` (extra model-round summarizer)
 
 ## Next — coding-agent / observability / research
 
@@ -62,6 +63,7 @@ From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate.
 
 ## Low priority
 
+- [ ] `consolidate = "llm"` — Context L2 LLM summarizer round
 - [ ] Alternate `LlmProvider` (OpenAI/Anthropic SDK, etc.)
 - [ ] In-language `lib/` modules per [stdlib.md](stdlib.md)
 - [ ] `hwfl init` / shell completions

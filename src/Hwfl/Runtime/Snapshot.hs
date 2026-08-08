@@ -35,6 +35,14 @@ import Hwfl.Runtime.Turn
     toolResultToJson,
     turnToJson,
   )
+import Hwfl.Runtime.Context
+  ( ConsolidateMode (..),
+    Pin (..),
+    consolidateModeText,
+    defaultMaxPins,
+    defaultMaxSummaryChars,
+    parseConsolidateMode,
+  )
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Machine
 import Text.Read (readMaybe)
@@ -314,6 +322,15 @@ agentToJson ag =
       ++ case ag.agMaxToolResultChars of
         Nothing -> []
         Just n -> ["max_tool_result_chars" .= n]
+      ++ case consolidateModeText ag.agConsolidate of
+        Nothing -> []
+        Just m -> ["consolidate" .= m]
+      ++ [ "pins" .= map pinToJson ag.agPins,
+           "compact_summary" .= ag.agCompactSummary,
+           "compact_watermark" .= ag.agCompactWatermark,
+           "max_pins" .= ag.agMaxPins,
+           "max_summary_chars" .= ag.agMaxSummaryChars
+         ]
 
 parseAgent :: Aeson.Value -> Parser AgentState
 parseAgent = withObject "AgentState" $ \o -> do
@@ -339,6 +356,20 @@ parseAgent = withObject "AgentState" $ \o -> do
   roundCloseAttrs <- o .:? "round_close_attrs"
   contextWindow <- o .:? "context_window"
   maxToolResultChars <- o .:? "max_tool_result_chars"
+  consolidateTxt <- o .:? "consolidate"
+  consolidate <- case consolidateTxt of
+    Nothing -> pure ConsolidateOff
+    Just t -> case parseConsolidateMode t of
+      Left err -> fail (T.unpack err)
+      Right ConsolidateOff -> pure ConsolidateOff
+      Right m -> pure m
+  pins <- o .:? "pins" >>= maybe (pure []) (mapM parsePin)
+  compactSummary <- o .:? "compact_summary"
+  compactWatermark <- o .:? "compact_watermark" .!= 0
+  unless (compactWatermark >= 0) $
+    fail "agent compact_watermark must be non-negative"
+  maxPins <- o .:? "max_pins" .!= defaultMaxPins
+  maxSummaryChars <- o .:? "max_summary_chars" .!= defaultMaxSummaryChars
   pure
     AgentState
       { agSystem = system,
@@ -358,8 +389,29 @@ parseAgent = withObject "AgentState" $ \o -> do
         agInstructionChars = instructionChars,
         agRoundCloseAttrs = roundCloseAttrs,
         agContextWindow = contextWindow,
-        agMaxToolResultChars = maxToolResultChars
+        agMaxToolResultChars = maxToolResultChars,
+        agConsolidate = consolidate,
+        agPins = pins,
+        agCompactSummary = compactSummary,
+        agCompactWatermark = compactWatermark,
+        agMaxPins = maxPins,
+        agMaxSummaryChars = maxSummaryChars
       }
+
+pinToJson :: Pin -> Aeson.Value
+pinToJson p =
+  object
+    [ "id" .= p.pinId,
+      "kind" .= p.pinKind,
+      "text" .= p.pinText
+    ]
+
+parsePin :: Aeson.Value -> Parser Pin
+parsePin = withObject "Pin" $ \o ->
+  Pin
+    <$> o .: "id"
+    <*> o .: "kind"
+    <*> o .: "text"
 
 toolRoundToJson :: ToolRound -> Aeson.Value
 toolRoundToJson tr =

@@ -32,6 +32,7 @@ import Hwfl.Ast.Expr (Arg, Expr, Field, MatchArm, Param, StringPart)
 import Hwfl.Ast.Name (Ident, QName, TypeName)
 import Hwfl.Eval.Value (Env, HostOpId, ToolSpecValue, Value (..))
 import Hwfl.Llm.Types (ToolCall, ToolResult, Turn)
+import Hwfl.Runtime.Context (ConsolidateMode (..), Pin)
 import Hwfl.Runtime.Error (RuntimeError)
 
 -- | Top-level module functions (params + body), reloaded on resume.
@@ -150,7 +151,17 @@ data AgentState = AgentState
     agContextWindow :: Maybe Int,
     -- | When 'Just', tool-result payloads are capped on the *wire* view.
     -- Durable 'agHistory' keeps full content.
-    agMaxToolResultChars :: Maybe Int
+    agMaxToolResultChars :: Maybe Int,
+    -- | Context L2 consolidate mode (off / heuristic auto / manual tools).
+    agConsolidate :: ConsolidateMode,
+    -- | Durable pins assembled ahead of the wire window.
+    agPins :: [Pin],
+    -- | Compact summary of history folded past the watermark.
+    agCompactSummary :: Maybe Text,
+    -- | Index into 'agHistory'; turns before this are folded into pins/summary.
+    agCompactWatermark :: Int,
+    agMaxPins :: Int,
+    agMaxSummaryChars :: Int
   }
   deriving stock (Eq, Show)
 

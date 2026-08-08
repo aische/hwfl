@@ -24,6 +24,7 @@ import Hwfl.Llm.Types
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Agent (buildToolSpec, initAgentState, parseAgentArgs, submitToolName, uniquifyToolNames)
+import Hwfl.Runtime.Context (ConsolidateMode (..))
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Eval (StepMode (..), extendAgentMachine, suggestExtraRounds)
 import Hwfl.Runtime.Machine (AgentExhaustedRequest (..), AgentState (..), ChoiceRequest (..), Current (..), Machine (..), MachineStatus (..), PauseReason (..), initialMachine)
@@ -616,13 +617,13 @@ spec = describe "runtime agent (M7)" $ do
       parseAgentArgs args `shouldSatisfy` isLeft
 
     it "rejects a snapshot with a non-positive max_rounds" $ do
-      let ag = initAgentState "system" "prompt" [] "model" 1 "span" Nothing [] Nothing Nothing
+      let ag = initAgentState "system" "prompt" [] "model" 1 "span" Nothing [] Nothing Nothing ConsolidateOff 32 2000
           machine = initialMachine "project" (CurAgent ag)
           broken = setSnapshotAgentMaxRounds 0 (machineToJson machine)
       machineFromJson broken `shouldSatisfy` isLeft
 
     it "rejects non-positive and overflowing round extensions" $ do
-      let ag = initAgentState "system" "prompt" [] "model" maxBound "span" Nothing [] Nothing Nothing
+      let ag = initAgentState "system" "prompt" [] "model" maxBound "span" Nothing [] Nothing Nothing ConsolidateOff 32 2000
           exhausted =
             (initialMachine "project" (CurAgent ag))
               { mStatus =
@@ -664,6 +665,9 @@ spec = describe "runtime agent (M7)" $ do
               []
               Nothing
               Nothing
+              ConsolidateOff
+              32
+              2000
           names = map (.tvsName) ag.agTools :: [Text]
       names `shouldBe` ["submit_2", "submit"]
 

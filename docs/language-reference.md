@@ -124,8 +124,8 @@ Does not change the `exec.run` signature.
 | `llm.chat` | Net | `{ system, prompt, model } -> String` |
 | `llm.chat_messages` | Net | `{ system, messages: List<{ role, content }>, model } -> String` |
 | `llm.object` | Net | `{ prompt, schema, model } -> T` when `schema = schema(T)` (else `Json`) |
-| `llm.agent` | Net | `{ system, prompt, tools, model, max_rounds?, history?, context_window?, max_tool_result_chars? } -> { text, rounds, history }` |
-| `llm.agent_object` | Net | `{ …, schema, history?, context_window?, max_tool_result_chars? } -> { value: T, rounds, history }` (synthetic `submit` tool) |
+| `llm.agent` | Net | `{ system, prompt, tools, model, max_rounds?, history?, context_window?, max_tool_result_chars?, consolidate?, max_pins?, max_summary_chars? } -> { text, rounds, history }` |
+| `llm.agent_object` | Net | `{ …, schema, history?, context_window?, max_tool_result_chars?, consolidate?, max_pins?, max_summary_chars? } -> { value: T, rounds, history }` (synthetic `submit` tool) |
 
 `llm.chat_messages` is text-only history (`{ role, content }`).
 `llm.agent` / `llm.agent_object` carry tool-inclusive transcripts as
@@ -140,6 +140,20 @@ read-only `get_history` tool is injected so the model can page older
 chunks (`chunk=0` = most recent hidden page). Optional
 `max_tool_result_chars` caps tool payloads on the *wire* view (default
 16000 when `context_window` is set); durable history keeps full content.
+
+**Consolidate / pins (L2):** optional `consolidate` (default off):
+
+| Value | Behaviour |
+|-------|-----------|
+| omit / off | No auto compact; no `pin` / `consolidate` tools |
+| `"heuristic"` | Requires `context_window`. Before each model round, fold the droppable prefix into pins + a short summary; inject `pin` and `consolidate` tools |
+| `"manual"` | Inject `pin` / `consolidate` only (no auto). Pins still assemble ahead of the wire view |
+| `"llm"` | **Planned** — extra model round to summarize the droppable span; rejected at runtime until implemented |
+
+Assemble order on the wire: pins block + optional earlier-context summary,
+then the L1 window (capped tool results). `max_pins` (default 32) and
+`max_summary_chars` (default 2000) bound retained memory. Full
+`agHistory` is never rewritten.
 
 ### Human / observability / meta
 

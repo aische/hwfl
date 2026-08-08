@@ -23,13 +23,21 @@ import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Agent (initAgentState, parseAgentArgs)
 import Hwfl.Runtime.Context
-  ( capToolResult,
+  ( ConsolidateMode (..),
+    Pin (..),
+    assembleWireTurns,
+    capToolResult,
+    compactDroppable,
     defaultMaxToolResultChars,
+    extractPins,
     getHistoryChunk,
     historyToolName,
+    needsAutoCompact,
+    pinToolName,
     windowOffset,
     wireTurns,
   )
+import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Machine (AgentState (..))
 import Hwfl.Runtime.Run
@@ -43,7 +51,12 @@ import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 
 spec :: Spec
-spec = describe "Context L1" $ do
+spec = do
+  describe "Context L1" l1Spec
+  describe "Context L2" l2Spec
+
+l1Spec :: Spec
+l1Spec = do
   describe "windowOffset" $ do
     it "returns 0 when no context window is configured" $
       windowOffset Nothing sampleConversation `shouldBe` 0
@@ -99,8 +112,22 @@ spec = describe "Context L1" $ do
               (Just (Ident "context_window"), VInt 2)
             ]
       case parseAgentArgs args of
-        Right (_, _, _, _, _, _, Just 2, Nothing) -> do
-          let ag = initAgentState "s" "p" [] "m" 4 "span" Nothing [] (Just 2) Nothing
+        Right (_, _, _, _, _, _, Just 2, Nothing, ConsolidateOff, _, _) -> do
+          let ag =
+                initAgentState
+                  "s"
+                  "p"
+                  []
+                  "m"
+                  4
+                  "span"
+                  Nothing
+                  []
+                  (Just 2)
+                  Nothing
+                  ConsolidateOff
+                  32
+                  2000
           ag.agMaxToolResultChars `shouldBe` Just defaultMaxToolResultChars
         other -> expectationFailure ("unexpected parse: " <> show other)
 
@@ -108,7 +135,7 @@ spec = describe "Context L1" $ do
     it "sends only the windowed suffix and injects get_history" $
       withSystemTempDirectory "hwfl-context-window" $ \dir -> do
         let path = dir </> "agent.md"
-            src = chainedAgentSrc False
+            src = chainedAgentSrc Nothing
         ref <- newIORef ([] :: [ChatRequest])
         writeFile path (T.unpack src)
         case loadModuleText path src of
@@ -122,7 +149,6 @@ spec = describe "Context L1" $ do
             case outcome of
               OutcomeCompleted {} -> do
                 reqs <- reverse <$> readIORef ref
-                -- Third agent call is the windowed one (first request of that call).
                 case drop 2 reqs of
                   req : _ -> do
                     let users = [t | TurnUser t <- req.chatTurns]
@@ -135,7 +161,7 @@ spec = describe "Context L1" $ do
     it "serves get_history for hidden chunks" $
       withSystemTempDirectory "hwfl-get-history" $ \dir -> do
         let path = dir </> "agent.md"
-            src = chainedAgentSrc True
+            src = chainedAgentSrc Nothing
         writeFile path (T.unpack src)
         case loadModuleText path src of
           Left diags -> expectationFailure (show diags)
@@ -154,6 +180,153 @@ spec = describe "Context L1" $ do
                         T.unpack t `shouldContain` "first question"
                       _ -> expectationFailure "expected text field"
                   _ -> expectationFailure ("expected record, got " <> show v)
+              other -> expectationFailure (show other)
+
+l2Spec :: Spec
+l2Spec = do
+  describe "pure helpers" $ do
+    it "extractPins pulls user and tool facts" $ do
+      let pins = extractPins sampleConversation
+      map (.pinKind) pins `shouldContain` ["user"]
+      any (\p -> "first question" `T.isInfixOf` p.pinText) pins `shouldBe` True
+
+    it "needsAutoCompact when watermark lags the window" $ do
+      needsAutoCompact ConsolidateHeuristic (Just 1) 0 sampleConversation `shouldBe` True
+      needsAutoCompact ConsolidateHeuristic (Just 1) 4 sampleConversation `shouldBe` False
+      needsAutoCompact ConsolidateOff (Just 1) 0 sampleConversation `shouldBe` False
+
+    it "assembleWireTurns prepends pins and summary before the window" $ do
+      let pins = extractPins (take 2 sampleConversation)
+          wired =
+            assembleWireTurns
+              pins
+              (Just "- earlier")
+              (Just 1)
+              Nothing
+              sampleConversation
+      case wired of
+        TurnUser prefix : rest -> do
+          T.unpack prefix `shouldContain` "## Pins"
+          T.unpack prefix `shouldContain` "## Earlier context"
+          [t | TurnUser t <- rest] `shouldBe` ["third question"]
+        other -> expectationFailure ("unexpected assemble: " <> show other)
+
+    it "compactDroppable advances the watermark" $ do
+      case compactDroppable 32 2000 [] Nothing 0 sampleConversation (Just 1) of
+        Just (wm, pins, Just summary, _) -> do
+          wm `shouldBe` 4
+          pins `shouldSatisfy` (not . null)
+          T.unpack summary `shouldContain` "user:"
+        Nothing -> expectationFailure "expected a compact result"
+
+  describe "parse consolidate knobs" $ do
+    it "rejects consolidate=llm" $ do
+      let args =
+            [ (Just (Ident "system"), VString "s"),
+              (Just (Ident "prompt"), VString "p"),
+              (Just (Ident "tools"), VList []),
+              (Just (Ident "model"), VString "m"),
+              (Just (Ident "context_window"), VInt 2),
+              (Just (Ident "consolidate"), VString "llm")
+            ]
+      case parseAgentArgs args of
+        Left (ConfigErr msg) ->
+          T.unpack msg `shouldContain` "not implemented"
+        other -> expectationFailure ("expected ConfigErr, got " <> show other)
+
+    it "rejects heuristic without context_window" $ do
+      let args =
+            [ (Just (Ident "system"), VString "s"),
+              (Just (Ident "prompt"), VString "p"),
+              (Just (Ident "tools"), VList []),
+              (Just (Ident "model"), VString "m"),
+              (Just (Ident "consolidate"), VString "heuristic")
+            ]
+      case parseAgentArgs args of
+        Left (ConfigErr msg) ->
+          T.unpack msg `shouldContain` "context_window"
+        other -> expectationFailure ("expected ConfigErr, got " <> show other)
+
+  describe "integration" $ do
+    it "auto-heuristic assembles pins/summary and keeps full history" $
+      withSystemTempDirectory "hwfl-l2-heuristic" $ \dir -> do
+        let path = dir </> "agent.md"
+            src = chainedAgentSrc (Just "heuristic")
+        ref <- newIORef ([] :: [ChatRequest])
+        writeFile path (T.unpack src)
+        case loadModuleText path src of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            outcome <-
+              runLoadedModule
+                (baseOpts dir path (recordingMock ref) "l2-heur")
+                loaded
+            case outcome of
+              OutcomeCompleted v _ _ -> do
+                reqs <- reverse <$> readIORef ref
+                case drop 2 reqs of
+                  req : _ -> do
+                    map (.tsName) req.chatTools `shouldContain` [pinToolName]
+                    case req.chatTurns of
+                      TurnUser prefix : rest -> do
+                        T.unpack prefix `shouldContain` "## Pins"
+                        [t | TurnUser t <- rest] `shouldBe` ["third question"]
+                      other -> expectationFailure ("expected pin prefix: " <> show other)
+                  [] -> expectationFailure "expected third agent request"
+                case v of
+                  VRecord fs ->
+                    case lookup (Ident "history") fs of
+                      Just (VList hs) ->
+                        length hs `shouldSatisfy` (>= 5)
+                      _ -> expectationFailure "expected history list"
+                  _ -> expectationFailure ("expected record " <> show v)
+              other -> expectationFailure (show other)
+
+    it "opt-out injects neither pin nor consolidate tools" $
+      withSystemTempDirectory "hwfl-l2-optout" $ \dir -> do
+        let path = dir </> "agent.md"
+            src = chainedAgentSrc Nothing
+        ref <- newIORef ([] :: [ChatRequest])
+        writeFile path (T.unpack src)
+        case loadModuleText path src of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            outcome <-
+              runLoadedModule
+                (baseOpts dir path (recordingMock ref) "l2-off")
+                loaded
+            case outcome of
+              OutcomeCompleted {} -> do
+                reqs <- reverse <$> readIORef ref
+                case drop 2 reqs of
+                  req : _ ->
+                    map (.tsName) req.chatTools `shouldNotContain` [pinToolName]
+                  [] -> expectationFailure "expected third request"
+              other -> expectationFailure (show other)
+
+    it "explicit pin tool stores a pin visible on the next round" $
+      withSystemTempDirectory "hwfl-l2-pin" $ \dir -> do
+        let path = dir </> "agent.md"
+            src = manualPinAgentSrc
+        writeFile path (T.unpack src)
+        case loadModuleText path src of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            outcome <-
+              runLoadedModule
+                (baseOpts dir path pinThenFinishMock "l2-pin")
+                loaded
+            case outcome of
+              OutcomeCompleted v _ _ ->
+                case v of
+                  VRecord fs ->
+                    case lookup (Ident "text") fs of
+                      Just (VString t) ->
+                        T.unpack t `shouldContain` "## Pins"
+                      _ -> expectationFailure "expected text"
+                  _ -> expectationFailure (show v)
               other -> expectationFailure (show other)
 
 -------------------------------------------------------------------------------
@@ -175,11 +348,10 @@ userText = \case
   _ -> ""
 
 -- | Three chained agent calls; the last uses @context_window = 1@.
--- When @callHistory@ is True, the last call's mock will invoke get_history
--- (configured via provider, not the source).
-chainedAgentSrc :: Bool -> Text
-chainedAgentSrc _callHistory =
-  T.unlines
+-- Optional @consolidate@ mode is applied only on the third call.
+chainedAgentSrc :: Maybe Text -> Text
+chainedAgentSrc mConsolidate =
+  T.unlines $
     [ "---",
       "name: workflows/ctx-window",
       "inputs: {}",
@@ -220,9 +392,51 @@ chainedAgentSrc _callHistory =
       "    model = \"gpt-5\",",
       "    max_rounds = 4,",
       "    history = r2.history,",
-      "    context_window = 1",
+      "    context_window = 1"
+    ]
+      ++ case mConsolidate of
+        Nothing ->
+          [ "  )"
+          ]
+        Just mode ->
+          [ ",",
+            "    consolidate = \"" <> mode <> "\"",
+            "  )"
+          ]
+      ++ [ "  { text = r3.text, rounds = r3.rounds, history = r3.history }",
+           "```"
+         ]
+
+manualPinAgentSrc :: Text
+manualPinAgentSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/manual-pin",
+      "inputs: {}",
+      "outputs:",
+      "  text: String",
+      "  rounds: Int",
+      "  history: List<Turn>",
+      "effects: [Net]",
+      "---",
+      "",
+      "## system",
+      "",
+      "Pin important facts.",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { text: String, rounds: Int, history: List<Turn> } =",
+      "  let r = llm.agent(",
+      "    system = @system,",
+      "    prompt = \"remember the secret path\",",
+      "    tools = [],",
+      "    model = \"gpt-5\",",
+      "    max_rounds = 4,",
+      "    consolidate = \"manual\"",
       "  )",
-      "  { text = r3.text, rounds = r3.rounds, history = r3.history }",
+      "  { text = r.text, rounds = r.rounds, history = r.history }",
       "```"
     ]
 
@@ -261,8 +475,6 @@ recordingMock ref =
       llmProviderName = "mock-record"
     }
 
--- | First two agent calls finish immediately. On the windowed third call,
--- request @get_history@ once, then echo its result as the final text.
 getHistoryMock :: LlmProvider
 getHistoryMock =
   LlmProvider
@@ -309,6 +521,55 @@ getHistoryMock =
                         prFinishReason = FinishStop
                       },
       llmProviderName = "mock-get-history"
+    }
+
+-- | Call pin once, then on the next round finish with the assembled pin prefix.
+pinThenFinishMock :: LlmProvider
+pinThenFinishMock =
+  LlmProvider
+    { llmChat = \req ->
+        pure $
+          if any isToolTurn req.chatTurns
+            then
+              let prefix =
+                    case [t | TurnUser t <- req.chatTurns, "## Pins" `T.isInfixOf` t] of
+                      (t : _) -> t
+                      [] -> "missing pins"
+               in Right
+                    ProviderResult
+                      { prContent = prefix,
+                        prToolCalls = [],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishStop
+                      }
+            else
+              if pinToolName `elem` map (.tsName) req.chatTools
+                then
+                  Right
+                    ProviderResult
+                      { prContent = "pinning",
+                        prToolCalls =
+                          [ ToolCall
+                              "p1"
+                              pinToolName
+                              ( object
+                                  [ "kind" .= ("path" :: Text),
+                                    "text" .= ("src/secret.hs" :: Text)
+                                  ]
+                              )
+                          ],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishToolCalls
+                      }
+                else
+                  Right
+                    ProviderResult
+                      { prContent = "ok",
+                        prToolCalls = [],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishStop
+                      },
+      llmProviderName = "mock-pin"
     }
 
 isToolTurn :: Turn -> Bool

@@ -81,11 +81,23 @@ import Hwfl.Runtime.Agent
     valueToJsonText,
   )
 import Hwfl.Runtime.Context
-  ( getHistoryChunk,
+  ( ConsolidateMode (..),
+    Pin (..),
+    assembleWireTurns,
+    compactDroppable,
+    consolidateToolDescription,
+    consolidateToolName,
+    consolidateToolParameters,
+    contextToolsEnabled,
+    getHistoryChunk,
     historyToolDescription,
     historyToolName,
     historyToolParameters,
-    wireTurns,
+    mergePins,
+    needsAutoCompact,
+    pinToolDescription,
+    pinToolName,
+    pinToolParameters,
   )
 import Hwfl.Runtime.Error (RuntimeError (..), isCatchable, renderRuntimeError)
 import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), execNeedsConfirm, runHostOp)
@@ -458,7 +470,7 @@ doHost ctx mode m op args
   | op == HostLlmAgent = startAgent ctx mode m args Nothing
   | op == HostLlmAgentObject = case parseAgentObjectArgs args of
       Left e -> abortOrCatch ctx mode m e
-      Right (system, prompt, tools, schema, model, maxRounds, history, ctxWin, maxTool) ->
+      Right (system, prompt, tools, schema, model, maxRounds, history, ctxWin, maxTool, consol, maxPins, maxSummary) ->
         startAgentPrepared
           ctx
           mode
@@ -474,6 +486,9 @@ doHost ctx mode m op args
           history
           ctxWin
           maxTool
+          consol
+          maxPins
+          maxSummary
   | otherwise = doHostRun ctx mode m op args
 
 -- | Open span, run host op, close span (standard host transition).
@@ -584,7 +599,7 @@ startAgent ::
   IO (Either RuntimeError StepResult)
 startAgent ctx mode m args submitSchema = case parseAgentArgs args of
   Left e -> abortOrCatch ctx mode m e
-  Right (system, prompt, tools, model, maxRounds, history, ctxWin, maxTool) ->
+  Right (system, prompt, tools, model, maxRounds, history, ctxWin, maxTool, consol, maxPins, maxSummary) ->
     startAgentPrepared
       ctx
       mode
@@ -600,6 +615,9 @@ startAgent ctx mode m args submitSchema = case parseAgentArgs args of
       history
       ctxWin
       maxTool
+      consol
+      maxPins
+      maxSummary
 
 startAgentPrepared ::
   RunCtx ->
@@ -616,8 +634,11 @@ startAgentPrepared ::
   [Turn] ->
   Maybe Int ->
   Maybe Int ->
+  ConsolidateMode ->
+  Int ->
+  Int ->
   IO (Either RuntimeError StepResult)
-startAgentPrepared ctx mode m hostOp args system prompt tools model maxRounds submitSchema history ctxWin maxTool = do
+startAgentPrepared ctx mode m hostOp args system prompt tools model maxRounds submitSchema history ctxWin maxTool consol maxPins maxSummary = do
   sid <-
     openSpan
       ctx.rcStore
@@ -625,7 +646,21 @@ startAgentPrepared ctx mode m hostOp args system prompt tools model maxRounds su
       (hostOpName hostOp)
       SkHost
       (hostOpenAttrs hostOp args)
-  let ag = initAgentState system prompt tools model maxRounds sid submitSchema history ctxWin maxTool
+  let ag =
+        initAgentState
+          system
+          prompt
+          tools
+          model
+          maxRounds
+          sid
+          submitSchema
+          history
+          ctxWin
+          maxTool
+          consol
+          maxPins
+          maxSummary
       m' = pauseIfStep mode (m {mCurrent = CurAgent ag})
   _ <- persist ctx (Just hostOp) Nothing m'.mStatus (Just m')
   pure (Right (StepResult m' True))
@@ -664,25 +699,32 @@ stepAgentModel ctx mode m ag
       _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
       pure (Right (StepResult m' True))
   | otherwise = do
+      let agCompacted = maybeAutoCompact ag
       roundSid <-
         openSpan
           ctx.rcStore
           ctx.rcSpans
-          ("agent_round:" <> T.pack (show ag.agRound))
+          ("agent_round:" <> T.pack (show agCompacted.agRound))
           SkAgentRound
           ( object
-              [ "round" .= ag.agRound,
-                "model" .= ag.agModel,
-                "active_tools" .= map (.tvsName) ag.agTools,
-                "loaded_instructions" .= ag.agLoadedInstructionIds
+              [ "round" .= agCompacted.agRound,
+                "model" .= agCompacted.agModel,
+                "active_tools" .= map (.tvsName) agCompacted.agTools,
+                "loaded_instructions" .= agCompacted.agLoadedInstructionIds
               ]
           )
-      let ag' = ag {agRoundSpanId = Just roundSid}
+      let ag' = agCompacted {agRoundSpanId = Just roundSid}
           req0 =
-            (emptyChatRequest ag.agModel)
-              { chatSystem = Just (agentSystemPrompt ctx ag),
-                chatTurns = wireTurns ag.agContextWindow ag.agMaxToolResultChars ag.agHistory,
-                chatTools = agentWireTools ag
+            (emptyChatRequest ag'.agModel)
+              { chatSystem = Just (agentSystemPrompt ctx ag'),
+                chatTurns =
+                  assembleWireTurns
+                    ag'.agPins
+                    ag'.agCompactSummary
+                    ag'.agContextWindow
+                    ag'.agMaxToolResultChars
+                    ag'.agHistory,
+                chatTools = agentWireTools ag'
               }
       sink <- newStreamSink ctx.rcStore ctx.rcSpans
       let req = req0 {chatOnChunk = Just sink.ssOnChunk}
@@ -973,45 +1015,50 @@ startToolCall ctx mode m ag tr tc = do
       if tc.tcName == historyToolName
         then runGetHistoryTool ctx mode m ag tr0 tc
         else
-          if tc.tcName == "skill_load"
-            then runSkillLoadTool ctx mode m ag tr0 tc
-            else case lookupTool ag.agTools tc.tcName of
-              Nothing ->
-                completeToolCall
-                  ctx
-                  mode
-                  m
-                  ag
-                  tr0
-                  (ToolErr ("unknown tool '" <> tc.tcName <> "'"))
-              Just tool -> case coerceToolArgs tool tc.tcArguments of
-                Left reason ->
-                  completeToolCall
-                    ctx
-                    mode
-                    m
-                    ag
-                    tr0
-                    (ToolErr ("invalid arguments: " <> reason))
-                Right argv -> case openApply ctx tool.tvsCallee argv of
-                  Left e ->
-                    completeToolCall
-                      ctx
-                      mode
-                      m
-                      ag
-                      tr0
-                      (ToolErr ("tool open failed: " <> renderErr e))
-                  Right current -> do
-                    let nested = initialMachine m.mProjectHash current
-                        tr' =
+          if tc.tcName == pinToolName
+            then runPinTool ctx mode m ag tr0 tc
+            else
+              if tc.tcName == consolidateToolName
+                then runConsolidateTool ctx mode m ag tr0 tc
+                else
+                  if tc.tcName == "skill_load"
+                    then runSkillLoadTool ctx mode m ag tr0 tc
+                    else case lookupTool ag.agTools tc.tcName of
+                      Nothing ->
+                        completeToolCall
+                          ctx
+                          mode
+                          m
+                          ag
                           tr0
-                            { trActiveMachine = Just (mkBranch nested)
-                            }
-                        ag' = ag {agToolRound = Just tr'}
-                        m' = m {mCurrent = CurAgent ag'}
-                    -- Continue into the nested machine this step.
-                    stepAgentTool ctx mode m' ag' tr'
+                          (ToolErr ("unknown tool '" <> tc.tcName <> "'"))
+                      Just tool -> case coerceToolArgs tool tc.tcArguments of
+                        Left reason ->
+                          completeToolCall
+                            ctx
+                            mode
+                            m
+                            ag
+                            tr0
+                            (ToolErr ("invalid arguments: " <> reason))
+                        Right argv -> case openApply ctx tool.tvsCallee argv of
+                          Left e ->
+                            completeToolCall
+                              ctx
+                              mode
+                              m
+                              ag
+                              tr0
+                              (ToolErr ("tool open failed: " <> renderErr e))
+                          Right current -> do
+                            let nested = initialMachine m.mProjectHash current
+                                tr' =
+                                  tr0
+                                    { trActiveMachine = Just (mkBranch nested)
+                                    }
+                                ag' = ag {agToolRound = Just tr'}
+                                m' = m {mCurrent = CurAgent ag'}
+                            stepAgentTool ctx mode m' ag' tr'
 
 runGetHistoryTool ::
   RunCtx ->
@@ -1037,6 +1084,96 @@ runGetHistoryTool ctx mode m ag tr tc =
         tr
         (ToolErr "get_history is only available when context_window is set")
 
+runPinTool ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ToolRound ->
+  ToolCall ->
+  IO (Either RuntimeError StepResult)
+runPinTool ctx mode m ag tr tc
+  | not (contextToolsEnabled ag.agConsolidate) =
+      completeToolCall
+        ctx
+        mode
+        m
+        ag
+        tr
+        (ToolErr "pin is only available when consolidate is heuristic or manual")
+  | otherwise =
+      case parsePinArgs tc.tcArguments of
+        Left err -> completeToolCall ctx mode m ag tr (ToolErr err)
+        Right (kind, text) ->
+          let pin =
+                Pin
+                  { pinId = "p" <> T.pack (show (length ag.agPins + 1)),
+                    pinKind = kind,
+                    pinText = text
+                  }
+              ag' =
+                ag
+                  { agPins = mergePins ag.agMaxPins ag.agPins [pin]
+                  }
+           in completeToolCall
+                ctx
+                mode
+                m
+                ag'
+                tr
+                (ToolOk ("pinned [" <> kind <> "] " <> T.take 120 text))
+
+runConsolidateTool ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ToolRound ->
+  ToolCall ->
+  IO (Either RuntimeError StepResult)
+runConsolidateTool ctx mode m ag tr _tc
+  | not (contextToolsEnabled ag.agConsolidate) =
+      completeToolCall
+        ctx
+        mode
+        m
+        ag
+        tr
+        (ToolErr "consolidate is only available when consolidate is heuristic or manual")
+  | otherwise =
+      case compactDroppable
+        ag.agMaxPins
+        ag.agMaxSummaryChars
+        ag.agPins
+        ag.agCompactSummary
+        ag.agCompactWatermark
+        ag.agHistory
+        ag.agContextWindow of
+        Nothing ->
+          completeToolCall ctx mode m ag tr (ToolOk "(nothing to consolidate)")
+        Just (wm, pins, summary, msg) ->
+          let ag' =
+                ag
+                  { agCompactWatermark = wm,
+                    agPins = pins,
+                    agCompactSummary = summary
+                  }
+           in completeToolCall ctx mode m ag' tr (ToolOk msg)
+
+parsePinArgs :: Aeson.Value -> Either Text (Text, Text)
+parsePinArgs = \case
+  Aeson.Object o -> do
+    text <- case KM.lookup "text" o of
+      Just (Aeson.String t) | not (T.null (T.strip t)) -> Right (T.strip t)
+      Just (Aeson.String _) -> Left "pin.text must be non-empty"
+      Just _ -> Left "pin.text must be a string"
+      Nothing -> Left "pin missing text"
+    let kind = case KM.lookup "kind" o of
+          Just (Aeson.String k) | not (T.null (T.strip k)) -> T.strip k
+          _ -> "note"
+    Right (kind, text)
+  _ -> Left "pin arguments must be an object"
+
 parseHistoryChunkArg :: Aeson.Value -> Int
 parseHistoryChunkArg = \case
   Aeson.Object o -> case KM.lookup "chunk" o of
@@ -1045,22 +1182,57 @@ parseHistoryChunkArg = \case
   Aeson.Number n -> round n
   _ -> 0
 
--- | Tools advertised on the wire: baseline agent tools plus injected
--- @get_history@ when a context window is active.
+maybeAutoCompact :: AgentState -> AgentState
+maybeAutoCompact ag
+  | needsAutoCompact ag.agConsolidate ag.agContextWindow ag.agCompactWatermark ag.agHistory =
+      case compactDroppable
+        ag.agMaxPins
+        ag.agMaxSummaryChars
+        ag.agPins
+        ag.agCompactSummary
+        ag.agCompactWatermark
+        ag.agHistory
+        ag.agContextWindow of
+        Nothing -> ag
+        Just (wm, pins, summary, _) ->
+          ag
+            { agCompactWatermark = wm,
+              agPins = pins,
+              agCompactSummary = summary
+            }
+  | otherwise = ag
+
+-- | Tools advertised on the wire: baseline tools plus injected context tools.
 agentWireTools :: AgentState -> [ToolSpec]
 agentWireTools ag =
   let base = providerToolSpecs ag.agTools
-   in case ag.agContextWindow of
-        Just n
-          | n > 0 ->
-              base
-                ++ [ ToolSpec
-                       { tsName = historyToolName,
-                         tsDescription = historyToolDescription,
-                         tsParameters = historyToolParameters
-                       }
-                   ]
-        _ -> base
+      history =
+        case ag.agContextWindow of
+          Just n
+            | n > 0 ->
+                [ ToolSpec
+                    { tsName = historyToolName,
+                      tsDescription = historyToolDescription,
+                      tsParameters = historyToolParameters
+                    }
+                ]
+          _ -> []
+      ctxTools =
+        if contextToolsEnabled ag.agConsolidate
+          then
+            [ ToolSpec
+                { tsName = pinToolName,
+                  tsDescription = pinToolDescription,
+                  tsParameters = pinToolParameters
+                },
+              ToolSpec
+                { tsName = consolidateToolName,
+                  tsDescription = consolidateToolDescription,
+                  tsParameters = consolidateToolParameters
+                }
+            ]
+          else []
+   in base ++ history ++ ctxTools
 
 runSkillLoadTool ::
   RunCtx ->
