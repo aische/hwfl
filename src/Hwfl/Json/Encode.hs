@@ -180,7 +180,10 @@ valueToAeson = \case
   VVariant (TypeName "None") Nothing -> Right Aeson.Null
   VVariant (TypeName "Some") (Just p) -> valueToAeson p
   VVariant (TypeName "Some") Nothing -> Left "Some requires a payload"
-  VVariant (TypeName tag) Nothing -> Right (Aeson.String tag)
+  -- Nullary and payload variants both use tagged objects so a schema-free
+  -- encode→decode never collapses a unit tag into VString.
+  VVariant (TypeName tag) Nothing ->
+    Right (object ["tag" .= Aeson.String tag])
   VVariant (TypeName tag) (Just p) -> do
     payload <- valueToAeson p
     pure (object ["tag" .= Aeson.String tag, "value" .= payload])

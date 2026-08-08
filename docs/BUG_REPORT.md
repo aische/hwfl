@@ -411,7 +411,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 | L-12 | `Frontmatter.hs:34,186`                                      | `qnameFromText` unvalidated (`""`, `"a//b"`, `"/x"`, `".."` accepted); caught downstream with confusing messages. No traversal risk (index-only resolution).                           |
 | L-13 | `Cli/Args.hs`, `Runtime/Error.hs`                            | **Fixed** (2026-08): `wantsJson` skips value-taking flag args; `--` end-of-options for dash paths; `StaleProjectErr` + `runtimeExitCode` (no substring match).                        |
 | L-14 | `Parse/Expr.hs`                                              | **Fixed** (2026-08): `&&` / `\|\|` desugar to `if` so evaluation short-circuits.                                                                                                         |
-| L-15 | `Json/Encode.hs:47-49`                                       | `VVariant t Nothing` encodes as JSON string, decodes back as `VString` — variant round-trip changes type.                                                                              |
+| L-15 | `Json/Encode.hs`                                             | **Fixed** (2026-08): nullary variants encode as `{"tag":…}` (same tagged shape as payload); Option Some/None unchanged. Schema-free decode stays a record, never `VString`.          |
 | L-16 | `Check/Infer.hs`, `Check/Env.hs`, `Json/Encode.hs`           | **Fixed** (2026-08): duplicate record fields rejected at check; `json.encode` errors on duplicate keys.                                                                                |
 | L-17 | `Check/Prelude.hs:360`, `Infer.hs:736-745,770-773`           | Curried `obs.span("n")(thunk)` returns `Unit` while the 2-arg form returns the body type — inconsistent over-strict typing.                                                            |
 | L-18 | `Check/Module.hs:91-99`                                      | Example input _values_ are untyped; `String` example where `Int` declared passes check.                                                                                                |
@@ -449,7 +449,7 @@ Lows (L-1–3, L-5, L-6, L-14, L-16, L-19, L-22, L-24). See [TASKS.md](TASKS.md)
 1. **M-3** — skill-body prompt trust (when third-party skills matter).
 2. **M-18** — project-hash / prose-edit resume UX (if comment edits brick resume often).
 3. **M-16** — multi-process run-store locking (when parallel lab processes share a run dir).
-4. Remaining **Lows** opportunistically (fsync, CLI, variants, ignore/glob, …).
+4. Remaining **Lows** opportunistically (fsync, CLI, ignore/glob, …).
 
 Active product work has moved to agent substrate (MCP / git / terminals).
 

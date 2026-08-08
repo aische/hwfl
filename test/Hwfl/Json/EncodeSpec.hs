@@ -52,3 +52,22 @@ spec = describe "jsonToValue" $ do
     valueToAeson (VVariant (TypeName "None") Nothing) `shouldBe` Right Aeson.Null
     valueToAeson (VVariant (TypeName "Some") (Just (VInt 3)))
       `shouldBe` Right (Aeson.Number 3)
+
+  it "encodes nullary variants as tagged objects, not bare strings" $ do
+    let tagged =
+          Aeson.Object (KM.fromList [("tag", Aeson.String "Ok")])
+    valueToAeson (VVariant (TypeName "Ok") Nothing) `shouldBe` Right tagged
+    -- Schema-free decode stays a record (same as payload variants), never VString.
+    jsonToValue tagged
+      `shouldBe` Right (VRecord [(Ident "tag", VString "Ok")])
+
+  it "encodes payload variants as tagged objects with value" $
+    valueToAeson (VVariant (TypeName "Ok") (Just (VInt 1)))
+      `shouldBe` Right
+        ( Aeson.Object
+            ( KM.fromList
+                [ ("tag", Aeson.String "Ok"),
+                  ("value", Aeson.Number 1)
+                ]
+            )
+        )
