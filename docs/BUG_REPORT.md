@@ -361,10 +361,13 @@ Two processes approving the same paused run both run the full continuation (doub
 
 ### M-17 — Provider errors: finish-reason ignored; `--debug` string-sniffing for span status
 
-- **Location:** `src/Hwfl/Runtime/Eval.hs` (`completeToolCall`), `:1096-1100`
-- **Verification:** `[Reported]`
-
-Span status is inferred by prefix-matching tool result text (`"tool error"`, `"tool open failed"`, `"submit decode error"`) rather than structured errors; finish reason from the provider is ignored.
+- **Verification:** **Fixed** (2026-08-08).
+- **Fix applied:** `completeToolCall` takes a structured `ToolOk` /
+  `ToolErr` outcome so tool span status is set at the call site, not by
+  sniffing result text. Provider close attrs include `finish_reason`;
+  `FinishLength` fails the agent round as `SsError`; finish/tool_calls
+  mismatches are recorded as `finish_reason_mismatch` without changing
+  content-based control flow.
 
 ### M-18 — Project hash includes full prose bodies → resume falsely reports "stale project"
 

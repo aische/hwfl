@@ -46,6 +46,7 @@ import Hwfl.Llm.Pricing (providerRoundCloseAttrs)
 import Hwfl.Llm.Provider (safeLlmChat)
 import Hwfl.Llm.Types
   ( ChatRequest (..),
+    FinishReason (..),
     ProviderResult (..),
     ToolCall (..),
     ToolResult (..),
@@ -679,10 +680,21 @@ stepAgentModel ctx mode m ag
           closeSpan ctx.rcStore ctx.rcSpans roundSid SsError (object ["error" .= renderProviderError pe]) Nothing
           failAgent ctx mode m ag' (ProviderErr (renderProviderError pe))
         Right pr
+          | pr.prFinishReason == FinishLength -> do
+              let attrs =
+                    mergeObjects
+                      (agentProviderCloseAttrs ctx ag.agModel pr)
+                      (object ["error" .= ("output truncated" :: Text)])
+              closeSpan ctx.rcStore ctx.rcSpans roundSid SsError attrs Nothing
+              failAgent
+                ctx
+                mode
+                m
+                ag'
+                (ProviderErr "provider finished with length (output truncated)")
           | null pr.prToolCalls -> finishAgentText ctx mode m ag' pr
           | otherwise -> do
-              let roundAttrs =
-                    providerRoundCloseAttrs ctx.rcHost.hePricing ag.agModel pr
+              let roundAttrs = agentProviderCloseAttrs ctx ag.agModel pr
               -- Keep agent_round open so tool spans nest under it.
               appendEvent
                 ctx.rcStore
@@ -746,7 +758,7 @@ finishAgentText ctx mode m ag pr = case ag.agSubmitSchema of
             ctx.rcSpans
             sid
             SsOk
-            (providerRoundCloseAttrs ctx.rcHost.hePricing ag.agModel pr)
+            (agentProviderCloseAttrs ctx ag.agModel pr)
             Nothing
       )
       ag.agRoundSpanId
@@ -771,6 +783,22 @@ finishAgentText ctx mode m ag pr = case ag.agSubmitSchema of
     let m' = pauseIfStep mode (m {mCurrent = CurReturn result})
     _ <- persist ctx (Just HostLlmAgent) (Just result) m'.mStatus (Just m')
     pure (Right (StepResult m' True))
+
+-- | Close attrs for an agent model round: pricing/usage plus finish_reason,
+-- and an explicit mismatch tag when finish reason disagrees with tool_calls.
+agentProviderCloseAttrs :: RunCtx -> Text -> ProviderResult -> Aeson.Value
+agentProviderCloseAttrs ctx model pr =
+  let base = providerRoundCloseAttrs ctx.rcHost.hePricing model pr
+   in case finishReasonMismatch pr of
+        Nothing -> base
+        Just tag -> mergeObjects base (object ["finish_reason_mismatch" .= tag])
+
+-- | Advisory only: control flow still follows emitted tool_calls / text.
+finishReasonMismatch :: ProviderResult -> Maybe Text
+finishReasonMismatch pr = case (pr.prFinishReason, null pr.prToolCalls) of
+  (FinishToolCalls, True) -> Just "finish_tool_calls_without_tools"
+  (FinishStop, False) -> Just "finish_stop_with_tools"
+  _ -> Nothing
 
 stepAgentTool ::
   RunCtx ->
@@ -806,7 +834,7 @@ stepAgentTool ctx mode m ag tr
                               ag
                               tr
                               (EvalErr (Trap ("cannot encode tool result: " <> err)))
-                          Right content -> completeToolCall ctx mode m ag tr content
+                          Right content -> completeToolCall ctx mode m ag tr (ToolOk content)
                   MsFailed ->
                     recoverableTool
                       ctx
@@ -938,7 +966,7 @@ startToolCall ctx mode m ag tr tc = do
               m
               ag
               tr0
-              ("unknown tool '" <> tc.tcName <> "'")
+              (ToolErr ("unknown tool '" <> tc.tcName <> "'"))
           Just tool -> case coerceToolArgs tool tc.tcArguments of
             Left reason ->
               completeToolCall
@@ -947,7 +975,7 @@ startToolCall ctx mode m ag tr tc = do
                 m
                 ag
                 tr0
-                ("invalid arguments: " <> reason)
+                (ToolErr ("invalid arguments: " <> reason))
             Right argv -> case openApply ctx tool.tvsCallee argv of
               Left e ->
                 completeToolCall
@@ -956,7 +984,7 @@ startToolCall ctx mode m ag tr tc = do
                   m
                   ag
                   tr0
-                  ("tool open failed: " <> renderErr e)
+                  (ToolErr ("tool open failed: " <> renderErr e))
               Right current -> do
                 let nested = initialMachine m.mProjectHash current
                     tr' =
@@ -979,7 +1007,7 @@ runSkillLoadTool ::
 runSkillLoadTool ctx mode m ag tr tc =
   case coerceToolArgs skillLoadToolSpec tc.tcArguments of
     Left reason ->
-      completeToolCall ctx mode m ag tr ("invalid arguments: " <> reason)
+      completeToolCall ctx mode m ag tr (ToolErr ("invalid arguments: " <> reason))
     Right argv -> case lookup (Just (Ident "id")) argv of
       Just (VString skillId) -> do
         let load =
@@ -1011,9 +1039,9 @@ runSkillLoadTool ctx mode m ag tr tc =
               ag2
               tr
               (EvalErr (Trap ("cannot encode tool result: " <> err)))
-          Right content -> completeToolCall ctx mode m ag2 tr content
+          Right content -> completeToolCall ctx mode m ag2 tr (ToolOk content)
       _ ->
-        completeToolCall ctx mode m ag tr "invalid arguments: missing id"
+        completeToolCall ctx mode m ag tr (ToolErr "invalid arguments: missing id")
 
 skillLoadToolSpec :: ToolSpecValue
 skillLoadToolSpec =
@@ -1090,7 +1118,7 @@ runSubmit ctx mode m ag tr tc = case ag.agSubmitSchema of
       m
       ag
       tr
-      "submit is not available for this agent step"
+      (ToolErr "submit is not available for this agent step")
   Just schema -> case validateSubmit schema tc.tcArguments of
     Left reason ->
       completeToolCall
@@ -1099,7 +1127,7 @@ runSubmit ctx mode m ag tr tc = case ag.agSubmitSchema of
         m
         ag
         tr
-        ("submit decode error: " <> reason)
+        (ToolErr ("submit decode error: " <> reason))
     Right value -> finishAgentSubmit ctx mode m ag tr value
 
 finishAgentSubmit ::
@@ -1150,26 +1178,35 @@ finishAgentSubmit ctx mode m ag tr value = do
   _ <- persist ctx (Just HostLlmAgentObject) (Just result) m'.mStatus (Just m')
   pure (Right (StepResult m' True))
 
+-- | Structured tool completion: model-facing text stays free-form; span status
+-- is decided here rather than by sniffing result prefixes (M-17).
+data ToolCompletion
+  = ToolOk Text
+  | ToolErr Text
+
+toolCompletionStatus :: ToolCompletion -> SpanStatus
+toolCompletionStatus = \case
+  ToolOk _ -> SsOk
+  ToolErr _ -> SsError
+
+toolCompletionContent :: ToolCompletion -> Text
+toolCompletionContent = \case
+  ToolOk t -> t
+  ToolErr t -> t
+
 completeToolCall ::
   RunCtx ->
   StepMode ->
   Machine ->
   AgentState ->
   ToolRound ->
-  Text ->
+  ToolCompletion ->
   IO (Either RuntimeError StepResult)
-completeToolCall ctx mode m ag tr content = case tr.trActiveCall of
+completeToolCall ctx mode m ag tr outcome = case tr.trActiveCall of
   Nothing -> pure (Left (EvalErr (Trap "completeToolCall without active call")))
   Just tc -> do
-    let status =
-          if T.isPrefixOf "unknown tool" content
-            || T.isPrefixOf "invalid arguments" content
-            || T.isPrefixOf "tool open failed" content
-            || T.isPrefixOf "tool error" content
-            || content == "submit is not available for this agent step"
-            || T.isPrefixOf "submit decode error" content
-            then SsError
-            else SsOk
+    let content = toolCompletionContent outcome
+        status = toolCompletionStatus outcome
     mapM_
       ( \sid ->
           closeSpan
@@ -1242,7 +1279,7 @@ recoverableTool ::
   RuntimeError ->
   IO (Either RuntimeError StepResult)
 recoverableTool ctx mode m ag tr err =
-  completeToolCall ctx mode m ag tr ("tool error: " <> renderErr err)
+  completeToolCall ctx mode m ag tr (ToolErr ("tool error: " <> renderErr err))
 
 failAgent ::
   RunCtx ->

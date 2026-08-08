@@ -44,6 +44,7 @@ spec = describe "LLM pricing" $ do
           attrs = providerCloseAttrs pricing "demo" pr
       LBS8.unpack (encode attrs) `shouldContain` "cost_micros"
       LBS8.unpack (encode attrs) `shouldContain` "cost_usd"
+      LBS8.unpack (encode attrs) `shouldContain` "finish_reason"
       attrsCostMicros attrs `shouldBe` Just 2_000_000
       formatCostUsd 2_000_000 `shouldBe` "$2.00"
       formatCostDollars 2.0 `shouldBe` "$2.00"

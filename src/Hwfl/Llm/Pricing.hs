@@ -23,7 +23,7 @@ import Data.Scientific (toBoundedInteger, toRealFloat)
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
-import Hwfl.Llm.Types (ProviderResult (..), TokenUsage (..))
+import Hwfl.Llm.Types (ProviderResult (..), TokenUsage (..), finishReasonText)
 import Hwfl.SafeIO (ReadError (..), readBytesFile, renderReadError)
 import Text.Printf (printf)
 
@@ -122,13 +122,17 @@ costPair pricing model tin tout =
 providerCloseAttrs :: ModelPricing -> Text -> ProviderResult -> Aeson.Value
 providerCloseAttrs pricing model pr =
   object $
-    (Key.fromText "reply_len" .= T.length pr.prContent) : usageCostAttrs pricing model pr.prUsage
+    [ Key.fromText "reply_len" .= T.length pr.prContent,
+      Key.fromText "finish_reason" .= finishReasonText pr.prFinishReason
+    ]
+      ++ usageCostAttrs pricing model pr.prUsage
 
 providerRoundCloseAttrs :: ModelPricing -> Text -> ProviderResult -> Aeson.Value
 providerRoundCloseAttrs pricing model pr =
   object $
     [ Key.fromText "reply_len" .= T.length pr.prContent,
-      Key.fromText "tool_calls" .= length pr.prToolCalls
+      Key.fromText "tool_calls" .= length pr.prToolCalls,
+      Key.fromText "finish_reason" .= finishReasonText pr.prFinishReason
     ]
       ++ usageCostAttrs pricing model pr.prUsage
 

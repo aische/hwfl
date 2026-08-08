@@ -11,6 +11,7 @@ import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (HostOpId (..), ToolSpecValue (..), Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
 import Hwfl.Obs.Observer (noopObserver)
+import Hwfl.Obs.Span (SpanRecord (..), SpanStatus (..))
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
   ( ChatRequest (..),
@@ -23,6 +24,7 @@ import Hwfl.Llm.Types
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Agent (buildToolSpec, initAgentState, parseAgentArgs, submitToolName, uniquifyToolNames)
+import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Eval (StepMode (..), extendAgentMachine, suggestExtraRounds)
 import Hwfl.Runtime.Machine (AgentExhaustedRequest (..), AgentState (..), ChoiceRequest (..), Current (..), Machine (..), MachineStatus (..), PauseReason (..), initialMachine)
 import Hwfl.Runtime.Snapshot (machineFromJson, machineToJson)
@@ -34,6 +36,7 @@ import Hwfl.Runtime.Run
     resumeRun,
     runLoadedModule,
     emptySkillRuntime)
+import Hwfl.Runtime.Store (readSpanRecords)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -661,3 +664,295 @@ spec = describe "runtime agent (M7)" $ do
               []
           names = map (.tvsName) ag.agTools :: [Text]
       names `shouldBe` ["submit_2", "submit"]
+
+  describe "M-17 structured tool / finish reason" $ do
+    it "does not sniff successful tool text that looks like an error" $
+      withSystemTempDirectory "hwfl-m17-ok-prefix" $ \dir -> do
+        let path = dir </> "agent.md"
+            src =
+              T.unlines
+                [ "---",
+                  "name: workflows/m17-ok-prefix",
+                  "inputs: {}",
+                  "outputs:",
+                  "  text: String",
+                  "  rounds: Int",
+                  "effects: [Net]",
+                  "---",
+                  "",
+                  "## system",
+                  "",
+                  "Use tools.",
+                  "",
+                  "## body",
+                  "",
+                  "```hwfl",
+                  "fun echo(q: String): String =",
+                  "  \"tool error: not really\"",
+                  "",
+                  "fun main(_): { text: String, rounds: Int } =",
+                  "  let result = llm.agent(",
+                  "    system = @system,",
+                  "    prompt = \"go\",",
+                  "    tools = [tool(echo)],",
+                  "    model = \"gpt-5\",",
+                  "    max_rounds = 4",
+                  "  )",
+                  "  { text = result.text, rounds = result.rounds }",
+                  "```"
+                ]
+            mock =
+              mockProviderWith $ \req ->
+                if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
+                  then
+                    Right
+                      ProviderResult
+                        { prContent = "done",
+                          prToolCalls = [],
+                          prUsage = Just (TokenUsage 1 1),
+                          prFinishReason = FinishStop
+                        }
+                  else
+                    Right
+                      ProviderResult
+                        { prContent = "call echo",
+                          prToolCalls =
+                            [ ToolCall
+                                "c1"
+                                "echo"
+                                (object ["q" .= ("x" :: Text)])
+                            ],
+                          prUsage = Just (TokenUsage 1 1),
+                          prFinishReason = FinishToolCalls
+                        }
+        writeFile path (T.unpack src)
+        case loadModuleText path src of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            outcome <-
+              runLoadedModule
+                RunOptions
+                  { roWorkspace = dir,
+                    roProvider = mock,
+                    roInputs = [],
+                    roRunId = Just "m17-ok",
+                    roEntry = path,
+                    roMode = StepRun,
+                    roProjectHash = Nothing,
+                    roExec = Nothing,
+                    roObserver = noopObserver,
+                    roCost = False,
+                    roModelCatalog = "model-catalog.json",
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime,
+                    roEntryModules = mempty
+                  }
+                loaded
+            case outcome of
+              OutcomeCompleted _ store _ -> do
+                records <- readSpanRecords store
+                let opened =
+                      [ r.srId
+                        | r <- records,
+                          r.srOp == "open",
+                          r.srName == Just "tool:echo"
+                      ]
+                    toolCloses =
+                      [ r
+                        | r <- records,
+                          r.srOp == "close",
+                          r.srId `elem` opened
+                      ]
+                opened `shouldSatisfy` (not . null)
+                map (.srStatus) toolCloses `shouldBe` [Just SsOk]
+              other -> expectationFailure (show other)
+
+    it "marks unknown-tool spans as error without prefix sniffing" $
+      withSystemTempDirectory "hwfl-m17-unknown" $ \dir -> do
+        let path = dir </> "agent.md"
+            src =
+              T.unlines
+                [ "---",
+                  "name: workflows/m17-unknown",
+                  "inputs: {}",
+                  "outputs:",
+                  "  text: String",
+                  "  rounds: Int",
+                  "effects: [Net]",
+                  "---",
+                  "",
+                  "## system",
+                  "",
+                  "Use tools.",
+                  "",
+                  "## body",
+                  "",
+                  "```hwfl",
+                  "fun echo(q: String): String =",
+                  "  q",
+                  "",
+                  "fun main(_): { text: String, rounds: Int } =",
+                  "  let result = llm.agent(",
+                  "    system = @system,",
+                  "    prompt = \"go\",",
+                  "    tools = [tool(echo)],",
+                  "    model = \"gpt-5\",",
+                  "    max_rounds = 4",
+                  "  )",
+                  "  { text = result.text, rounds = result.rounds }",
+                  "```"
+                ]
+            mock =
+              mockProviderWith $ \req ->
+                if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
+                  then
+                    Right
+                      ProviderResult
+                        { prContent = "recovered",
+                          prToolCalls = [],
+                          prUsage = Just (TokenUsage 1 1),
+                          prFinishReason = FinishStop
+                        }
+                  else
+                    Right
+                      ProviderResult
+                        { prContent = "bad tool",
+                          prToolCalls =
+                            [ ToolCall
+                                "c1"
+                                "no_such_tool"
+                                (object [])
+                            ],
+                          prUsage = Just (TokenUsage 1 1),
+                          prFinishReason = FinishToolCalls
+                        }
+        writeFile path (T.unpack src)
+        case loadModuleText path src of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            outcome <-
+              runLoadedModule
+                RunOptions
+                  { roWorkspace = dir,
+                    roProvider = mock,
+                    roInputs = [],
+                    roRunId = Just "m17-unknown",
+                    roEntry = path,
+                    roMode = StepRun,
+                    roProjectHash = Nothing,
+                    roExec = Nothing,
+                    roObserver = noopObserver,
+                    roCost = False,
+                    roModelCatalog = "model-catalog.json",
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime,
+                    roEntryModules = mempty
+                  }
+                loaded
+            case outcome of
+              OutcomeCompleted _ store _ -> do
+                records <- readSpanRecords store
+                let opened =
+                      [ r.srId
+                        | r <- records,
+                          r.srOp == "open",
+                          r.srName == Just "tool:no_such_tool"
+                      ]
+                    toolCloses =
+                      [ r
+                        | r <- records,
+                          r.srOp == "close",
+                          r.srId `elem` opened
+                      ]
+                opened `shouldSatisfy` (not . null)
+                map (.srStatus) toolCloses `shouldBe` [Just SsError]
+              other -> expectationFailure (show other)
+
+    it "fails the agent when finish_reason is length" $
+      withSystemTempDirectory "hwfl-m17-length" $ \dir -> do
+        let path = dir </> "agent.md"
+            src =
+              T.unlines
+                [ "---",
+                  "name: workflows/m17-length",
+                  "inputs: {}",
+                  "outputs:",
+                  "  text: String",
+                  "  rounds: Int",
+                  "effects: [Net]",
+                  "---",
+                  "",
+                  "## system",
+                  "",
+                  "Answer briefly.",
+                  "",
+                  "## body",
+                  "",
+                  "```hwfl",
+                  "fun main(_): { text: String, rounds: Int } =",
+                  "  let result = llm.agent(",
+                  "    system = @system,",
+                  "    prompt = \"hi\",",
+                  "    tools = [],",
+                  "    model = \"gpt-5\",",
+                  "    max_rounds = 2",
+                  "  )",
+                  "  { text = result.text, rounds = result.rounds }",
+                  "```"
+                ]
+            mock =
+              mockProviderWith $ \_ ->
+                Right
+                  ProviderResult
+                    { prContent = "truncat",
+                      prToolCalls = [],
+                      prUsage = Just (TokenUsage 1 1),
+                      prFinishReason = FinishLength
+                    }
+        writeFile path (T.unpack src)
+        case loadModuleText path src of
+          Left diags -> expectationFailure (show diags)
+          Right loaded -> do
+            checkLoadedModule loaded `shouldSatisfy` isRight
+            outcome <-
+              runLoadedModule
+                RunOptions
+                  { roWorkspace = dir,
+                    roProvider = mock,
+                    roInputs = [],
+                    roRunId = Just "m17-length",
+                    roEntry = path,
+                    roMode = StepRun,
+                    roProjectHash = Nothing,
+                    roExec = Nothing,
+                    roObserver = noopObserver,
+                    roCost = False,
+                    roModelCatalog = "model-catalog.json",
+                    roSkillCatalog = fst emptySkillRuntime,
+                    roSkillModules = snd emptySkillRuntime,
+                    roEntryModules = mempty
+                  }
+                loaded
+            case outcome of
+              OutcomeFailed (ProviderErr msg) store _ -> do
+                msg `shouldSatisfy` T.isInfixOf "length"
+                records <- readSpanRecords store
+                let opened =
+                      [ r.srId
+                        | r <- records,
+                          r.srOp == "open",
+                          maybe False ("agent_round" `T.isPrefixOf`) r.srName
+                      ]
+                    roundCloses =
+                      [ r
+                        | r <- records,
+                          r.srOp == "close",
+                          r.srId `elem` opened
+                      ]
+                opened `shouldSatisfy` (not . null)
+                map (.srStatus) roundCloses `shouldSatisfy` all (== Just SsError)
+                let attrs = map (.srAttrs) roundCloses
+                any (T.isInfixOf "finish_reason" . T.pack . show) attrs `shouldBe` True
+              other -> expectationFailure (show other)

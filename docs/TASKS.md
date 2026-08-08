@@ -50,7 +50,7 @@ Order matters; do not skip ahead of H-6.
 - [x] **M-4** — `requestToTurns`: preserve all `RoleSystem` messages
 - [x] **M-11(a)** — Optional schema fields / `null` → option representation
 - [ ] **M-3** — Skill-body prompt trust boundary (when third-party skills)
-- [ ] **M-17** — Structured tool/provider errors vs string-sniff span status
+- [x] **M-17** — Structured tool/provider errors vs string-sniff span status
 - [ ] **M-18** — Project-hash / resume UX (only if prose edits brick resume
       too often)
 - [ ] **L-5, L-6, L-14, L-16** — Parser/eval footguns: `a/b` QName, sequential
@@ -108,6 +108,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-17** — Tool span status from `ToolOk`/`ToolErr` (no result-text
+  sniff); `finish_reason` on provider close attrs; `FinishLength` fails
+  the agent; finish/tool_calls mismatches tagged in attrs (2026-08)
 - **M-11(a)** — Option fields omitted from JSON Schema `required` (aliases
   resolved); `x-hwfl-option` annotation; schema-directed decode maps
   `null`/absent → `None` and present → `Some`; `Some`/`None` expression

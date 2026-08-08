@@ -13,6 +13,7 @@ module Hwfl.Llm.Types
     ProviderResult (..),
     ProviderError (..),
     renderProviderError,
+    finishReasonText,
     emptyChatRequest,
   )
 where
@@ -114,6 +115,13 @@ data FinishReason
   | FinishToolCalls
   | FinishOther Text
   deriving stock (Eq, Show)
+
+finishReasonText :: FinishReason -> Text
+finishReasonText = \case
+  FinishStop -> "stop"
+  FinishLength -> "length"
+  FinishToolCalls -> "tool_calls"
+  FinishOther t -> t
 
 data ProviderResult = ProviderResult
   { prContent :: Text,
