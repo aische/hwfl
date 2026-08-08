@@ -3,7 +3,10 @@
 - **Date:** 2026-08-05
 - **Scope:** `src/Hwfl/**` (17,863 LOC across ~50 modules), `app/Main.hs`, `hwfl.cabal`, `model-catalog.json`
 - **Method:** six parallel read-only reviews over disjoint module slices (runtime core, host boundary, LLM/agent, CLI/driver, parser/AST, checker/eval kernel), plus manual first-hand verification of every High-severity claim against source. `cabal build` up to date (compiles clean). `.env` present but gitignored and untracked — no keys committed.
-- **Status:** findings identified; **none fixed yet**. This report is the durable source of truth for the findings; fixes should be tracked here until resolved.
+- **Status:** bug-fix largely complete (2026-08-08). All High fixed (H-1
+  retracted). Medium open only: **M-3**, **M-16**, **M-18** (deferred).
+  Remaining Lows are hygiene — see table and [TASKS.md](TASKS.md). This
+  report stays the durable source of truth for findings.
 - **Repository:** `hwfl` — durable workflow runtime library. Markdown modules (L1) → typed ML kernel: checker + pure evaluator (L2) → CEK machine with snapshot/resume, FS sandbox, `exec.run` allowlist, `llm.*` provider, human gates (L3). Run state persists under `workspace/.hwfl/runs/<run-id>/{meta.json, snapshot.json, spans.jsonl, events.jsonl, transitions.jsonl}`.
 
 ## Severity legend
@@ -160,9 +163,10 @@ For `n > 2^62`, `2^63` overflows `Int` to `minBound` (negative); no element ever
 2. `applyPositional` — when `length args == length fields` it zips positional args against record fields: `f {a=1} {b=2}` for `fun (a: Int, b: Int)` checks each record against a _field_ type and accepts. Runtime `bindParams` binds `a := {a=1}` (a record where `Int` was promised) → downstream arithmetic traps. Same class: `fs.write("a.txt", "hi")` typechecks against the record stub `{path, text}`; the driver receives two positionals.
 
 - **Impact:** The type checker promises `Int`/valid calls for programs that crash at runtime — checker soundness hole on ordinary author input.
-- **Fix:** Align `applyPositional`/`applyNamed` with `bindParams`, or reject the divergent shapes at check time.
-- **Remaining:** same-family residuals tracked as **M-19** (host ops still
-  named-only, whole-record → multi-param, syntactic-only Unit/record packing).
+- **Fix applied:** Align `applyPositional`/`applyNamed` with `bindParams` for
+  empty/`Unit` calls, single-record packing, and `fs.write` positionals.
+  Same-family residuals closed as **M-19** (record-domain host normalize,
+  positional `fs.move` / `exec.run`, Unit thunks / alias packing).
 
 ### H-7 — Unsanitized run-id is joined into a filesystem path (library API)
 
@@ -392,7 +396,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 ## Low
 
 | ID   | Location                                                     | Issue                                                                                                                                                                                  |
-| ---- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ---------------------------------------------------------------------------------- |
+| ---- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | L-1  | `Eval.hs:626+1194, 675+1194`                                 | Double-close of the agent round span on provider error / submit-required path. `closeSpan` is not idempotent (`Trace.hs:129-143`); duplicate close records, cost attrs charged twice.  |
 | L-2  | `Run.hs:1183-1192`, `Trace.hs:141-143`                       | Span-stack staleness: mid-region failure leaves `FrRegion` open; `pop` is a no-op for non-head ids; resumed runs parent new spans under closed ids.                                    |
 | L-3  | `Snapshot.hs:186-188,93`                                     | `parsePauseReason` ends in `<\|> pure PauseExplicit` — malformed pause payloads silently downgrade to explicit; `snapshot_format` never validated (future format bumps undetected).    |
@@ -411,7 +415,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 | L-16 | `Check/Infer.hs`, `Check/Env.hs`, `Json/Encode.hs`           | **Fixed** (2026-08): duplicate record fields rejected at check; `json.encode` errors on duplicate keys.                                                                                |
 | L-17 | `Check/Prelude.hs:360`, `Infer.hs:736-745,770-773`           | Curried `obs.span("n")(thunk)` returns `Unit` while the 2-arg form returns the body type — inconsistent over-strict typing.                                                            |
 | L-18 | `Check/Module.hs:91-99`                                      | Example input _values_ are untyped; `String` example where `Int` declared passes check.                                                                                                |
-| L-19 | `Agent.hs:385-387`, `Snapshot.hs:341-347`                    | `max_rounds` `fromIntegral` wraps on huge values (feeds H-5); `agMaxRounds + extra` can overflow.                                                                                      |
+| L-19 | `Agent.hs`, `Snapshot.hs`                                    | **Fixed** with H-5: source/snapshot `max_rounds` validated; extension uses checked add (no wrap).                                                                                      |
 | L-20 | `Runtime/Ignore.hs:69-105`                                   | `isIgnored` checks hidden segments before rules, so `!.env` can never un-ignore a hidden name — deviates from gitignore semantics.                                                     |
 | L-21 | `Runtime/Ignore.hs:168-181`                                  | `globMatch` naive backtracking (`any (go ps) (tails xs)`) — exponential on many-`*` rules vs long paths.                                                                               |
 | L-22 | `Workspace.hs:232-238`                                       | `matchPat` compares extensions case-sensitively; `**/*.MD` misses `foo.md` on macOS, finds it on Linux — host-FS-dependent behavior.                                                   |
@@ -437,15 +441,17 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 
 ## Recommended fix order
 
-1. ~~**Exception barrier** at the run-loop boundary + `try` around `llmChat` (fixes H-2).~~ **Done** — H-3/H-4 now surface as an `InternalErr` run failure with a persisted failed snapshot instead of a process crash; they still need their own fixes to stay out of the barrier.
-2. **`jsonToValue` via `Scientific`** — coefficient/exponent to `Integer`/`Double`, trap non-finite (fixes H-3, half of H-4).
-3. ~~**Leaf-level `O_NOFOLLOW`/`lstat`** on write/copy targets (fixes H-1).~~ **Done** — H-1 retracted; the real fix was check-before-create on parent chains (H-1a).
-4. ~~**Sanitize run-id** (single path component) + existence check before reuse (H-7).~~ **Done** — validation in the store, create-only start path.
-5. **`nextPow2`** — `ceiling (logBase 2 …)` or bounded search (H-5).
-6. ~~**Align `applyPositional`/`applyNamed` with `bindParams`** (H-6).~~ **Done**
-   for empty/`Unit` calls, single-record packing, and `fs.write` positionals.
-   Residuals are **M-19**; schema validation remains **M-1**.
-7. Redaction hardening (M-2), then the resource-exhaustion cluster (M-8), then the rest.
+**Completed (2026-08):** all High; Medium except M-3 / M-16 / M-18; selected
+Lows (L-5, L-6, L-14, L-16, L-19, L-24). See [TASKS.md](TASKS.md) archive.
+
+**Still open (deferred — fix only if they bite):**
+
+1. **M-3** — skill-body prompt trust (when third-party skills matter).
+2. **M-18** — project-hash / prose-edit resume UX (if comment edits brick resume often).
+3. **M-16** — multi-process run-store locking (when parallel lab processes share a run dir).
+4. Remaining **Lows** opportunistically (spans, snapshot parse, fsync, slugs, CLI, …).
+
+Active product work has moved to agent substrate (MCP / git / terminals).
 
 ---
 

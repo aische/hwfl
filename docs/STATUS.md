@@ -2,9 +2,9 @@
 Last updated: 2026-08-08
 
 ## Current focus
-**Bug-fix pass** — Work [BUG_REPORT.md](BUG_REPORT.md) in the order in
-[TASKS.md](TASKS.md) (remaining Medium → selected Lows). Agent substrate
-(MCP / git / terminals) waits until that backlog clears.
+**Agent substrate** — MCP / git / persistent terminals (prefer MCP or
+workflow modules over new host ops). Bug-fix High + nearly all Medium
+are done; leftover findings are deferred hygiene.
 
 ## North star
 hwfl = durable workflow **runtime library** (language + interpreter).
@@ -12,30 +12,28 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
-- **L-5 / L-6 / L-14 / L-16 fixed** — Tight `a/b` qnames vs spaced `/`
-  division; newline-gated sequential let; `&&`/`||` short-circuit via
-  `if` desugar; duplicate record fields rejected
-- **M-17 fixed** — Structured `ToolOk`/`ToolErr` for tool span status;
-  `finish_reason` on LLM close attrs; `FinishLength` fails the agent
-- **M-11(a) fixed** — Option fields omitted from schema `required`;
-  `null`/absent decode to `None`, present values to `Some`; language
-  `Some`/`None` constructors + match
-- **M-4 / M-12 / M-9 / M-10 / M-6 / M-8 / M-7 / M-2 / M-11(b)** — See report
+- Bug-fix: all High (H-1a–H-7; H-1 retracted) and Medium except
+  M-3 / M-16 / M-18 — see [BUG_REPORT.md](BUG_REPORT.md)
+- Parser/eval footguns: L-5 / L-6 / L-14 / L-16 (+ L-19 / L-24 with Highs)
+- Structured tool outcomes (M-17); Option schema decode (M-11(a));
+  `&&`/`||` short-circuit; tight qnames vs division
 
 ## Blockers
 None.
 
 ## Next up
-1. Remaining Medium: M-3, M-18
-2. Remaining Low hygiene (L-1–4, L-7–13, …) opportunistically
-3. Then Tier A agent ops (MCP, git, terminals) / skills variant
+1. Tier A agent ops: MCP client, git (read-heavy), persistent terminals
+2. Skills coding-agent variant (separate example) when substrate exists
+3. Opportunistic Lows from the report; M-3 / M-18 only if they bite
 
 ## Deferred
-- Opt-in Docker `exec.runtime` (spec §05 §3.1) when untrusted spawn bites
-- Multi-process run-store locking / **M-16** (until parallel lab processes)
-- Semantic-check S4 / S6; skills phase D; concurrent `par` host IO
-- Coding-agent Tier B; `latest` / omit run-id; `lib/`; typed `--example`
-- Nested ignore files; `fs.find`/`fs.grep` ignore opt-out flag
+- **M-3** skill-body prompt trust (when third-party skills matter)
+- **M-18** project-hash / prose-edit resume UX (only if comment edits brick resume often)
+- **M-16** multi-process run-store locking (until parallel lab processes share a run dir)
+- Remaining Lows (L-1–4, L-7–13, L-15, L-17–18, L-20–23, L-25)
+- Opt-in Docker `exec.runtime`; semantic-check S4 / S6; skills phase D;
+  concurrent `par` host IO; coding-agent Tier B; `latest` / omit run-id;
+  `lib/`; typed `--example`; nested ignore; find/grep ignore opt-out
 
 ## Open naming
 Working title **hwfl** / CLI `hwfl` / fence `hwfl` is provisional.
