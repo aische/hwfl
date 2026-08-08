@@ -233,7 +233,7 @@ appTail =
   choice
     [ TApp <$> between (symbol "(") (symbol ")") (arg `sepBy` symbol ","),
       TProj <$> (symbol "." *> pFieldIdent),
-      TIndex <$> between (symbol "[") (symbol "]") expr
+      TIndex <$> between (symbol "[") (symbol "]") (nest expr)
     ]
 
 applyTail :: Expr -> AppTail -> Expr
@@ -248,8 +248,8 @@ arg =
     [ try $ do
         n <- pIdent
         _ <- symbol "="
-        ArgNamed n <$> expr,
-      ArgPos <$> expr
+        ArgNamed n <$> nest expr,
+      ArgPos <$> nest expr
     ]
 
 primary :: Parser Expr
@@ -279,7 +279,7 @@ primary =
       do
         pos <- getPos
         located pos . FRecord <$> recordLit,
-      between (symbol "(") (symbol ")") expr
+      between (symbol "(") (symbol ")") (nest expr)
     ]
 
 -- | @schema(T)@ — type argument, not a value application.
@@ -308,7 +308,7 @@ qnameExpr = do
   pure (located pos (FQName (QName (first : rest))))
 
 listLit :: Parser [Expr]
-listLit = between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")
+listLit = between (symbol "[") (symbol "]") (nest expr `sepBy` symbol ",")
 
 recordLit :: Parser [Field]
 recordLit = between (symbol "{") (symbol "}") (field `sepBy` symbol ",")
@@ -319,7 +319,7 @@ field = do
   choice
     [ do
         _ <- symbol "="
-        Field n <$> expr,
+        Field n <$> nest expr,
       pure (FieldShorthand n)
     ]
 
@@ -335,7 +335,7 @@ param = do
 nat :: Parser Integer
 nat = lexeme $ do
   ds <- takeWhile1P (Just "digit") isDigit
-  pure (read (T.unpack ds))
+  parseDecimalInteger ds
 
 interpString :: Parser [StringPart]
 interpString = lexeme $ do
@@ -349,7 +349,7 @@ interpPart =
   choice
     [ do
         _ <- char '{'
-        e <- expr
+        e <- nest expr
         _ <- char '}'
         pure (SInterp e),
       SLit . T.singleton <$> (char '\\' *> interpEscape),

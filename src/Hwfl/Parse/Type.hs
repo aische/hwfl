@@ -34,44 +34,47 @@ typeArrow =
         _ <- symbol "-["
         es <- effect `sepBy1` symbol ","
         _ <- symbol "]->"
-        right <- typeExpr
+        right <- nest typeExpr
         pure (Just es, right),
       do
         _ <- symbol "->"
-        right <- typeExpr
+        right <- nest typeExpr
         pure (Nothing, right)
     ]
 
 typeAtom :: Parser TypeExpr
 typeAtom =
   choice
-    [ try specialized,
+    [ specialized,
       TName <$> pTypeName,
       TRecord <$> recordType,
-      between (symbol "(") (symbol ")") typeExpr
+      between (symbol "(") (symbol ")") (nest typeExpr)
     ]
 
+-- | @List<…>@ / @Option<…>@ / … — only the @Name<@ prefix is backtracked.
 specialized :: Parser TypeExpr
 specialized = do
-  n <- pTypeName
-  _ <- symbol "<"
+  n <- try $ do
+    name <- pTypeName
+    _ <- symbol "<"
+    pure name
   case unTypeName n of
     "List" -> do
-      t <- typeExpr
+      t <- nest typeExpr
       _ <- symbol ">"
       pure (TList t)
     "Option" -> do
-      t <- typeExpr
+      t <- nest typeExpr
       _ <- symbol ">"
       pure (TOption t)
     "Result" -> do
-      a <- typeExpr
+      a <- nest typeExpr
       _ <- symbol ","
-      b <- typeExpr
+      b <- nest typeExpr
       _ <- symbol ">"
       pure (TResult a b)
     "Secret" -> do
-      t <- typeExpr
+      t <- nest typeExpr
       _ <- symbol ">"
       pure (TSecret t)
     other -> fail ("unknown type constructor: " <> T.unpack other)
@@ -87,7 +90,7 @@ fieldType :: Parser (Ident, TypeExpr)
 fieldType = do
   n <- pIdent
   _ <- symbol ":"
-  t <- typeExpr
+  t <- nest typeExpr
   pure (n, t)
 
 effect :: Parser Effect

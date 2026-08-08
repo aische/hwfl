@@ -41,24 +41,6 @@ inferModuleEnv (ModuleBody decls _) = do
 resolveAliasDef :: TypeEnv -> TypeName -> TypeExpr -> Either CheckError TypeExpr
 resolveAliasDef env root = resolveTypeFrom env [root]
 
-resolveTypeFrom :: TypeEnv -> [TypeName] -> TypeExpr -> Either CheckError TypeExpr
-resolveTypeFrom env = go
-  where
-    go stack = \case
-      TName n
-        | isPrimitive n -> Right (TName n)
-        | n `elem` stack -> Left (AliasCycle (reverse (n : stack)))
-        | otherwise -> case lookupAlias n env of
-            Nothing -> Left (UnboundType n)
-            Just t -> go (n : stack) t
-      TList t -> TList <$> go stack t
-      TOption t -> TOption <$> go stack t
-      TResult a b -> TResult <$> go stack a <*> go stack b
-      TSecret t -> TSecret <$> go stack t
-      TRecord fs -> TRecord <$> traverse (\(f, t) -> (f,) <$> go stack t) fs
-      TFun a b -> TFun <$> go stack a <*> go stack b
-      TEffFun a es b -> TEffFun <$> go stack a <*> pure es <*> go stack b
-
 checkDuplicateFuns :: [Decl] -> Either CheckError ()
 checkDuplicateFuns decls = mapM_ one names
   where

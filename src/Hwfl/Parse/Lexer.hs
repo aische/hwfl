@@ -11,6 +11,9 @@ module Hwfl.Parse.Lexer
     pTypeName,
     pKeyword,
     getPos,
+    nest,
+    parseDecimalInteger,
+    parseFloatLiteral,
     runP,
     runPFromLine,
     bundleToDiagnostics,
@@ -18,26 +21,41 @@ module Hwfl.Parse.Lexer
 where
 
 import Control.Monad (when)
-import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
+import Control.Monad.Trans.State.Strict (StateT, evalStateT, get, put)
+import Data.Char (digitToInt, isAsciiLower, isAsciiUpper, isDigit)
 import Data.List.NonEmpty qualified as NE
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Read qualified as TR
 import Data.Void (Void)
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Limits (maxLiteralDigits, maxParseDepth)
 import Hwfl.Source (Diagnostic (..), Pos (Pos), mkDiagnostic)
 import Hwfl.Source qualified as Src
 import Text.Megaparsec hiding (Pos)
 import Text.Megaparsec.Char (space1, string)
 import Text.Megaparsec.Char.Lexer qualified as L
 
-type Parser = Parsec Void Text
+-- | Parser with a nesting-depth counter for M-8 recursion caps.
+type Parser = StateT Int (Parsec Void Text)
 
 -- | Current megaparsec source position as a 1-based 'Hwfl.Source.Pos'.
 getPos :: Parser Src.Pos
 getPos = do
   sp <- getSourcePos
   pure (Pos (unPos (sourceLine sp)) (unPos (sourceColumn sp)))
+
+-- | Run a nested parser under the parse-depth ceiling.
+nest :: Parser a -> Parser a
+nest p = do
+  d <- get
+  when (d >= maxParseDepth) $
+    fail ("nesting exceeds " <> show maxParseDepth)
+  put (d + 1)
+  r <- p
+  put d
+  pure r
 
 scn :: Parser ()
 scn = L.space space1 lineComment empty
@@ -116,13 +134,33 @@ isIdentCont c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_'
 identCont :: Parser Char
 identCont = satisfy isIdentCont
 
+-- | Linear decimal 'Integer' parse with a digit-length ceiling.
+parseDecimalInteger :: Text -> Parser Integer
+parseDecimalInteger ds
+  | T.length ds > maxLiteralDigits =
+      fail ("integer literal exceeds " <> show maxLiteralDigits <> " digits")
+  | otherwise = pure (T.foldl' (\n c -> n * 10 + toInteger (digitToInt c)) 0 ds)
+
+-- | Linear 'Double' parse; rejects oversized digit runs and non-finite values.
+parseFloatLiteral :: Text -> Text -> Parser Double
+parseFloatLiteral a b
+  | T.length a + T.length b > maxLiteralDigits =
+      fail ("float literal exceeds " <> show maxLiteralDigits <> " digits")
+  | otherwise = case TR.double (a <> "." <> b) of
+      Right (d, leftover)
+        | not (T.null leftover) -> fail "invalid float literal"
+        | isInfinite d || isNaN d ->
+            fail "float literal is not a finite Float"
+        | otherwise -> pure d
+      Left _ -> fail "invalid float literal"
+
 runP :: Parser a -> FilePath -> Text -> Either (ParseErrorBundle Text Void) a
 runP = runPFromLine 1
 
 -- | Like 'runP', but start numbering at @startLine@ (file-absolute fence content).
 runPFromLine :: Int -> Parser a -> FilePath -> Text -> Either (ParseErrorBundle Text Void) a
 runPFromLine startLine p path input =
-  snd $ runParser' (scn *> p <* eof) initialState
+  snd $ runParser' (evalStateT (scn *> p <* eof) 0) initialState
   where
     initialState =
       State

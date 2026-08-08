@@ -75,9 +75,16 @@ spec = describe "pure evaluator" $ do
       applyBuiltin BDiv [VFloat 1, VFloat 5e-324]
         `shouldBe` Left (Trap "division produced a non-finite Float")
 
-    it "traps non-finite Float literals" $
+    it "rejects non-finite Float literals at parse time" $
       evalE (T.replicate 400 "9" <> ".0")
-        `shouldBe` Left "Trap \"float literal produced a non-finite Float\""
+        `shouldSatisfy` isLeft
+
+    it "traps recursive pure evaluation by budget" $
+      loadCall
+        "fun loop(): Int = loop()"
+        (Ident "loop")
+        []
+        `shouldBe` Left "Trap \"evaluation budget exceeded\""
 
     it "rejects mixed Int/Float arithmetic" $
       evalE "1 + 2.0" `shouldSatisfy` isLeft

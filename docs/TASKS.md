@@ -38,7 +38,7 @@ Order matters; do not skip ahead of H-6.
 
 ## Then (P2) — remaining Medium + author footguns
 
-- [ ] **M-8** — Resource limits: YAML alias bomb, parse depth, digit `read`,
+- [x] **M-8** — Resource limits: YAML alias bomb, parse depth, digit `read`,
       pure-eval / machine step budget, type-alias memoization
 - [ ] **M-6** — `exec.run`: stream/truncate before full buffer; process-group
       kill; validate timeout / max_output numerics
@@ -108,6 +108,10 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-8** — Resource ceilings for untrusted input: frontmatter YAML rejects
+  aliases and caps nesting/nodes; parsers bound nesting depth; digit literals
+  parse linearly with a length cap; pure eval and CEK frames are fuel/depth
+  bounded; type-alias resolve is memoized (2026-08)
 - **M-7** — Module files decode from explicit UTF-8 bytes and turn read /
   decode failures into diagnostics; project discovery and pricing-catalog reads
   contain I/O errors. Existing malformed catalogs are config errors rather than

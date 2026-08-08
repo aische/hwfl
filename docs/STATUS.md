@@ -1,5 +1,5 @@
 # Status
-Last updated: 2026-08-07
+Last updated: 2026-08-08
 
 ## Current focus
 **Bug-fix pass** — Work [BUG_REPORT.md](BUG_REPORT.md) in the order in
@@ -12,6 +12,9 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **M-8 fixed** — Resource ceilings on untrusted input: YAML aliases forbidden
+  with nesting/node caps; parse depth bounded; linear digit literals; pure-eval
+  fuel and CEK frame depth; memoized type-alias expansion
 - **M-7 + M-15 fixed** — Module reads use explicit UTF-8 decoding and report
   stable diagnostics; project / discovery / pricing-catalog I/O is contained,
   and an existing malformed catalog is a surfaced configuration error, never
@@ -31,52 +34,17 @@ product. Broader lab framing in [idea.md](idea.md).
 - **M-19 fixed** — Record-domain host calls normalize packed records and accept
   checked positionals; multi-parameter functions unpack lone records; runtime
   parameters resolve aliases and bare singleton parameters are Unit thunks
-- **M-1 fixed** — `llm.object` validates decoded provider JSON against its
-  schema before runtime conversion, so malformed or mistyped model output is a
-  normal `HostErr` rather than a checker-soundness violation
-- **H-5 + L-19 fixed** — Agent-budget suggestions use bounded power-of-two
-  growth and stop at `Int` headroom; source/snapshot budgets and extensions
-  reject invalid or overflowing values
-- **H-3 fixed** — JSON numbers decode via `Scientific`; exact integral values
-  remain arbitrary-precision `VInt`s, and fractional values outside `Double`'s
-  finite range become normal conversion errors rather than crashes
-- **H-4 fixed** — Float literals and arithmetic reject NaN/Infinity; JSON
-  encoding and interpolation rendering also return normal errors for an
-  invalid manually-constructed value rather than throwing
-- **H-6 fixed** — Empty application rejects non-`Unit` domains; runtime
-  supplies the omitted Unit argument and packs positional/named fields for one
-  record parameter. `fs.write` accepts its checked positional form. Residuals
-  filed as **M-19** (other named-only host ops, packed→multi-param, alias /
-  bare-Unit packing)
-- **H-2 fixed** — Synchronous exceptions are contained at three boundaries
-  (run loop, host op, LLM provider) via `Hwfl.Exception.trySync`; async
-  exceptions and `ExitCode` still propagate. A crash inside a step closes the
-  spans it opened, persists the machine as failed (so resume cannot replay an
-  already-applied transition) and reports the new non-catchable `InternalErr`
-- **H-7 fixed** — Run ids are validated as a single path component before any
-  id→path mapping; starting a run is create-only (`createRun`), so reuse can
-  no longer merge two runs into one directory; resume / step / approve open
-  without creating anything
-- **H-1 retracted; H-1a / L-24 fixed** — H-1's dangling-symlink escape was
-  not reproducible (`canonicalizePath` resolves dangling links; `copyFile`
-  renames). Real bug: parent chains were created before the containment
-  check, leaking dirs outside the root. Now `ensureDirUnderRoot` checks
-  before each `createDirectory`; `O_NOFOLLOW` writes / `rename` copies;
-  `fs.remove` unlinks leaf symlinks (was recursively deleting link targets)
-- **Source review** — Full `src/Hwfl/**` read-only review; findings in
-  [BUG_REPORT.md](BUG_REPORT.md)
-- **Semantic-check layer 0** — `meta.check_project(".")` when
-  `project.json` exists; path-based catalog; sandbox via `resolvePath`
-- **Host find/grep ignores** — hidden skip; root `.gitignore`/`.ignore`;
-  baseline dep/build dirs
-- **Coding-agent** — skill-driven exemplar; doer `exec.run`; FrInvoke;
-  chat `coding_session`
+- **M-1 fixed** — `llm.object` validates provider responses with
+  `validateAgainstSchema` before `jsonToValue`, so malformed or mistyped model
+  output is a normal `HostErr` rather than a checker-soundness violation
+- **H-5 + L-19 / H-3 / H-4 / H-6 / H-2 / H-7 / H-1a** — See prior entries /
+  [BUG_REPORT.md](BUG_REPORT.md); P0 High cluster closed
 
 ## Blockers
 None.
 
 ## Next up
-1. P2: M-8
+1. P2: M-6 (exec.run resources), then M-10 / M-12 / M-9
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 

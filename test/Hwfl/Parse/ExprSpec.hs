@@ -1,6 +1,7 @@
 module Hwfl.Parse.ExprSpec (spec) where
 
 import Data.Text (Text)
+import Data.Text qualified as T
 import Hwfl.Ast.Expr
 import Hwfl.Ast.Name (Ident (..), Slug (..), TypeName (..), qnameFromParts)
 import Hwfl.Ast.Pat (Literal (..), Pattern (..))
@@ -108,3 +109,16 @@ spec = describe "expression parser" $ do
             (EVar (Ident "+"))
             [ArgPos (EVar (Ident "x")), ArgPos (EVar (Ident "y"))]
         )
+
+  describe "resource limits (M-8)" $ do
+    it "rejects deeply nested parentheses" $ do
+      let src = T.replicate 300 "(" <> "1" <> T.replicate 300 ")"
+      case parseE src of
+        Left msg -> msg `shouldSatisfy` ("nesting exceeds" `T.isInfixOf`) . T.pack
+        Right _ -> expectationFailure "expected nesting failure"
+
+    it "rejects oversized integer digit runs" $ do
+      let src = T.replicate 5000 "9"
+      case parseE src of
+        Left msg -> msg `shouldSatisfy` ("digits" `T.isInfixOf`) . T.pack
+        Right _ -> expectationFailure "expected digit-length failure"

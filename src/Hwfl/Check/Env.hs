@@ -12,6 +12,7 @@ module Hwfl.Check.Env
     setImports,
     moduleExportRecord,
     resolveType,
+    resolveTypeFrom,
     stripEffects,
     typeEq,
     primitiveNames,
@@ -96,24 +97,65 @@ primitiveNames =
 isPrimitive :: TypeName -> Bool
 isPrimitive (TypeName n) = Set.member n primitiveNames
 
--- | Expand aliases (cycle-checked). Effect annotations on arrows are kept.
+-- | Expand aliases (cycle-checked, memoized). Effect annotations on arrows are kept.
+--
+-- Memoization is required for DAG-shaped alias nests such as
+-- @type A1 = {l: A0, r: A0}@ … @type A50 = {l: A49, r: A49}@, which otherwise
+-- expand to an exponential number of nodes (M-8).
 resolveType :: TypeEnv -> TypeExpr -> Either CheckError TypeExpr
-resolveType env = go []
+resolveType env = resolveTypeFrom env []
+
+-- | Like 'resolveType', but with an initial cycle-detection stack (used when
+-- validating an alias definition so the defined name is already on the path).
+resolveTypeFrom :: TypeEnv -> [TypeName] -> TypeExpr -> Either CheckError TypeExpr
+resolveTypeFrom env stack0 ty0 = fst <$> go stack0 Map.empty ty0
   where
-    go stack = \case
+    go ::
+      [TypeName] ->
+      Map TypeName TypeExpr ->
+      TypeExpr ->
+      Either CheckError (TypeExpr, Map TypeName TypeExpr)
+    go stack memo = \case
       TName n
-        | isPrimitive n -> Right (TName n)
+        | isPrimitive n -> Right (TName n, memo)
+        | Just cached <- Map.lookup n memo -> Right (cached, memo)
         | n `elem` stack -> Left (AliasCycle (reverse (n : stack)))
         | otherwise -> case lookupAlias n env of
             Nothing -> Left (UnboundType n)
-            Just t -> go (n : stack) t
-      TList t -> TList <$> go stack t
-      TOption t -> TOption <$> go stack t
-      TResult a b -> TResult <$> go stack a <*> go stack b
-      TSecret t -> TSecret <$> go stack t
-      TRecord fs -> TRecord <$> traverse (\(f, t) -> (f,) <$> go stack t) fs
-      TFun a b -> TFun <$> go stack a <*> go stack b
-      TEffFun a es b -> TEffFun <$> go stack a <*> pure es <*> go stack b
+            Just body -> do
+              (resolved, memo') <- go (n : stack) memo body
+              Right (resolved, Map.insert n resolved memo')
+      TList t -> do
+        (t', memo') <- go stack memo t
+        Right (TList t', memo')
+      TOption t -> do
+        (t', memo') <- go stack memo t
+        Right (TOption t', memo')
+      TResult a b -> do
+        (a', memo1) <- go stack memo a
+        (b', memo2) <- go stack memo1 b
+        Right (TResult a' b', memo2)
+      TSecret t -> do
+        (t', memo') <- go stack memo t
+        Right (TSecret t', memo')
+      TRecord fs -> do
+        (fs', memo') <- goFields stack memo fs
+        Right (TRecord fs', memo')
+      TFun a b -> do
+        (a', memo1) <- go stack memo a
+        (b', memo2) <- go stack memo1 b
+        Right (TFun a' b', memo2)
+      TEffFun a es b -> do
+        (a', memo1) <- go stack memo a
+        (b', memo2) <- go stack memo1 b
+        Right (TEffFun a' es b', memo2)
+
+    goFields stack memo = \case
+      [] -> Right ([], memo)
+      (f, t) : rest -> do
+        (t', memo1) <- go stack memo t
+        (rest', memo2) <- goFields stack memo1 rest
+        Right ((f, t') : rest', memo2)
 
 -- | Erase effect annotations (type equality ignores the lattice).
 stripEffects :: TypeExpr -> TypeExpr

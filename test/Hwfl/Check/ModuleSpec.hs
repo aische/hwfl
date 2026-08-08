@@ -9,7 +9,8 @@ import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Pat (Literal (..))
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
 import Hwfl.Check.Error (CheckError (..), errorRoot)
-import Hwfl.Check.Infer (check, infer)
+import Hwfl.Check.Env (resolveType)
+import Hwfl.Check.Infer (check, infer, inferModuleEnv)
 import Hwfl.Check.Module (CheckResult (..), checkLoadedModule, checkModuleBody)
 import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Parse.Expr (parseExprText)
@@ -115,6 +116,29 @@ spec = describe "type checker" $ do
         \type B = A\n\
         \fun main(_: Unit): Int = 1"
         `shouldBe` Left (AliasCycle [TypeName "A", TypeName "B", TypeName "A"])
+
+    it "memoizes deep alias DAG expansion (M-8)" $ do
+      let src =
+            "type A0 = { x: Int, y: Int }\n"
+              <> T.concat
+                [ "type A"
+                    <> T.pack (show (n :: Int))
+                    <> " = { l: A"
+                    <> T.pack (show (n - 1))
+                    <> ", r: A"
+                    <> T.pack (show (n - 1))
+                    <> " }\n"
+                  | n <- [1 .. 50]
+                ]
+              <> "fun main(_: Unit): Int = 1"
+      case parseBody src of
+        Left err -> expectationFailure err
+        Right body -> case inferModuleEnv body of
+          Left err -> expectationFailure (show err)
+          Right env ->
+            -- Fresh resolve of the tip must finish quickly with memoization;
+            -- without it this is ~2^50 nodes.
+            resolveType env (TName (TypeName "A50")) `shouldSatisfy` isRight
 
   describe "module I/O vs main" $ do
     it "accepts summarise frontmatter vs main" $ do

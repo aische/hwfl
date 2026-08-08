@@ -109,3 +109,54 @@ spec = describe "frontmatter examples" $ do
         diagMsg diags
           `shouldContain` ["examples item has unknown fields: description"]
       Right _ -> expectationFailure "expected parse failure"
+
+  describe "resource limits (M-8)" $ do
+    it "rejects YAML aliases in frontmatter" $ do
+      let src =
+            T.unlines
+              [ "name: workflows/bomb",
+                "a: &x 1",
+                "b: *x",
+                "inputs:",
+                "  path: FileRef",
+                "outputs:",
+                "  summary: String"
+              ]
+      case parseFm src of
+        Left diags ->
+          diagMsg diags
+            `shouldSatisfy` any ("aliases are not allowed" `T.isInfixOf`)
+        Right _ -> expectationFailure "expected alias rejection"
+
+    it "rejects YAML alias bombs before expansion" $ do
+      let levels =
+            ["a0: &a0 [1, 2, 3, 4]"]
+              ++ [ "a"
+                     <> T.pack (show (n :: Int))
+                     <> ": &a"
+                     <> T.pack (show n)
+                     <> " [*a"
+                     <> T.pack (show (n - 1))
+                     <> ", *a"
+                     <> T.pack (show (n - 1))
+                     <> ", *a"
+                     <> T.pack (show (n - 1))
+                     <> ", *a"
+                     <> T.pack (show (n - 1))
+                     <> "]"
+                 | n <- [1 .. 20]
+                 ]
+          src =
+            T.unlines $
+              ["name: workflows/bomb"]
+                ++ levels
+                ++ [ "inputs:",
+                     "  path: FileRef",
+                     "outputs:",
+                     "  summary: String"
+                   ]
+      case parseFm src of
+        Left diags ->
+          diagMsg diags
+            `shouldSatisfy` any ("aliases are not allowed" `T.isInfixOf`)
+        Right _ -> expectationFailure "expected alias bomb rejection"

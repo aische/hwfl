@@ -3,6 +3,9 @@
 -- Non-pure constructs ('EPar', 'EJoin', 'EConfirm', 'ETry', 'ESection') and
 -- unresolved qnames trap as 'Unsupported'. Host paths are ordinary projection
 -- and fail like any other unbound lookup.
+--
+-- Recursion is fuel-bounded (M-8): 'fun f() -> f()' returns a trap instead of
+-- overflowing the Haskell stack.
 module Hwfl.Eval.Pure
   ( eval,
     evalArgs,
@@ -20,9 +23,14 @@ import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Prelude (applyBuiltin)
 import Hwfl.Eval.Value
+import Hwfl.Limits (maxPureEvalSteps)
 
 eval :: Env -> Expr -> Either EvalError Value
-eval env = \case
+eval = evalFuel maxPureEvalSteps
+
+evalFuel :: Int -> Env -> Expr -> Either EvalError Value
+evalFuel 0 _ _ = Left (Trap "evaluation budget exceeded")
+evalFuel fuel env e = case e of
   ELit lit -> literalValue lit
   EVar n ->
     maybe (Left (Trap ("unbound variable: " <> unIdent n))) Right (lookupEnv n env)
@@ -30,33 +38,33 @@ eval env = \case
     Left (Unsupported ("qname not elaborated: " <> qnameToText q))
   ESection s ->
     Left (Unsupported ("section ref in pure eval: @" <> slugToText s))
-  EList es -> VList <$> traverse (eval env) es
-  ERecord fs -> VRecord <$> evalFields env fs
-  EInterp parts -> evalInterp env parts
+  EList es -> VList <$> traverse (evalFuel (fuel - 1) env) es
+  ERecord fs -> VRecord <$> evalFields (fuel - 1) env fs
+  EInterp parts -> evalInterp (fuel - 1) env parts
   EApp f args -> do
-    fv <- eval env f
-    vs <- evalArgs env args
-    applyValue fv vs
-  EProj e f -> do
-    v <- eval env e
+    fv <- evalFuel (fuel - 1) env f
+    vs <- evalArgsFuel (fuel - 1) env args
+    applyValueFuel (fuel - 1) fv vs
+  EProj e0 f -> do
+    v <- evalFuel (fuel - 1) env e0
     project v f
-  EIndex e ix -> do
-    v <- eval env e
-    i <- eval env ix
+  EIndex e0 ix -> do
+    v <- evalFuel (fuel - 1) env e0
+    i <- evalFuel (fuel - 1) env ix
     indexList v i
   ELet n _ e1 e2 -> do
-    v1 <- eval env e1
-    eval (extendEnv n v1 env) e2
+    v1 <- evalFuel (fuel - 1) env e1
+    evalFuel (fuel - 1) (extendEnv n v1 env) e2
   EFun ps _ body -> Right (VClosure ps body env)
-  EIf c t e -> do
-    cv <- eval env c
+  EIf c t el -> do
+    cv <- evalFuel (fuel - 1) env c
     case cv of
-      VBool True -> eval env t
-      VBool False -> eval env e
+      VBool True -> evalFuel (fuel - 1) env t
+      VBool False -> evalFuel (fuel - 1) env el
       _ -> Left (Trap "if condition is not Bool")
   EMatch scrut arms -> do
-    v <- eval env scrut
-    matchArms env v arms
+    v <- evalFuel (fuel - 1) env scrut
+    matchArms (fuel - 1) env v arms
   EPar {} -> Left (Unsupported "par is not pure")
   EJoin {} -> Left (Unsupported "join is not pure")
   EConfirm {} -> Left (Unsupported "confirm is not pure")
@@ -72,35 +80,41 @@ literalValue = \case
   LFloat d -> either (Left . Trap) Right (finiteFloat "float literal" d)
   LString t -> Right (VString t)
 
-evalFields :: Env -> [Field] -> Either EvalError [(Ident, Value)]
-evalFields env = traverse $ \case
-  Field n e -> (n,) <$> eval env e
+evalFields :: Int -> Env -> [Field] -> Either EvalError [(Ident, Value)]
+evalFields fuel env = traverse $ \case
+  Field n e -> (n,) <$> evalFuel fuel env e
   FieldShorthand n ->
     maybe
       (Left (Trap ("unbound shorthand field: " <> unIdent n)))
       (\v -> Right (n, v))
       (lookupEnv n env)
 
-evalInterp :: Env -> [StringPart] -> Either EvalError Value
-evalInterp env parts = VString . T.concat <$> traverse part parts
+evalInterp :: Int -> Env -> [StringPart] -> Either EvalError Value
+evalInterp fuel env parts = VString . T.concat <$> traverse part parts
   where
     part = \case
       SLit t -> Right t
       SInterp e -> do
-        v <- eval env e
+        v <- evalFuel fuel env e
         either (Left . Trap) Right (renderValue v)
 
 evalArgs :: Env -> [Arg] -> Either EvalError [(Maybe Ident, Value)]
-evalArgs env = traverse $ \case
-  ArgPos e -> (Nothing,) <$> eval env e
-  ArgNamed n e -> (Just n,) <$> eval env e
+evalArgs = evalArgsFuel maxPureEvalSteps
+
+evalArgsFuel :: Int -> Env -> [Arg] -> Either EvalError [(Maybe Ident, Value)]
+evalArgsFuel fuel env = traverse $ \case
+  ArgPos e -> (Nothing,) <$> evalFuel fuel env e
+  ArgNamed n e -> (Just n,) <$> evalFuel fuel env e
 
 applyValue :: Value -> [(Maybe Ident, Value)] -> Either EvalError Value
-applyValue f args = case f of
+applyValue = applyValueFuel maxPureEvalSteps
+
+applyValueFuel :: Int -> Value -> [(Maybe Ident, Value)] -> Either EvalError Value
+applyValueFuel fuel f args = case f of
   VBuiltin b -> applyBuiltin b (map snd args)
   VClosure params body cloEnv -> do
     binds <- bindParams params args
-    eval (extendEnvMany binds cloEnv) body
+    evalFuel fuel (extendEnvMany binds cloEnv) body
   VHostOp op ->
     Left (Trap ("host op outside runtime driver: " <> hostOpName op))
   _ -> Left (Trap "applied a non-function value")
@@ -202,12 +216,12 @@ indexList v ix = case (v, ix) of
   (VList _, _) -> Left (Trap "list index is not Int")
   _ -> Left (Trap "index on non-list")
 
-matchArms :: Env -> Value -> [MatchArm] -> Either EvalError Value
-matchArms env v = \case
+matchArms :: Int -> Env -> Value -> [MatchArm] -> Either EvalError Value
+matchArms fuel env v = \case
   [] -> Left (Trap "non-exhaustive match")
   MatchArm p body : rest -> case matchPat p v of
-    Nothing -> matchArms env v rest
-    Just binds -> eval (extendEnvMany binds env) body
+    Nothing -> matchArms fuel env v rest
+    Just binds -> evalFuel fuel (extendEnvMany binds env) body
 
 -- | Try to match a pattern; 'Nothing' means no match (try next arm).
 matchPat :: Pattern -> Value -> Maybe [(Ident, Value)]

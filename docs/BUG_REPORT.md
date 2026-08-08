@@ -255,14 +255,15 @@ silently producing zero pricing.
 
 ### M-8 — Resource exhaustion on untrusted input (parse/eval/check)
 
-- **Locations:** YAML alias bomb `src/Hwfl/Parse/Frontmatter.hs:95`; parser depth `src/Hwfl/Parse/Expr.hs:282`, `src/Hwfl/Parse/Type.hs:51`; unbounded `read` on digit runs `src/Hwfl/Parse/Pat.hs:71,79`, `Parse/Expr.hs:352`; pure evaluator no recursion budget `src/Hwfl/Eval/Pure.hs`; type-alias expansion unmemoized `src/Hwfl/Check/Infer.hs:58`
-- **Verification:** `[Reported]`
+- **Locations:** YAML alias bomb `src/Hwfl/Parse/Frontmatter.hs` / `YamlSafe.hs`; parser depth `Parse/Expr.hs`, `Parse/Type.hs`; digit literals `Parse/Pat.hs`, `Parse/Lexer.hs`; pure evaluator `Eval/Pure.hs`; machine frames `Runtime/Eval.hs` crunch; type-alias expansion `Check/Env.hs`
+- **Verification:** **Fixed** (2026-08-08)
 
-- YAML alias expansion is eager and unshared: a ~200-byte frontmatter with 20 levels of 4×-branching aliases expands to ~10¹² nodes → OOM on module load.
-- Recursive-descent parsers (`expr ↔ primary ↔ (expr)`, `List<List<…>>`) have no depth limit → `StackOverflow` (an exception, not a diagnostic) on ~10-20 MB of nesting.
-- `read (T.unpack ds)` for `Integer` is superlinear: a ~1 MB all-digit literal effectively hangs. `read` for `Double` silently yields `Infinity` (pretty-prints non-reparseable).
-- Pure `eval` recurses in Haskell with no step budget: `fun f() -> f()` overflows the stack with an uncaught exception; the machine runtime has no max-frame bound either.
-- `resolveTypeFrom` re-expands every alias occurrence: a shared DAG at depth ~50 expands ~2⁵⁰ nodes → check-time DoS.
+Frontmatter YAML is event-validated before aeson decode: aliases are rejected and
+nesting / node count are capped. Expression and type parsers carry a nesting
+counter (`maxParseDepth`). Integer / float digit runs use linear parsers with a
+length ceiling; non-finite floats fail at parse time. Pure `eval` is
+fuel-bounded; CEK crunch also enforces `maxMachineFrames`. `resolveType` memoizes
+alias expansion so DAG-shaped aliases no longer expand exponentially.
 
 ### M-9 — YAML duplicate keys silently last-wins
 

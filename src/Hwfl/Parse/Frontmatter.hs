@@ -13,7 +13,6 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)
-import Data.Yaml qualified as Yaml
 import Hwfl.Ast.Module (ExampleInputs (..), Frontmatter (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), qnameFromParts)
 import Hwfl.Ast.Skill
@@ -25,6 +24,7 @@ import Hwfl.Ast.Skill
 import Hwfl.Ast.Type (Effect, TypeExpr, parseEffectName)
 import Hwfl.Parse.Lexer (bundleToDiagnostics)
 import Hwfl.Parse.Type (parseTypeText)
+import Hwfl.Parse.YamlSafe (decodeYamlValue)
 import Hwfl.Source (Diagnostic (..), Pos (..), mkDiagnostic)
 
 parseFrontmatter :: FilePath -> Text -> Either [Diagnostic] Frontmatter
@@ -92,9 +92,9 @@ parseSkillBlock path o =
 
 parseYamlObject :: FilePath -> Text -> Either [Diagnostic] Object
 parseYamlObject path yamlText =
-  case Yaml.decodeEither' (encodeUtf8 yamlText) of
+  case decodeYamlValue (encodeUtf8 yamlText) of
     Left err ->
-      Left [mkDiagnostic path (Pos 1 1) ("invalid frontmatter YAML: " <> T.pack (Yaml.prettyPrintParseException err))]
+      Left [mkDiagnostic path (Pos 1 1) ("invalid frontmatter YAML: " <> err)]
     Right val -> case val of
       Object o -> Right o
       _ -> Left [mkDiagnostic path (Pos 1 1) "frontmatter must be a YAML mapping"]

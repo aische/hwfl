@@ -19,6 +19,7 @@ where
 import Data.Aeson (object, (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
+import Data.Aeson.KeyMap qualified as KM
 import Data.IORef (IORef, readIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -39,8 +40,8 @@ import Hwfl.Eval.Error (EvalError (..))
 import Hwfl.Eval.Prelude (applyBuiltin)
 import Hwfl.Eval.Pure (bindParams, matchPat)
 import Hwfl.Eval.Value
-import Data.Aeson.KeyMap qualified as KM
 import Hwfl.Exception (describeException, trySync)
+import Hwfl.Limits (maxMachineFrames, maxPureCrunchSteps)
 import Hwfl.Llm.Pricing (providerRoundCloseAttrs)
 import Hwfl.Llm.Provider (safeLlmChat)
 import Hwfl.Llm.Types
@@ -2241,7 +2242,9 @@ crunch :: RunCtx -> Machine -> Either RuntimeError Machine
 crunch ctx = go (0 :: Int)
   where
     go n m
-      | n > 500000 = Left (EvalErr (Trap "pure crunch limit exceeded"))
+      | n > maxPureCrunchSteps = Left (EvalErr (Trap "pure crunch limit exceeded"))
+      | length m.mFrames > maxMachineFrames =
+          Left (EvalErr (Trap "machine frame depth exceeded"))
       | otherwise = case crunchOnce ctx m of
           Left e -> Left e
           Right Nothing -> Right m

@@ -68,7 +68,8 @@ intLit :: Parser Literal
 intLit = lexeme $ do
   sign <- option 1 ((-1) <$ char '-')
   ds <- takeWhile1P (Just "digit") isDigit
-  pure (LInt (sign * read (T.unpack ds)))
+  n <- parseDecimalInteger ds
+  pure (LInt (sign * n))
 
 floatLit :: Parser Literal
 floatLit = lexeme $ do
@@ -76,7 +77,8 @@ floatLit = lexeme $ do
   a <- takeWhile1P (Just "digit") isDigit
   _ <- char '.'
   b <- takeWhile1P (Just "digit") isDigit
-  pure (LFloat (sign (read (T.unpack (a <> "." <> b)))))
+  d <- parseFloatLiteral a b
+  pure (LFloat (sign d))
 
 stringLit :: Parser Text
 stringLit =

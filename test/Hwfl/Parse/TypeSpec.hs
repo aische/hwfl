@@ -1,6 +1,7 @@
 module Hwfl.Parse.TypeSpec (spec) where
 
 import Data.Text (Text)
+import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Type
 import Hwfl.Parse.Type (parseTypeText)
@@ -43,3 +44,10 @@ spec = describe "type parser" $ do
             [EffRead, EffNet]
             (TName (TypeName "String"))
         )
+
+  describe "resource limits (M-8)" $ do
+    it "rejects deeply nested List types" $ do
+      let src = T.replicate 300 "List<" <> "Int" <> T.replicate 300 ">"
+      case parseT src of
+        Left msg -> msg `shouldSatisfy` ("nesting exceeds" `T.isInfixOf`) . T.pack
+        Right _ -> expectationFailure "expected nesting failure"
