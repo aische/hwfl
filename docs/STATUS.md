@@ -3,8 +3,8 @@ Last updated: 2026-08-08
 
 ## Current focus
 **Agent substrate** — MCP / git / persistent terminals (prefer MCP or
-workflow modules over new host ops). Bug-report High + nearly all Medium
-are done; leftover findings are deferred hygiene.
+workflow modules over new host ops). Queued soon: **agent context layers**
+(window + history slices, then consolidate/assemble) — see TASKS.
 
 ## North star
 hwfl = durable workflow **runtime library** (language + interpreter).
@@ -35,8 +35,10 @@ None.
 
 ## Next up
 1. Tier A agent ops: MCP client, git (read-heavy), persistent terminals
-2. Skills coding-agent variant (separate example) when substrate exists
-3. Opportunistic Lows from the report; M-3 / M-18 only if they bite
+2. **Agent context L1** then **L2** (window/history tool → consolidate/pins/
+   assemble) — shared hwfl helpers; not llm-simple Agent loop
+3. Skills coding-agent variant (separate example) when substrate exists
+4. Opportunistic Lows; M-3 / M-18 only if they bite
 
 ## Deferred
 - **M-3** skill-body prompt trust (when third-party skills matter)

@@ -17,6 +17,28 @@ Prefer MCP / workflow modules over growing the host-op set.
       (spec [05-host-ops.md](spec/05-host-ops.md) §3.1) — when untrusted
       spawn bites
 
+## Next — agent context (long-running)
+
+Shared in hwfl once (not per project; not via llm-simple `LLM.Agent`).
+Full `agHistory` stays snapshot / resume / audit truth; window and compact
+only the **wire / working** view. Design notes:
+[log/2026-08.md](log/2026-08.md) (2026-08-08 — agent context layers).
+
+Two separate tasks (do L1 before L2):
+
+- [ ] **Context L1 — window + history slices**
+      - Pure helper: window transcript (e.g. last N user turns + follow-ons)
+      - Apply window before each agent model round (provider sees suffix only)
+      - Tool to fetch older chunks / slices of the full history on demand
+      - Prefer also capping / folding huge tool results (otherwise windowing
+        alone may not save the context)
+- [ ] **Context L2 — consolidate + assemble**
+      - Helpers to extract pins / structured notes from a droppable span
+      - Compact: summary (or synthetic turn) + rewrite working history
+      - Assemble: pins + optional summary + recent window → next context
+      - Pin / note store shape (workspace FS and/or run-store); projects
+        only pass knobs
+
 ## Next — coding-agent / observability / research
 
 - [ ] Workflow-driven skills coding-agent variant (separate example project)
