@@ -6,6 +6,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Module (ExampleInputs (..), Frontmatter (..))
 import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameFromParts)
+import Hwfl.Ast.Skill (SkillMeta (..))
 import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Parse.Frontmatter (parseFrontmatter)
 import Hwfl.Source (Diagnostic (..))
@@ -77,6 +78,41 @@ spec = describe "frontmatter examples" $ do
       Left diags -> expectationFailure (show diags)
       Right fm ->
         map eiName (fmExamples fm) `shouldBe` [Just "readme", Nothing]
+
+  describe "skill.tags (L-11)" $ do
+    it "parses a list of string tags" $ do
+      let src =
+            baseFm
+              [ "skill:",
+                "  tags: [fixture, shell]"
+              ]
+      case parseFm src of
+        Left diags -> expectationFailure (show diags)
+        Right fm ->
+          case fmSkill fm of
+            Just sm -> smTags sm `shouldBe` ["fixture", "shell"]
+            Nothing -> expectationFailure "expected skill metadata"
+
+    it "rejects non-string tag entries" $ do
+      let src =
+            baseFm
+              [ "skill:",
+                "  tags: [1, \"a\"]"
+              ]
+      case parseFm src of
+        Left diags ->
+          diagMsg diags
+            `shouldContain` ["skill.tags must be a list of strings"]
+        Right fm ->
+          expectationFailure
+            ("expected rejection, got tags " <> show (fmap smTags (fmSkill fm)))
+
+    it "rejects a non-list tags value" $ do
+      case parseFm (baseFm ["skill:", "  tags: shell"]) of
+        Left diags ->
+          diagMsg diags
+            `shouldContain` ["skill.tags must be a list of strings"]
+        Right _ -> expectationFailure "expected parse failure"
 
   it "rejects non-list examples" $ do
     case parseFm (baseFm ["examples: {}", ""]) of

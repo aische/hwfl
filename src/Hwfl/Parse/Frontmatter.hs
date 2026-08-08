@@ -87,8 +87,13 @@ parseSkillBlock path o =
     parseTags skillObj = case KM.lookup (K.fromText "tags") skillObj of
       Nothing -> Right []
       Just Null -> Right []
-      Just (Array arr) -> Right [t | String t <- toList arr]
-      Just _ -> Left [mkDiagnostic path (Pos 1 1) "skill.tags must be a list of strings"]
+      Just (Array arr) -> traverse tagString (toList arr)
+      Just _ -> tagsMustBeStrings
+      where
+        tagString (String t) = Right t
+        tagString _ = tagsMustBeStrings
+        tagsMustBeStrings =
+          Left [mkDiagnostic path (Pos 1 1) "skill.tags must be a list of strings"]
 
 parseYamlObject :: FilePath -> Text -> Either [Diagnostic] Object
 parseYamlObject path yamlText =
