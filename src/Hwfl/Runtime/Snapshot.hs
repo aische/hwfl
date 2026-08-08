@@ -433,6 +433,7 @@ frameToJson = \case
       ]
   FrMatch env arms ->
     object ["tag" .= String "match", "env" .= envToJson env, "arms" .= showText arms]
+  FrTag (TypeName n) -> object ["tag" .= String "tag", "name" .= n]
   FrPar pjs -> object ["tag" .= String "par", "par" .= parToJson pjs]
   FrTry var handlerEnv handler ->
     object
@@ -505,6 +506,7 @@ parseFrame = withObject "Frame" $ \o -> do
         <*> (o .: "else" >>= readText)
     "match" ->
       FrMatch <$> (o .: "env" >>= parseEnv) <*> (o .: "arms" >>= readText)
+    "tag" -> FrTag . TypeName <$> o .: "name"
     "par" -> FrPar <$> (o .: "par" >>= parsePar)
     "try" ->
       (FrTry . Ident <$> (o .: "var"))

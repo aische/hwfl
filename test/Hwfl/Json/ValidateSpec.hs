@@ -36,6 +36,18 @@ optionSchema =
     Right s -> s
     Left err -> error (show err)
 
+optionalRecordSchema :: Value
+optionalRecordSchema =
+  case typeToSchema
+    emptyTypeEnv
+    ( TRecord
+        [ (Ident "name", TName (TypeName "String")),
+          (Ident "nickname", TOption (TName (TypeName "String")))
+        ]
+    ) of
+    Right s -> s
+    Left err -> error (show err)
+
 spec :: Spec
 spec = describe "JSON schema validation" $ do
   describe "validateAgainstSchema" $ do
@@ -47,7 +59,7 @@ spec = describe "JSON schema validation" $ do
 
     it "rejects missing required fields" $
       validateAgainstSchema outSchema (object ["summary" .= ("ok" :: Text)])
-        `shouldSatisfy` isLeftContaining "missing required field score"
+      `shouldSatisfy` isLeftContaining "missing required field score"
 
     it "rejects wrong field types" $
       validateAgainstSchema
@@ -78,6 +90,20 @@ spec = describe "JSON schema validation" $ do
       validateAgainstSchema optionSchema Null `shouldBe` Right ()
       validateAgainstSchema optionSchema (String "x")
         `shouldSatisfy` isLeftContaining "anyOf"
+
+    it "allows omitting Option record fields" $ do
+      validateAgainstSchema
+        optionalRecordSchema
+        (object ["name" .= ("Ada" :: Text)])
+        `shouldBe` Right ()
+      validateAgainstSchema
+        optionalRecordSchema
+        (object ["name" .= ("Ada" :: Text), "nickname" .= Null])
+        `shouldBe` Right ()
+      validateAgainstSchema
+        optionalRecordSchema
+        (object ["nickname" .= ("Addy" :: Text)])
+        `shouldSatisfy` isLeftContaining "missing required field name"
 
     it "accepts any value for empty Json schema" $
       validateAgainstSchema (Object mempty) (String "anything") `shouldBe` Right ()

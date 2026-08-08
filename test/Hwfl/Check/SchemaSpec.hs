@@ -88,6 +88,94 @@ spec = describe "schema(T)" $ do
                     "additionalProperties" .= False
                   ]
 
+  it "omits Option fields from required and decodes null/absent as None" $
+    case parseT "{ name: String, nickname: Option<String> }" of
+      Left err -> expectationFailure err
+      Right ty ->
+        case typeToSchema emptyTypeEnv ty of
+          Left err -> expectationFailure (show err)
+          Right schema -> do
+            schemaForProvider schema
+              `shouldBe`
+                object
+                  [ "type" .= String "object",
+                    "properties"
+                      .= object
+                        [ "name" .= object ["type" .= String "string"],
+                          "nickname"
+                            .= object
+                              [ "anyOf"
+                                  .= Array
+                                    ( V.fromList
+                                        [ object ["type" .= String "string"],
+                                          object ["type" .= String "null"]
+                                        ]
+                                    )
+                              ]
+                        ],
+                    "required" .= Array (V.fromList [String "name"]),
+                    "additionalProperties" .= False
+                  ]
+            jsonToValueWithSchema schema (object ["name" .= String "Ada"])
+              `shouldBe`
+                Right
+                  ( VRecord
+                      [ (Ident "name", VString "Ada"),
+                        (Ident "nickname", VVariant (TypeName "None") Nothing)
+                      ]
+                  )
+            jsonToValueWithSchema
+              schema
+              (object ["name" .= String "Ada", "nickname" .= Null])
+              `shouldBe`
+                Right
+                  ( VRecord
+                      [ (Ident "name", VString "Ada"),
+                        (Ident "nickname", VVariant (TypeName "None") Nothing)
+                      ]
+                  )
+            jsonToValueWithSchema
+              schema
+              (object ["name" .= String "Ada", "nickname" .= String "Addy"])
+              `shouldBe`
+                Right
+                  ( VRecord
+                      [ (Ident "name", VString "Ada"),
+                        (Ident "nickname", VVariant (TypeName "Some") (Just (VString "Addy")))
+                      ]
+                  )
+
+  it "treats Option aliases as optional record fields" $ do
+    let env =
+          emptyTypeEnv
+            { teAliases =
+                Map.fromList
+                  [(TypeName "Nick", TOption (TName (TypeName "String")))]
+            }
+    case typeToSchema env (TRecord [(Ident "nick", TName (TypeName "Nick"))]) of
+      Left err -> expectationFailure (show err)
+      Right schema ->
+        schemaForProvider schema
+          `shouldBe`
+            object
+              [ "type" .= String "object",
+                "properties"
+                  .= object
+                    [ "nick"
+                        .= object
+                          [ "anyOf"
+                              .= Array
+                                ( V.fromList
+                                    [ object ["type" .= String "string"],
+                                      object ["type" .= String "null"]
+                                    ]
+                                )
+                          ]
+                    ],
+                "required" .= Array (V.fromList []),
+                "additionalProperties" .= False
+              ]
+
   it "adds field descriptions from schema docs for named aliases" $ do
     let env =
           emptyTypeEnv

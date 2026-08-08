@@ -5,9 +5,9 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.Either (isLeft)
 import Data.Scientific (scientific)
 import Data.Vector qualified as V
-import Hwfl.Ast.Name (Ident (..))
+import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Eval.Value (Value (..), renderValue)
-import Hwfl.Json.Encode (jsonToValue, valueToJsonText)
+import Hwfl.Json.Encode (jsonToValue, valueToAeson, valueToJsonText)
 import Test.Hspec
 
 spec :: Spec
@@ -47,3 +47,8 @@ spec = describe "jsonToValue" $ do
   it "rejects non-finite floats during rendering" $
     renderValue (VFloat (1 / 0))
       `shouldSatisfy` isLeft
+
+  it "encodes Option Some/None as unwrapped JSON / null" $ do
+    valueToAeson (VVariant (TypeName "None") Nothing) `shouldBe` Right Aeson.Null
+    valueToAeson (VVariant (TypeName "Some") (Just (VInt 3)))
+      `shouldBe` Right (Aeson.Number 3)

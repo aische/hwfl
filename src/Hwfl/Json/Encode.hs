@@ -39,8 +39,8 @@ jsonToValue = \case
     Right i -> Right (VInt i)
     Left d ->
       if isNaN d || isInfinite d
-            then Left ("JSON number is outside the supported Float range: " <> T.pack (show n))
-            else Right (VFloat d)
+        then Left ("JSON number is outside the supported Float range: " <> T.pack (show n))
+        else Right (VFloat d)
   Aeson.String s -> Right (VString s)
   Aeson.Array xs -> VList <$> traverse jsonToValue (V.toList xs)
   Aeson.Object o ->
@@ -48,9 +48,9 @@ jsonToValue = \case
   where
     decodeField (k, v) = (Ident (Key.toText k),) <$> jsonToValue v
 
--- | Decode JSON while restoring @Secret@ taint carried by an internal schema
--- annotation. The annotation is deliberately removed before a schema crosses
--- a provider boundary; it exists only within the runtime and its snapshots.
+-- | Decode JSON while restoring @Secret@ / @Option@ structure carried by
+-- internal schema annotations. Annotations are stripped before a schema crosses
+-- a provider boundary; they exist only within the runtime and its snapshots.
 jsonToValueWithSchema :: Aeson.Value -> Aeson.Value -> Either Text Value
 jsonToValueWithSchema = go
   where
@@ -58,6 +58,8 @@ jsonToValueWithSchema = go
       Aeson.Object o
         | KM.lookup "x-hwfl-secret" o == Just (Aeson.Bool True) ->
             VSecret <$> go (Aeson.Object (KM.delete "x-hwfl-secret" o)) value
+        | KM.lookup "x-hwfl-option" o == Just (Aeson.Bool True) ->
+            decodeOption (Aeson.Object (KM.delete "x-hwfl-option" o)) value
         | Just (Aeson.Array alternatives) <- KM.lookup "anyOf" o ->
             decodeAlternative alternatives value
         | Just (Aeson.Array alternatives) <- KM.lookup "oneOf" o ->
@@ -69,12 +71,42 @@ jsonToValueWithSchema = go
         | Just (Aeson.String "object") <- KM.lookup "type" o ->
             case (KM.lookup "properties" o, value) of
               (Just (Aeson.Object properties), Aeson.Object fields) ->
-                VRecord
-                  <$> traverse
-                    (\(k, v) -> (Ident (Key.toText k),) <$> maybe (jsonToValue v) (`go` v) (KM.lookup k properties))
-                    (KM.toList fields)
+                decodeObject properties fields
               _ -> jsonToValue value
       _ -> jsonToValue value
+
+    decodeOption schemaWithoutMark value = case value of
+      Aeson.Null -> Right vNone
+      _ -> do
+        inner <- optionInnerSchema schemaWithoutMark
+        vSome <$> go inner value
+
+    decodeObject properties fields = do
+      fromSchema <-
+        traverse
+          ( \(k, propSchema) ->
+              let name = Ident (Key.toText k)
+               in case KM.lookup k fields of
+                    Just v -> (name,) <$> go propSchema v
+                    Nothing
+                      | isOptionSchema propSchema ->
+                          Right (name, vNone)
+                      | otherwise ->
+                          Left ("missing required field " <> Key.toText k)
+          )
+          (KM.toList properties)
+      -- Validation rejects additionalProperties:false extras; keep any leftover
+      -- keys so free-form / partially schema'd objects still round-trip.
+      extras <-
+        traverse
+          ( \(k, v) ->
+              (Ident (Key.toText k),) <$> jsonToValue v
+          )
+          [ (k, v)
+            | (k, v) <- KM.toList fields,
+              not (KM.member k properties)
+          ]
+      pure (VRecord (fromSchema <> extras))
 
     decodeAlternative alternatives value =
       case [schema | schema <- V.toList alternatives, Right () <- [validateAgainstSchema schema value]] of
@@ -85,6 +117,31 @@ jsonToValueWithSchema = go
         schema : _ -> go schema value
         [] -> jsonToValue value
 
+vNone :: Value
+vNone = VVariant (TypeName "None") Nothing
+
+vSome :: Value -> Value
+vSome v = VVariant (TypeName "Some") (Just v)
+
+isOptionSchema :: Aeson.Value -> Bool
+isOptionSchema = \case
+  Aeson.Object o -> KM.lookup "x-hwfl-option" o == Just (Aeson.Bool True)
+  _ -> False
+
+optionInnerSchema :: Aeson.Value -> Either Text Aeson.Value
+optionInnerSchema = \case
+  Aeson.Object o
+    | Just (Aeson.Array alts) <- KM.lookup "anyOf" o ->
+        case [s | s <- V.toList alts, not (isNullTypeSchema s)] of
+          s : _ -> Right s
+          [] -> Left "Option schema is missing an inner type"
+  _ -> Left "malformed Option schema"
+
+isNullTypeSchema :: Aeson.Value -> Bool
+isNullTypeSchema = \case
+  Aeson.Object o -> KM.lookup "type" o == Just (Aeson.String "null")
+  _ -> False
+
 -- | Remove hwfl-only schema annotations before serializing a request to an
 -- external JSON Schema consumer.
 schemaForProvider :: Aeson.Value -> Aeson.Value
@@ -94,7 +151,8 @@ schemaForProvider = \case
       ( KM.fromList
           [ (k, schemaForProvider v)
             | (k, v) <- KM.toList o,
-              k /= "x-hwfl-secret"
+              k /= "x-hwfl-secret",
+              k /= "x-hwfl-option"
           ]
       )
   Aeson.Array xs -> Aeson.Array (fmap schemaForProvider xs)
@@ -102,6 +160,8 @@ schemaForProvider = \case
 
 -- | Encode a runtime value as JSON. Non-finite IEEE floats have no JSON
 -- representation, so reject them instead of letting Aeson throw later.
+-- @None@/@Some@ use JSON null / unwrapped payload (types §6); other variants
+-- keep the tagged object encoding.
 valueToAeson :: Value -> Either Text Aeson.Value
 valueToAeson = \case
   VUnit -> Right Aeson.Null
@@ -113,6 +173,9 @@ valueToAeson = \case
   VString s -> Right (Aeson.String s)
   VList xs -> Aeson.Array . V.fromList <$> traverse valueToAeson xs
   VRecord fs -> Aeson.Object . KM.fromList <$> traverse encodeField fs
+  VVariant (TypeName "None") Nothing -> Right Aeson.Null
+  VVariant (TypeName "Some") (Just p) -> valueToAeson p
+  VVariant (TypeName "Some") Nothing -> Left "Some requires a payload"
   VVariant (TypeName tag) Nothing -> Right (Aeson.String tag)
   VVariant (TypeName tag) (Just p) -> do
     payload <- valueToAeson p

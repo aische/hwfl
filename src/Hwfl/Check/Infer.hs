@@ -190,6 +190,16 @@ infer' env = \case
   ESchema te -> do
     _ <- typeToSchema env te
     pure schemaType
+  ETag (TypeName "None") Nothing ->
+    Left (CannotInfer "None (annotate as Option<_>)")
+  ETag (TypeName "None") (Just _) ->
+    Left (TypeMismatchMsg "None takes no payload" (TOption tUnit) tUnit)
+  ETag (TypeName "Some") (Just payload) ->
+    TOption <$> infer env payload
+  ETag (TypeName "Some") Nothing ->
+    Left (CannotInfer "Some requires a payload")
+  ETag (TypeName n) _ ->
+    Left (CannotInfer ("unknown tag constructor: " <> n))
 
 check :: TypeEnv -> Expr -> TypeExpr -> Either CheckError ()
 check env e want = first (attachPos (exprPos e)) (check' env e want)
@@ -206,6 +216,18 @@ check' env e want = do
       _ -> do
         got <- infer env e
         unify want' got
+    ETag (TypeName "None") Nothing -> case want' of
+      TOption _ -> pure ()
+      _ -> Left (TypeMismatch want' (TOption tUnit))
+    ETag (TypeName "None") (Just _) ->
+      Left (TypeMismatchMsg "None takes no payload" want' tUnit)
+    ETag (TypeName "Some") (Just payload) -> case want' of
+      TOption inner -> check env payload inner
+      _ -> Left (TypeMismatch want' (TOption tUnit))
+    ETag (TypeName "Some") Nothing ->
+      Left (TypeMismatchMsg "Some requires a payload" want' tUnit)
+    ETag (TypeName n) _ ->
+      Left (CannotInfer ("unknown tag constructor: " <> n))
     EFun ps mt body -> case want' of
       TFun domain ret -> do
         binds <- paramBindings env ps domain
@@ -305,6 +327,17 @@ patternBindings env p ty = do
       PRecord pfs -> case expected of
         TRecord fs -> concat <$> traverse (fieldBind fs) pfs
         _ -> Left (ExpectedRecord expected)
+      PTag (TypeName "None") Nothing -> case expected of
+        TOption _ -> Right []
+        _ -> Left (TypeMismatchMsg "None pattern" (TOption tUnit) expected)
+      PTag (TypeName "None") (Just _) ->
+        Left (TypeMismatchMsg "None pattern takes no payload" (TOption tUnit) expected)
+      PTag (TypeName "Some") (Just p') -> case expected of
+        TOption inner -> go p' inner
+        _ -> Left (TypeMismatchMsg "Some pattern" (TOption tUnit) expected)
+      PTag (TypeName "Some") Nothing -> case expected of
+        TOption _ -> Right []
+        _ -> Left (TypeMismatchMsg "Some pattern" (TOption tUnit) expected)
       PTag _ mp -> case mp of
         Nothing -> Right []
         Just p' -> go p' expected

@@ -52,6 +52,34 @@ objectSrc =
       "```"
     ]
 
+optionObjectSrc :: Text
+optionObjectSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/e06-option",
+      "inputs: {}",
+      "outputs:",
+      "  label: String",
+      "effects: [Net]",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "type Out = { name: String, nickname: Option<String> }",
+      "",
+      "fun main(_): { label: String } =",
+      "  let o: Out = llm.object(",
+      "    prompt = \"fill person\",",
+      "    schema = schema(Out),",
+      "    model = \"gpt-5\"",
+      "  ) in",
+      "  match o.nickname with",
+      "  | None => { label = o.name }",
+      "  | Some(n) => { label = n }",
+      "```"
+    ]
+
 spec :: Spec
 spec = describe "runtime llm.object (E14)" $ do
   it "checks schema(Out) result type as Out" $
@@ -107,12 +135,13 @@ spec = describe "runtime llm.object (E14)" $ do
                   roEntry = path,
                   roMode = StepRun,
                   roProjectHash = Nothing,
-                    roExec = Nothing,
-                    roObserver = noopObserver,
-                    roCost = False,
-                    roModelCatalog = "model-catalog.json",
-                    roSkillCatalog = fst emptySkillRuntime,
-                    roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime,
+                  roEntryModules = mempty
                 }
               loaded
           case outcome of
@@ -123,12 +152,97 @@ spec = describe "runtime llm.object (E14)" $ do
               lookup (Ident "score") fs `shouldBe` Just (VInt 1)
             other -> expectationFailure (show other)
 
+  it "decodes absent Option fields as None and matches them" $
+    withSystemTempDirectory "hwfl-option-absent" $ \dir -> do
+      let path = dir </> "option.md"
+      writeFile path (T.unpack optionObjectSrc)
+      case loadModuleText path optionObjectSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = optionAbsentMock,
+                  roInputs = [],
+                  roRunId = Just "e06-absent",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime,
+                  roEntryModules = mempty
+                }
+              loaded
+          case outcome of
+            OutcomeCompleted (VRecord fs) _ _ ->
+              lookup (Ident "label") fs `shouldBe` Just (VString "Ada")
+            other -> expectationFailure (show other)
+
+  it "decodes present Option fields as Some and matches them" $
+    withSystemTempDirectory "hwfl-option-some" $ \dir -> do
+      let path = dir </> "option.md"
+      writeFile path (T.unpack optionObjectSrc)
+      case loadModuleText path optionObjectSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = optionSomeMock,
+                  roInputs = [],
+                  roRunId = Just "e06-some",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime,
+                  roEntryModules = mempty
+                }
+              loaded
+          case outcome of
+            OutcomeCompleted (VRecord fs) _ _ ->
+              lookup (Ident "label") fs `shouldBe` Just (VString "Addy")
+            other -> expectationFailure (show other)
+
 invalidObjectMock :: LlmProvider
 invalidObjectMock =
   mockProviderWith $ \_ ->
     Right
       ProviderResult
         { prContent = "{\"summary\":\"scored\",\"score\":\"high\"}",
+          prToolCalls = [],
+          prUsage = Just (TokenUsage 1 1),
+          prFinishReason = FinishStop
+        }
+
+optionAbsentMock :: LlmProvider
+optionAbsentMock =
+  mockProviderWith $ \_ ->
+    Right
+      ProviderResult
+        { prContent = "{\"name\":\"Ada\"}",
+          prToolCalls = [],
+          prUsage = Just (TokenUsage 1 1),
+          prFinishReason = FinishStop
+        }
+
+optionSomeMock :: LlmProvider
+optionSomeMock =
+  mockProviderWith $ \_ ->
+    Right
+      ProviderResult
+        { prContent = "{\"name\":\"Ada\",\"nickname\":\"Addy\"}",
           prToolCalls = [],
           prUsage = Just (TokenUsage 1 1),
           prFinishReason = FinishStop

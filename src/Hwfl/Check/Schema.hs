@@ -51,15 +51,16 @@ typeToSchemaWithDocs env docs te = go [] te
       TOption e -> do
         inner <- go stack e
         pure $
-          object
-            [ "anyOf"
-                .= Array
-                  ( V.fromList
-                      [ inner,
-                        object ["type" .= String "null"]
-                      ]
-                  )
-            ]
+          markOption $
+            object
+              [ "anyOf"
+                  .= Array
+                    ( V.fromList
+                        [ inner,
+                          object ["type" .= String "null"]
+                        ]
+                    )
+              ]
       TResult a b -> do
         ok <- go stack a
         err <- go stack b
@@ -85,9 +86,16 @@ typeToSchemaWithDocs env docs te = go [] te
       -- the secret taint after JSON decoding. Provider-facing schemas strip it.
       TSecret e -> markSecret <$> go stack e
       TRecord fs -> do
-        propPairs <- traverse (\(Ident k, ty) -> (k,) <$> go stack ty) fs
-        let required = arrStr [k | (Ident k, _) <- fs]
-            props = object [Key.fromText k .= v | (k, v) <- propPairs]
+        propPairs <-
+          traverse
+            ( \(Ident k, ty) -> do
+                schema <- go stack ty
+                optional <- fieldIsOption stack ty
+                pure (k, schema, optional)
+            )
+            fs
+        let required = arrStr [k | (k, _, False) <- propPairs]
+            props = object [Key.fromText k .= v | (k, v, _) <- propPairs]
         pure $
           object
             [ "type" .= String "object",
@@ -102,6 +110,17 @@ typeToSchemaWithDocs env docs te = go [] te
       Just docsForType -> applyFieldDocs docsForType schema
       Nothing -> schema
 
+    -- Resolve aliases so @type Nick = Option<String>@ is optional in records.
+    fieldIsOption stack = \case
+      TOption _ -> Right True
+      TName tyName
+        | isPrimitive tyName -> Right False
+        | tyName `elem` stack -> Left (AliasCycle (reverse (tyName : stack)))
+        | otherwise -> case lookupAlias tyName env of
+            Nothing -> Left (UnboundType tyName)
+            Just t -> fieldIsOption (tyName : stack) t
+      _ -> Right False
+
 arrStr :: [Text] -> Value
 arrStr xs = Array (V.fromList (map String xs))
 
@@ -111,6 +130,14 @@ markSecret = \case
   -- Every schema emitted above is an object. Keep this defensive case so a
   -- future schema form cannot silently erase the taint annotation.
   other -> object ["x-hwfl-secret" .= Bool True, "allOf" .= Array (V.singleton other)]
+
+-- | Runtime-only marker so decode can rebuild @Some@/@None@ (and omit from
+-- provider-facing schemas). Structural @anyOf@+null alone is ambiguous with
+-- other unions and with @Unit@.
+markOption :: Value -> Value
+markOption = \case
+  Object o -> Object (KM.insert "x-hwfl-option" (Bool True) o)
+  other -> object ["x-hwfl-option" .= Bool True, "allOf" .= Array (V.singleton other)]
 
 applyFieldDocs :: Map Ident Text -> Value -> Value
 applyFieldDocs docs = \case

@@ -48,7 +48,7 @@ Order matters; do not skip ahead of H-6.
 - [x] **M-9** — Diagnose YAML duplicate frontmatter keys
 - [x] **M-15** — Surface pricing/catalog decode failure (do not silent-zero)
 - [x] **M-4** — `requestToTurns`: preserve all `RoleSystem` messages
-- [ ] **M-11(a)** — Optional schema fields / `null` → option representation
+- [x] **M-11(a)** — Optional schema fields / `null` → option representation
 - [ ] **M-3** — Skill-body prompt trust boundary (when third-party skills)
 - [ ] **M-17** — Structured tool/provider errors vs string-sniff span status
 - [ ] **M-18** — Project-hash / resume UX (only if prose edits brick resume
@@ -108,6 +108,10 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-11(a)** — Option fields omitted from JSON Schema `required` (aliases
+  resolved); `x-hwfl-option` annotation; schema-directed decode maps
+  `null`/absent → `None` and present → `Some`; `Some`/`None` expression
+  constructors + typed match (2026-08)
 - **M-4** — `requestToTurns` joins every non-empty `RoleSystem` (plus
   `chatSystem` when not already prepended) into llm-simple's single system
   slot; agent `chatTurns` path unchanged (2026-08)

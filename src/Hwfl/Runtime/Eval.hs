@@ -2457,6 +2457,9 @@ crunchEval ctx m e env = case e of
               mFrames = FrChoice (ChoiceRequest "" "" [] Nothing) : m.mFrames
             }
       )
+  ETag n Nothing -> ret m (VVariant n Nothing)
+  ETag n (Just payload) ->
+    Right (Just m {mCurrent = CurEval payload env, mFrames = FrTag n : m.mFrames})
 
 ret :: Machine -> Value -> Either RuntimeError (Maybe Machine)
 ret m v = Right (Just m {mCurrent = CurReturn v})
@@ -2565,6 +2568,7 @@ crunchReturn ctx m v = case m.mFrames of
       VBool False -> Right (Just m {mCurrent = CurEval el env, mFrames = rest})
       _ -> Left (EvalErr (Trap "if condition is not Bool"))
     FrMatch env arms -> matchReturn m env v arms rest
+    FrTag n -> ret m {mFrames = rest} (VVariant n (Just v))
     FrPar pjs
       | null pjs.pjsSlots -> case v of
           VList items ->

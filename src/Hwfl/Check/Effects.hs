@@ -115,6 +115,8 @@ inferExprEffects env effEnv = go
         pure (eEff <> Set.singleton EffHuman)
       ETry e1 _ e2 -> unions <$> traverse go [e1, e2]
       ESchema _ -> pure emptyEffs
+      ETag _ Nothing -> pure emptyEffs
+      ETag _ (Just e) -> go e
 
     fieldEff = \case
       Field _ e -> go e

@@ -60,6 +60,22 @@ spec = describe "pure evaluator" $ do
     it "longer -> -1" $
       loadCall pickSrc (Ident "pick") [VList [VInt 1, VInt 2, VInt 3]] `shouldBe` Right (VInt (-1))
 
+  describe "E06 Option Some/None" $ do
+    let labelSrc =
+          "fun label(o: Option<String>): String =\n\
+          \  match o with\n\
+          \  | None => \"missing\"\n\
+          \  | Some(n) => n"
+    it "None -> missing" $
+      loadCall labelSrc (Ident "label") [VVariant (TypeName "None") Nothing]
+        `shouldBe` Right (VString "missing")
+    it "Some -> payload" $
+      loadCall labelSrc (Ident "label") [VVariant (TypeName "Some") (Just (VString "Ada"))]
+        `shouldBe` Right (VString "Ada")
+    it "constructs Some/None in expressions" $ do
+      evalE "None" `shouldBe` Right (VVariant (TypeName "None") Nothing)
+      evalE "Some(3)" `shouldBe` Right (VVariant (TypeName "Some") (Just (VInt 3)))
+
   describe "small pure cases" $ do
     it "let / arithmetic" $
       evalE "let x = 1\nlet y = 2\nx + y" `shouldBe` Right (VInt 3)

@@ -299,10 +299,16 @@ coverage in `ModuleSpec`.
 
 ### M-11 — `TOption` fields forced `required`; `TSecret` flattened to inner schema
 
-- **Location:** `src/Hwfl/Check/Schema.hs:84-88`
-- **Verification:** **Partially fixed** (2026-08-07; M-11(b))
+- **Location:** `src/Hwfl/Check/Schema.hs`, `src/Hwfl/Json/Encode.hs`
+- **Verification:** **Fixed** (2026-08-08; (b) 2026-08-07)
 
-(a) `required` lists every field, so an absent optional field fails validation while runtime `jsonToValue` maps `null` → `VUnit` — no `Nothing` representation, downstream matches on options trap. (b) **Fixed:** `TSecret` emits an internal schema annotation. Provider-bound schemas strip it, while `llm.object` and agent submit decode structurally and restore `VSecret` at every annotated node.
+(a) Record schemas omit `Option` fields from `required` (aliases resolved).
+`schema(Option<T>)` carries `x-hwfl-option`; decode maps JSON `null` and
+absent optional fields to `None`, and present values to `Some(_)`. Language
+constructors `None` / `Some(e)` and typed `match` arms land on `VVariant`.
+(b) `TSecret` emits an internal schema annotation. Provider-bound schemas
+strip it, while `llm.object` and agent submit decode structurally and restore
+`VSecret` at every annotated node.
 
 ### M-12 — Par branch agent-budget exhaustion misclassified as "no progress"
 

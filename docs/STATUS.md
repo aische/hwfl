@@ -12,23 +12,21 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **M-11(a) fixed** — Option fields omitted from schema `required`;
+  `null`/absent decode to `None`, present values to `Some`; language
+  `Some`/`None` constructors + match
 - **M-4 fixed** — `requestToTurns` joins all `RoleSystem` texts into the
   provider system prompt (no silent drop); Host prepend not double-counted
 - **M-12 fixed** — Par treats `PauseAwaitingAgent` / crash-recovery as not
-  runnable; agent budget exhaustion freezes the pool like human gates and
-  surfaces `awaiting_extend` so `hwfl extend` can bump the branch budget
-- **M-9 / M-10 / M-6** — Duplicate YAML keys, let-alias residuals, `exec.run`
-  stream caps + process-group timeout
-- **M-8 / M-7 / M-15 / M-2 / M-11(b) / M-14** — Resource ceilings, contained
-  module/catalog I/O, secret re-wrap + redaction, sentence split; see report
-- **M-13 / M-5 / M-19 / M-1 / H-cluster** — See [BUG_REPORT.md](BUG_REPORT.md);
-  P0 High and several Mediums closed
+  runnable; agent budget exhaustion freezes the pool like human gates
+- **M-9 / M-10 / M-6 / M-8 / M-7 / M-2 / M-11(b)** — See report; P0 High
+  and most Mediums closed
 
 ## Blockers
 None.
 
 ## Next up
-1. Remaining Medium: M-11(a), M-3, M-17, M-18
+1. Remaining Medium: M-3, M-17, M-18
 2. Selected Lows (L-5 / L-6 / L-14 / L-16 and opportunistic hygiene)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 

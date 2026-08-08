@@ -71,6 +71,10 @@ evalFuel fuel env e = case e of
   EChoice {} -> Left (Unsupported "choice is not pure")
   ETry {} -> Left (Unsupported "try/catch is not pure")
   ESchema {} -> Left (Unsupported "schema(T) is check-time only")
+  ETag n Nothing -> Right (VVariant n Nothing)
+  ETag n (Just payload) -> do
+    v <- evalFuel (fuel - 1) env payload
+    Right (VVariant n (Just v))
 
 literalValue :: Literal -> Either EvalError Value
 literalValue = \case

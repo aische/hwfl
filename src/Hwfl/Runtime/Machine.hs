@@ -29,7 +29,7 @@ import Data.Aeson qualified as Aeson
 import Data.Map.Strict (Map)
 import Data.Text (Text)
 import Hwfl.Ast.Expr (Arg, Expr, Field, MatchArm, Param, StringPart)
-import Hwfl.Ast.Name (Ident, QName)
+import Hwfl.Ast.Name (Ident, QName, TypeName)
 import Hwfl.Eval.Value (Env, HostOpId, ToolSpecValue, Value (..))
 import Hwfl.Llm.Types (ToolCall, ToolResult, Turn)
 import Hwfl.Runtime.Error (RuntimeError)
@@ -170,6 +170,8 @@ data Frame
   | FrIndexV Value
   | FrIf Env Expr Expr
   | FrMatch Env [MatchArm]
+  | -- | After evaluating a tag payload: wrap as 'VVariant'.
+    FrTag TypeName
   | FrPar ParJoinState
   | -- | @try@ body finished — pop on success; nearest handler on catchable error.
     FrTry Ident Env Expr

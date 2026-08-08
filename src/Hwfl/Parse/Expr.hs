@@ -264,6 +264,7 @@ primary =
         s <- try sectionRef
         pure (located pos (FSection s)),
       try schemaExpr,
+      try tagExpr,
       try qnameExpr,
       do
         pos <- getPos
@@ -289,6 +290,14 @@ schemaExpr = do
   _ <- symbol "schema"
   t <- between (symbol "(") (symbol ")") typeExpr
   pure (located pos (FSchema t))
+
+-- | @None@ / @Some(e)@ (and other TypeName tags). Capitalized, like TagPat.
+tagExpr :: Parser Expr
+tagExpr = do
+  pos <- getPos
+  n <- pTypeName
+  payload <- optional (between (symbol "(") (symbol ")") (nest expr))
+  pure (located pos (FTag n payload))
 
 sectionRef :: Parser Slug
 sectionRef = lexeme $ do

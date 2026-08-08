@@ -7,7 +7,7 @@
 -- stable. Bidirectional pattern synonyms keep the historical @ELit@ / @EVar@
 -- surface; parsers should stamp positions via 'atPos' / 'located'.
 module Hwfl.Ast.Expr
-  ( Expr (.., ELit, EVar, EQName, ESection, EList, ERecord, EInterp, EApp, EProj, EIndex, ELet, EFun, EIf, EMatch, EPar, EJoin, EConfirm, EChoice, ETry, ESchema),
+  ( Expr (.., ELit, EVar, EQName, ESection, EList, ERecord, EInterp, EApp, EProj, EIndex, ELet, EFun, EIf, EMatch, EPar, EJoin, EConfirm, EChoice, ETry, ESchema, ETag),
     ExprF (..),
     Arg (..),
     MatchArm (..),
@@ -22,7 +22,7 @@ module Hwfl.Ast.Expr
 where
 
 import Data.Text (Text)
-import Hwfl.Ast.Name (Ident, QName, Slug)
+import Hwfl.Ast.Name (Ident, QName, Slug, TypeName)
 import Hwfl.Ast.Pat (Literal, Pattern)
 import Hwfl.Ast.Type (TypeExpr)
 import Hwfl.Source (Pos (..))
@@ -82,6 +82,8 @@ data ExprF
   | FTry Expr Ident Expr
   | -- | Check-time schema reflection: @schema(T)@ (types §4).
     FSchema TypeExpr
+  | -- | Sum / Option constructors: @None@, @Some(e)@ (types §2.1 / §6).
+    FTag TypeName (Maybe Expr)
   deriving stock (Eq, Show, Read)
 
 -- | Located expression. Equality ignores 'ePos'.
@@ -204,6 +206,11 @@ pattern ESchema t <- Expr _ (FSchema t)
   where
     ESchema t = Expr noPos (FSchema t)
 
+pattern ETag :: TypeName -> Maybe Expr -> Expr
+pattern ETag n me <- Expr _ (FTag n me)
+  where
+    ETag n me = Expr noPos (FTag n me)
+
 {-# COMPLETE
   ELit,
   EVar,
@@ -224,5 +231,6 @@ pattern ESchema t <- Expr _ (FSchema t)
   EConfirm,
   EChoice,
   ETry,
-  ESchema
+  ESchema,
+  ETag
   #-}
