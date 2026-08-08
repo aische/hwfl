@@ -124,14 +124,22 @@ Does not change the `exec.run` signature.
 | `llm.chat` | Net | `{ system, prompt, model } -> String` |
 | `llm.chat_messages` | Net | `{ system, messages: List<{ role, content }>, model } -> String` |
 | `llm.object` | Net | `{ prompt, schema, model } -> T` when `schema = schema(T)` (else `Json`) |
-| `llm.agent` | Net | `{ system, prompt, tools, model, max_rounds?, history? } -> { text, rounds, history }` |
-| `llm.agent_object` | Net | `{ …, schema, history? } -> { value: T, rounds, history }` (synthetic `submit` tool) |
+| `llm.agent` | Net | `{ system, prompt, tools, model, max_rounds?, history?, context_window?, max_tool_result_chars? } -> { text, rounds, history }` |
+| `llm.agent_object` | Net | `{ …, schema, history?, context_window?, max_tool_result_chars? } -> { value: T, rounds, history }` (synthetic `submit` tool) |
 
 `llm.chat_messages` is text-only history (`{ role, content }`).
 `llm.agent` / `llm.agent_object` carry tool-inclusive transcripts as
 `List<Turn>` (same algebra as snapshot agent `agHistory`). Optional
 `history` seeds prior turns; `prompt` appends as a user turn. Returned
 `history` includes assistant text and tool rounds from the call.
+
+**Context window (L1):** optional `context_window = N` sends only the last
+`N` user turns (+ follow-on assistant/tool turns) to the provider. Full
+`agHistory` remains snapshot / resume truth. When windowing is on, a
+read-only `get_history` tool is injected so the model can page older
+chunks (`chunk=0` = most recent hidden page). Optional
+`max_tool_result_chars` caps tool payloads on the *wire* view (default
+16000 when `context_window` is set); durable history keeps full content.
 
 ### Human / observability / meta
 

@@ -28,6 +28,7 @@ import Hwfl.Runtime.ChatSpec
 import Hwfl.Runtime.CodingAgentSpec
 import Hwfl.Runtime.SimpleCodingAgentSpec
 import Hwfl.Runtime.CompareSpec
+import Hwfl.Runtime.ContextSpec
 import Hwfl.Runtime.EvolveAgentSpec
 import Hwfl.Runtime.ExceptionSpec
 import Hwfl.Runtime.ExecSpec
@@ -85,6 +86,7 @@ main = hspec $ do
   Hwfl.Runtime.MetaReadSpec.spec
   Hwfl.Runtime.AgentSpec.spec
   Hwfl.Runtime.AgentObjectSpec.spec
+  Hwfl.Runtime.ContextSpec.spec
   Hwfl.Runtime.ObjectSpec.spec
   Hwfl.Obs.SpanSpec.spec
   Hwfl.Obs.StreamSpec.spec

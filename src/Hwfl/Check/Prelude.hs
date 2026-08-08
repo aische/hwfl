@@ -270,7 +270,9 @@ llmType =
                 (Ident "tools", TList (t "ToolSpec")),
                 (Ident "model", t "String"),
                 (Ident "max_rounds", t "Int"),
-                (Ident "history", TList (t "Turn"))
+                (Ident "history", TList (t "Turn")),
+                (Ident "context_window", t "Int"),
+                (Ident "max_tool_result_chars", t "Int")
               ]
           )
           [EffNet]
@@ -291,7 +293,9 @@ llmType =
                 (Ident "schema", t "Schema"),
                 (Ident "model", t "String"),
                 (Ident "max_rounds", t "Int"),
-                (Ident "history", TList (t "Turn"))
+                (Ident "history", TList (t "Turn")),
+                (Ident "context_window", t "Int"),
+                (Ident "max_tool_result_chars", t "Int")
               ]
           )
           [EffNet]

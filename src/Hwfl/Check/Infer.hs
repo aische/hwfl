@@ -641,13 +641,21 @@ inferLlmAgentApp env args = case classifyArgs args of
     case lookup (Ident "history") nes of
       Nothing -> pure ()
       Just e -> check env e (TList tTurn)
+    case lookup (Ident "context_window") nes of
+      Nothing -> pure ()
+      Just e -> check env e tInt
+    case lookup (Ident "max_tool_result_chars") nes of
+      Nothing -> pure ()
+      Just e -> check env e tInt
     let known =
           [ Ident "system",
             Ident "prompt",
             Ident "tools",
             Ident "model",
             Ident "max_rounds",
-            Ident "history"
+            Ident "history",
+            Ident "context_window",
+            Ident "max_tool_result_chars"
           ]
     mapM_
       ( \(n, _) ->
@@ -686,6 +694,12 @@ inferLlmAgentObjectApp env args = do
       case lookup (Ident "history") nes of
         Nothing -> pure ()
         Just e -> check env e (TList tTurn)
+      case lookup (Ident "context_window") nes of
+        Nothing -> pure ()
+        Just e -> check env e tInt
+      case lookup (Ident "max_tool_result_chars") nes of
+        Nothing -> pure ()
+        Just e -> check env e tInt
       let known =
             [ Ident "system",
               Ident "prompt",
@@ -693,7 +707,9 @@ inferLlmAgentObjectApp env args = do
               Ident "schema",
               Ident "model",
               Ident "max_rounds",
-              Ident "history"
+              Ident "history",
+              Ident "context_window",
+              Ident "max_tool_result_chars"
             ]
       mapM_
         ( \(n, _) ->

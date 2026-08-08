@@ -616,13 +616,13 @@ spec = describe "runtime agent (M7)" $ do
       parseAgentArgs args `shouldSatisfy` isLeft
 
     it "rejects a snapshot with a non-positive max_rounds" $ do
-      let ag = initAgentState "system" "prompt" [] "model" 1 "span" Nothing []
+      let ag = initAgentState "system" "prompt" [] "model" 1 "span" Nothing [] Nothing Nothing
           machine = initialMachine "project" (CurAgent ag)
           broken = setSnapshotAgentMaxRounds 0 (machineToJson machine)
       machineFromJson broken `shouldSatisfy` isLeft
 
     it "rejects non-positive and overflowing round extensions" $ do
-      let ag = initAgentState "system" "prompt" [] "model" maxBound "span" Nothing []
+      let ag = initAgentState "system" "prompt" [] "model" maxBound "span" Nothing [] Nothing Nothing
           exhausted =
             (initialMachine "project" (CurAgent ag))
               { mStatus =
@@ -662,6 +662,8 @@ spec = describe "runtime agent (M7)" $ do
               "span"
               (Just (object ["type" .= ("object" :: Text)]))
               []
+              Nothing
+              Nothing
           names = map (.tvsName) ag.agTools :: [Text]
       names `shouldBe` ["submit_2", "submit"]
 

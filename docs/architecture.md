@@ -94,10 +94,10 @@ Workflow ──► llm.* host ops ──► LlmProvider ──► llm-simple
 Workflows never import `llm-simple`. Only `Hwfl.Llm.Simple` (or equivalent)
 depends on it. See [spec/08-llm-provider.md](spec/08-llm-provider.md).
 
-**Agent context (planned):** window + history-slice tools, then
-consolidate/assemble, live in hwfl (not llm-simple’s `LLM.Agent`). Full
-`agHistory` remains snapshot truth; wire context is a view. Backlog:
-[TASKS.md](TASKS.md); decision: [log/2026-08.md](log/2026-08.md).
+**Agent context:** L1 window + `get_history` live in hwfl
+(`Hwfl.Runtime.Context`); full `agHistory` remains snapshot truth. L2
+consolidate/assemble still planned — [TASKS.md](TASKS.md);
+decision: [log/2026-08.md](log/2026-08.md).
 
 ## Persistence layout
 

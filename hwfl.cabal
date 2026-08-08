@@ -91,6 +91,7 @@ library
         Hwfl.Parse.Type
         Hwfl.Parse.YamlSafe
         Hwfl.Runtime.Agent
+        Hwfl.Runtime.Context
         Hwfl.Runtime.Error
         Hwfl.Runtime.Eval
         Hwfl.Runtime.Exec
@@ -189,6 +190,7 @@ test-suite hwfl-test
         Hwfl.Runtime.SimpleCodingAgentSpec
         Hwfl.Runtime.CompareSpec
         Hwfl.Runtime.ConcurrentSpec
+        Hwfl.Runtime.ContextSpec
         Hwfl.Runtime.NestedSnapshotSpec
         Hwfl.Runtime.EvolveAgentSpec
         Hwfl.Runtime.ExceptionSpec

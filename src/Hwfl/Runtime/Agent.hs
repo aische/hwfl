@@ -40,6 +40,7 @@ import Hwfl.Eval.Value
 import Hwfl.Json.Encode (jsonToValue, jsonToValueWithSchema, schemaForProvider, valueToJsonText)
 import Hwfl.Json.Validate (validateAgainstSchema)
 import Hwfl.Llm.Types qualified as Llm
+import Hwfl.Runtime.Context (defaultMaxToolResultChars, historyToolName)
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Turn (valueToTurns)
 import Hwfl.Runtime.Machine (AgentState (..), FunTable)
@@ -375,7 +376,17 @@ validateSubmit schema args = do
 
 parseAgentArgs ::
   [(Maybe Ident, Value)] ->
-  Either RuntimeError (Text, Text, [ToolSpecValue], Text, Int, [Llm.Turn])
+  Either
+    RuntimeError
+    ( Text,
+      Text,
+      [ToolSpecValue],
+      Text,
+      Int,
+      [Llm.Turn],
+      Maybe Int,
+      Maybe Int
+    )
 parseAgentArgs args = do
   system <- expectString (Ident "system") args
   prompt <- expectString (Ident "prompt") args
@@ -394,15 +405,28 @@ parseAgentArgs args = do
                 )
             )
     Just _ -> Right defaultMaxRounds
-  pure (system, prompt, tools, model, maxR, history)
+  ctxWin <- expectPositiveOptInt (Ident "context_window") args
+  maxTool <- expectPositiveOptInt (Ident "max_tool_result_chars") args
+  pure (system, prompt, tools, model, maxR, history, ctxWin, maxTool)
 
 parseAgentObjectArgs ::
   [(Maybe Ident, Value)] ->
-  Either RuntimeError (Text, Text, [ToolSpecValue], Aeson.Value, Text, Int, [Llm.Turn])
+  Either
+    RuntimeError
+    ( Text,
+      Text,
+      [ToolSpecValue],
+      Aeson.Value,
+      Text,
+      Int,
+      [Llm.Turn],
+      Maybe Int,
+      Maybe Int
+    )
 parseAgentObjectArgs args = do
-  (system, prompt, tools, model, maxR, history) <- parseAgentArgs args
+  (system, prompt, tools, model, maxR, history, ctxWin, maxTool) <- parseAgentArgs args
   schema <- expectSchema (Ident "schema") args
-  pure (system, prompt, tools, schema, model, maxR, history)
+  pure (system, prompt, tools, schema, model, maxR, history, ctxWin, maxTool)
 
 initAgentState ::
   Text ->
@@ -413,15 +437,24 @@ initAgentState ::
   Text ->
   Maybe Aeson.Value ->
   [Llm.Turn] ->
+  Maybe Int ->
+  Maybe Int ->
   AgentState
-initAgentState system prompt tools model maxRounds spanId submitSchema priorHistory =
-  let reserved = case submitSchema of
-        Just _ -> [submitToolName]
-        Nothing -> []
+initAgentState system prompt tools model maxRounds spanId submitSchema priorHistory ctxWin maxTool =
+  let reserved =
+        (case submitSchema of Just _ -> [submitToolName]; Nothing -> [])
+          ++ (case ctxWin of Just n | n > 0 -> [historyToolName]; _ -> [])
       toolsUniq = uniquifyToolNames reserved tools
       tools' = case submitSchema of
         Just schema -> toolsUniq ++ [submitToolSpec schema]
         Nothing -> toolsUniq
+      -- When windowing, default a wire-side tool-result budget unless the
+      -- caller set max_tool_result_chars explicitly (including an explicit
+      -- omit via absence → default; there is no "disable default" yet).
+      maxTool' = case (maxTool, ctxWin) of
+        (Just n, _) -> Just n
+        (Nothing, Just n) | n > 0 -> Just defaultMaxToolResultChars
+        _ -> Nothing
    in AgentState
         { agSystem = system,
           agPrompt = prompt,
@@ -438,8 +471,28 @@ initAgentState system prompt tools model maxRounds spanId submitSchema priorHist
           agActiveToolIds = [],
           agLoadedInstructionIds = [],
           agInstructionChars = 0,
-          agRoundCloseAttrs = Nothing
+          agRoundCloseAttrs = Nothing,
+          agContextWindow = ctxWin,
+          agMaxToolResultChars = maxTool'
         }
+
+-- | Optional positive Int named arg; absent → Nothing; non-Int → ignore
+-- (same softness as max_rounds for wrong types, except we reject ≤0).
+expectPositiveOptInt :: Ident -> [(Maybe Ident, Value)] -> Either RuntimeError (Maybe Int)
+expectPositiveOptInt n args = case lookupNamed n args of
+  Nothing -> Right Nothing
+  Just (VInt i)
+    | i > 0 && i <= toInteger (maxBound :: Int) -> Right (Just (fromInteger i))
+    | otherwise ->
+        Left
+          ( ConfigErr
+              ( unIdent n
+                  <> " must be between 1 and "
+                  <> T.pack (show (maxBound :: Int))
+              )
+          )
+  Just _ ->
+    Left (HostErr ("expected Int for " <> unIdent n))
 
 expectTools :: [(Maybe Ident, Value)] -> Either RuntimeError [ToolSpecValue]
 expectTools args = case lookupNamed (Ident "tools") args of

@@ -308,6 +308,12 @@ agentToJson ag =
       ++ case ag.agSubmitSchema of
         Nothing -> []
         Just s -> ["submit_schema" .= s]
+      ++ case ag.agContextWindow of
+        Nothing -> []
+        Just n -> ["context_window" .= n]
+      ++ case ag.agMaxToolResultChars of
+        Nothing -> []
+        Just n -> ["max_tool_result_chars" .= n]
 
 parseAgent :: Aeson.Value -> Parser AgentState
 parseAgent = withObject "AgentState" $ \o -> do
@@ -331,6 +337,8 @@ parseAgent = withObject "AgentState" $ \o -> do
   loadedInstructionIds <- o .:? "loaded_instruction_ids" .!= []
   instructionChars <- o .:? "instruction_chars" .!= 0
   roundCloseAttrs <- o .:? "round_close_attrs"
+  contextWindow <- o .:? "context_window"
+  maxToolResultChars <- o .:? "max_tool_result_chars"
   pure
     AgentState
       { agSystem = system,
@@ -348,7 +356,9 @@ parseAgent = withObject "AgentState" $ \o -> do
         agActiveToolIds = activeToolIds,
         agLoadedInstructionIds = loadedInstructionIds,
         agInstructionChars = instructionChars,
-        agRoundCloseAttrs = roundCloseAttrs
+        agRoundCloseAttrs = roundCloseAttrs,
+        agContextWindow = contextWindow,
+        agMaxToolResultChars = maxToolResultChars
       }
 
 toolRoundToJson :: ToolRound -> Aeson.Value

@@ -49,8 +49,8 @@ See also [08-llm-provider.md](08-llm-provider.md).
 | `llm.chat` | `(system?: String, prompt: String, model: String, …) -> String` |
 | `llm.chat_messages` | `(system?: String, messages: List<{ role: String, content: String }>, model: String) -> String` |
 | `llm.object` | `(prompt: String, schema: Schema, model: String) -> T` when `schema = schema(T)` (else `Json`) |
-| `llm.agent` | `(system, prompt, tools: List<ToolSpec>, model, max_rounds?, history?: List<Turn>, …) -> { text, rounds, history }` |
-| `llm.agent_object` | `(system, prompt, tools, schema: Schema, model, max_rounds?, history?: List<Turn>, …) -> { value: T, rounds, history }` when `schema = schema(T)` |
+| `llm.agent` | `(system, prompt, tools: List<ToolSpec>, model, max_rounds?, history?: List<Turn>, context_window?: Int, max_tool_result_chars?: Int, …) -> { text, rounds, history }` |
+| `llm.agent_object` | `(system, prompt, tools, schema: Schema, model, max_rounds?, history?: List<Turn>, context_window?: Int, max_tool_result_chars?: Int, …) -> { value: T, rounds, history }` when `schema = schema(T)` |
 
 Notes:
 
@@ -77,6 +77,13 @@ across calls. Do **not** encode tool turns as fake `{ role, content }`
 strings; `llm.chat_messages` stays the thin text-only path. Example:
 `examples/coding-agent` (chat → `coding_session`); thinner history loop
 in `examples/coding-agent-chat`.
+
+**Context window:** optional `context_window = N` bounds the *wire* view
+to the last `N` user turns (+ follow-ons). Full `agHistory` is unchanged
+in snapshots. When set, injects `get_history` (chunk pages over the
+hidden prefix). Optional `max_tool_result_chars` caps tool payloads on
+the wire (defaults to 16000 when windowing); see
+[language-reference.md](../language-reference.md).
 
 **`max_rounds` budget:** Exhausting `max_rounds` pauses the in-flight
 agent (`PauseAwaitingAgent` / status `awaiting_extend`) instead of

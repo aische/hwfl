@@ -26,7 +26,7 @@ only the **wire / working** view. Design notes:
 
 Two separate tasks (do L1 before L2):
 
-- [ ] **Context L1 — window + history slices**
+- [x] **Context L1 — window + history slices**
       - Pure helper: window transcript (e.g. last N user turns + follow-ons)
       - Apply window before each agent model round (provider sees suffix only)
       - Tool to fetch older chunks / slices of the full history on demand

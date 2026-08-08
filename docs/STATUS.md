@@ -3,8 +3,8 @@ Last updated: 2026-08-08
 
 ## Current focus
 **Agent substrate** — MCP / git / persistent terminals (prefer MCP or
-workflow modules over new host ops). Queued soon: **agent context layers**
-(window + history slices, then consolidate/assemble) — see TASKS.
+workflow modules over new host ops). Next context layer: **L2**
+consolidate / pins / assemble (L1 window + history slices done).
 
 ## North star
 hwfl = durable workflow **runtime library** (language + interpreter).
@@ -12,6 +12,9 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **Context L1** — `context_window` / wire view; injected `get_history`;
+  optional `max_tool_result_chars` (default 16k when windowed); full
+  `agHistory` unchanged in snapshots (`Hwfl.Runtime.Context`)
 - **L-15** — Nullary variants encode as `{"tag":…}` (not bare strings);
   Option Some/None interop unchanged
 - **L-7** — Empty / duplicate H2/H3 slugs fail at load and `md.sections`
@@ -26,7 +29,6 @@ product. Broader lab framing in [idea.md](idea.md).
   `failAgent` sole owner of agent_round teardown
 - Bug-report: all High (H-1a–H-7; H-1 retracted) and Medium except
   M-3 / M-16 / M-18 — see [BUG_REPORT.md](BUG_REPORT.md)
-- Parser/eval footguns: L-5 / L-6 / L-14 / L-16 (+ L-19 / L-24 with Highs)
 - Structured tool outcomes (M-17); Option schema decode (M-11(a));
   `&&`/`||` short-circuit; tight qnames vs division
 
@@ -35,8 +37,7 @@ None.
 
 ## Next up
 1. Tier A agent ops: MCP client, git (read-heavy), persistent terminals
-2. **Agent context L1** then **L2** (window/history tool → consolidate/pins/
-   assemble) — shared hwfl helpers; not llm-simple Agent loop
+2. **Agent context L2** (consolidate / pins / assemble)
 3. Skills coding-agent variant (separate example) when substrate exists
 4. Opportunistic Lows; M-3 / M-18 only if they bite
 

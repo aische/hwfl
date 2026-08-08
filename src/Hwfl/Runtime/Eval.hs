@@ -50,6 +50,7 @@ import Hwfl.Llm.Types
     ProviderResult (..),
     ToolCall (..),
     ToolResult (..),
+    ToolSpec (..),
     Turn (..),
     emptyChatRequest,
     renderProviderError,
@@ -78,6 +79,13 @@ import Hwfl.Runtime.Agent
     submitToolName,
     validateSubmit,
     valueToJsonText,
+  )
+import Hwfl.Runtime.Context
+  ( getHistoryChunk,
+    historyToolDescription,
+    historyToolName,
+    historyToolParameters,
+    wireTurns,
   )
 import Hwfl.Runtime.Error (RuntimeError (..), isCatchable, renderRuntimeError)
 import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), execNeedsConfirm, runHostOp)
@@ -450,7 +458,7 @@ doHost ctx mode m op args
   | op == HostLlmAgent = startAgent ctx mode m args Nothing
   | op == HostLlmAgentObject = case parseAgentObjectArgs args of
       Left e -> abortOrCatch ctx mode m e
-      Right (system, prompt, tools, schema, model, maxRounds, history) ->
+      Right (system, prompt, tools, schema, model, maxRounds, history, ctxWin, maxTool) ->
         startAgentPrepared
           ctx
           mode
@@ -464,6 +472,8 @@ doHost ctx mode m op args
           maxRounds
           (Just schema)
           history
+          ctxWin
+          maxTool
   | otherwise = doHostRun ctx mode m op args
 
 -- | Open span, run host op, close span (standard host transition).
@@ -574,7 +584,7 @@ startAgent ::
   IO (Either RuntimeError StepResult)
 startAgent ctx mode m args submitSchema = case parseAgentArgs args of
   Left e -> abortOrCatch ctx mode m e
-  Right (system, prompt, tools, model, maxRounds, history) ->
+  Right (system, prompt, tools, model, maxRounds, history, ctxWin, maxTool) ->
     startAgentPrepared
       ctx
       mode
@@ -588,6 +598,8 @@ startAgent ctx mode m args submitSchema = case parseAgentArgs args of
       maxRounds
       submitSchema
       history
+      ctxWin
+      maxTool
 
 startAgentPrepared ::
   RunCtx ->
@@ -602,8 +614,10 @@ startAgentPrepared ::
   Int ->
   Maybe Aeson.Value ->
   [Turn] ->
+  Maybe Int ->
+  Maybe Int ->
   IO (Either RuntimeError StepResult)
-startAgentPrepared ctx mode m hostOp args system prompt tools model maxRounds submitSchema history = do
+startAgentPrepared ctx mode m hostOp args system prompt tools model maxRounds submitSchema history ctxWin maxTool = do
   sid <-
     openSpan
       ctx.rcStore
@@ -611,7 +625,7 @@ startAgentPrepared ctx mode m hostOp args system prompt tools model maxRounds su
       (hostOpName hostOp)
       SkHost
       (hostOpenAttrs hostOp args)
-  let ag = initAgentState system prompt tools model maxRounds sid submitSchema history
+  let ag = initAgentState system prompt tools model maxRounds sid submitSchema history ctxWin maxTool
       m' = pauseIfStep mode (m {mCurrent = CurAgent ag})
   _ <- persist ctx (Just hostOp) Nothing m'.mStatus (Just m')
   pure (Right (StepResult m' True))
@@ -667,8 +681,8 @@ stepAgentModel ctx mode m ag
           req0 =
             (emptyChatRequest ag.agModel)
               { chatSystem = Just (agentSystemPrompt ctx ag),
-                chatTurns = ag.agHistory,
-                chatTools = providerToolSpecs ag.agTools
+                chatTurns = wireTurns ag.agContextWindow ag.agMaxToolResultChars ag.agHistory,
+                chatTools = agentWireTools ag
               }
       sink <- newStreamSink ctx.rcStore ctx.rcSpans
       let req = req0 {chatOnChunk = Just sink.ssOnChunk}
@@ -956,45 +970,97 @@ startToolCall ctx mode m ag tr tc = do
   if isSubmitCall tc
     then runSubmit ctx mode m ag tr0 tc
     else
-      if tc.tcName == "skill_load"
-        then runSkillLoadTool ctx mode m ag tr0 tc
-        else case lookupTool ag.agTools tc.tcName of
-          Nothing ->
-            completeToolCall
-              ctx
-              mode
-              m
-              ag
-              tr0
-              (ToolErr ("unknown tool '" <> tc.tcName <> "'"))
-          Just tool -> case coerceToolArgs tool tc.tcArguments of
-            Left reason ->
-              completeToolCall
-                ctx
-                mode
-                m
-                ag
-                tr0
-                (ToolErr ("invalid arguments: " <> reason))
-            Right argv -> case openApply ctx tool.tvsCallee argv of
-              Left e ->
+      if tc.tcName == historyToolName
+        then runGetHistoryTool ctx mode m ag tr0 tc
+        else
+          if tc.tcName == "skill_load"
+            then runSkillLoadTool ctx mode m ag tr0 tc
+            else case lookupTool ag.agTools tc.tcName of
+              Nothing ->
                 completeToolCall
                   ctx
                   mode
                   m
                   ag
                   tr0
-                  (ToolErr ("tool open failed: " <> renderErr e))
-              Right current -> do
-                let nested = initialMachine m.mProjectHash current
-                    tr' =
+                  (ToolErr ("unknown tool '" <> tc.tcName <> "'"))
+              Just tool -> case coerceToolArgs tool tc.tcArguments of
+                Left reason ->
+                  completeToolCall
+                    ctx
+                    mode
+                    m
+                    ag
+                    tr0
+                    (ToolErr ("invalid arguments: " <> reason))
+                Right argv -> case openApply ctx tool.tvsCallee argv of
+                  Left e ->
+                    completeToolCall
+                      ctx
+                      mode
+                      m
+                      ag
                       tr0
-                        { trActiveMachine = Just (mkBranch nested)
-                        }
-                    ag' = ag {agToolRound = Just tr'}
-                    m' = m {mCurrent = CurAgent ag'}
-                -- Continue into the nested machine this step.
-                stepAgentTool ctx mode m' ag' tr'
+                      (ToolErr ("tool open failed: " <> renderErr e))
+                  Right current -> do
+                    let nested = initialMachine m.mProjectHash current
+                        tr' =
+                          tr0
+                            { trActiveMachine = Just (mkBranch nested)
+                            }
+                        ag' = ag {agToolRound = Just tr'}
+                        m' = m {mCurrent = CurAgent ag'}
+                    -- Continue into the nested machine this step.
+                    stepAgentTool ctx mode m' ag' tr'
+
+runGetHistoryTool ::
+  RunCtx ->
+  StepMode ->
+  Machine ->
+  AgentState ->
+  ToolRound ->
+  ToolCall ->
+  IO (Either RuntimeError StepResult)
+runGetHistoryTool ctx mode m ag tr tc =
+  case ag.agContextWindow of
+    Just n
+      | n > 0 ->
+          let chunk = parseHistoryChunkArg tc.tcArguments
+              content = getHistoryChunk ag.agContextWindow ag.agHistory chunk
+           in completeToolCall ctx mode m ag tr (ToolOk content)
+    _ ->
+      completeToolCall
+        ctx
+        mode
+        m
+        ag
+        tr
+        (ToolErr "get_history is only available when context_window is set")
+
+parseHistoryChunkArg :: Aeson.Value -> Int
+parseHistoryChunkArg = \case
+  Aeson.Object o -> case KM.lookup "chunk" o of
+    Just (Aeson.Number n) -> round n
+    _ -> 0
+  Aeson.Number n -> round n
+  _ -> 0
+
+-- | Tools advertised on the wire: baseline agent tools plus injected
+-- @get_history@ when a context window is active.
+agentWireTools :: AgentState -> [ToolSpec]
+agentWireTools ag =
+  let base = providerToolSpecs ag.agTools
+   in case ag.agContextWindow of
+        Just n
+          | n > 0 ->
+              base
+                ++ [ ToolSpec
+                       { tsName = historyToolName,
+                         tsDescription = historyToolDescription,
+                         tsParameters = historyToolParameters
+                       }
+                   ]
+        _ -> base
 
 runSkillLoadTool ::
   RunCtx ->

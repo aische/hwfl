@@ -143,7 +143,14 @@ data AgentState = AgentState
     -- | Accumulated instruction body chars against @max_instruction_chars@.
     agInstructionChars :: Int,
     -- | Close attrs for the current model round (tokens/cost), if any.
-    agRoundCloseAttrs :: Maybe Aeson.Value
+    agRoundCloseAttrs :: Maybe Aeson.Value,
+    -- | When 'Just' @n@, only the last @n@ user turns (+ follow-ons) are
+    -- sent to the provider. Full 'agHistory' stays snapshot truth; older
+    -- turns are available via the injected @get_history@ tool.
+    agContextWindow :: Maybe Int,
+    -- | When 'Just', tool-result payloads are capped on the *wire* view.
+    -- Durable 'agHistory' keeps full content.
+    agMaxToolResultChars :: Maybe Int
   }
   deriving stock (Eq, Show)
 
