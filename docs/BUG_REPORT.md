@@ -418,7 +418,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 | L-19 | `Agent.hs`, `Snapshot.hs`                                    | **Fixed** with H-5: source/snapshot `max_rounds` validated; extension uses checked add (no wrap).                                                                                      |
 | L-20 | `Runtime/Ignore.hs:69-105`                                   | `isIgnored` checks hidden segments before rules, so `!.env` can never un-ignore a hidden name — deviates from gitignore semantics.                                                     |
 | L-21 | `Runtime/Ignore.hs:168-181`                                  | `globMatch` naive backtracking (`any (go ps) (tails xs)`) — exponential on many-`*` rules vs long paths.                                                                               |
-| L-22 | `Workspace.hs:232-238`                                       | `matchPat` compares extensions case-sensitively; `**/*.MD` misses `foo.md` on macOS, finds it on Linux — host-FS-dependent behavior.                                                   |
+| L-22 | `Workspace.hs` `matchPat`                                    | **Fixed** (2026-08): `fs.find` / `fs.grep` extension globs compare ASCII case-insensitively.                                                                                          |
 | L-23 | `Obs/Stream.hs:86-110`                                       | `appendText` read-modify-write not atomic; concurrent `onChunk` calls could drop text (single-threaded in practice).                                                                   |
 | L-24 | `Workspace.hs` write/copy/remove                             | **Fixed** with H-1a: `O_NOFOLLOW` writes / `rename` copies close the leaf TOCTOU; `removePath` unlinks leaf symlinks.                                                                  |
 | L-25 | `Parse/Section.hs:55-58,66-70`                               | `headings !! j` comprehension + fence rescan are O(n²) on large prose modules.                                                                                                         |
@@ -442,7 +442,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 ## Recommended fix order
 
 **Completed (2026-08):** all High; Medium except M-3 / M-16 / M-18; selected
-Lows (L-1, L-2, L-5, L-6, L-14, L-16, L-19, L-24). See [TASKS.md](TASKS.md) archive.
+Lows (L-1, L-2, L-5, L-6, L-14, L-16, L-19, L-22, L-24). See [TASKS.md](TASKS.md) archive.
 
 **Still open (deferred — fix only if they bite):**
 

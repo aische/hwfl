@@ -277,6 +277,26 @@ spec = describe "host ops P0 (exec + fs)" $ do
           Left e -> expectationFailure (show e)
           Right paths -> paths `shouldBe` ["src/App.tsx"]
 
+    it "fs.find matches extensions case-insensitively" $
+      withSystemTempDirectory "hwfl-find-case" $ \dir -> do
+        ws <- newWorkspace dir
+        createDirectoryIfMissing True (dir </> "docs")
+        -- Write with mixed case so listDirectory preserves a non-lowercase ext
+        -- on case-preserving filesystems (L-22).
+        writeFile (dir </> "docs" </> "Notes.MD") "hello"
+        _ <- writeTextFile ws "readme.txt" "x"
+        lower <- findFiles ws "**/*.md"
+        upper <- findFiles ws "**/*.MD"
+        rootLower <- findFiles ws "*.TXT"
+        let foldPaths = map T.toLower
+        case (lower, upper, rootLower) of
+          (Right l, Right u, Right r) -> do
+            foldPaths l `shouldBe` ["docs/notes.md"]
+            foldPaths u `shouldBe` ["docs/notes.md"]
+            foldPaths r `shouldBe` ["readme.txt"]
+          (l, u, r) ->
+            expectationFailure ("find failed: " <> show (l, u, r))
+
     it "fs.find respects .gitignore without a .git directory" $
       withSystemTempDirectory "hwfl-find-gi" $ \dir -> do
         ws <- newWorkspace dir

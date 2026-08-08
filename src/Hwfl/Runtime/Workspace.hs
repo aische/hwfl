@@ -41,6 +41,7 @@ import Control.Exception (IOException, bracketOnError, finally, onException, try
 import Control.Monad (foldM)
 import Data.Bits ((.&.))
 import Data.ByteString qualified as BS
+import Data.Char (toLower)
 import Data.List (sort)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -473,10 +474,14 @@ walkFiles ws ign descend includeLeaf = go Set.empty ""
           include <- includeLeaf name
           pure (Right (if include then acc <> [rel] else acc))
 
+-- | Extension globs are ASCII case-insensitive so @**\/*.md@ matches
+-- @Foo.MD@ on case-preserving hosts (L-22).
 matchPat :: GlobPat -> FilePath -> Bool
 matchPat pat name = case pat of
-  GlobRecursiveExt ext -> takeExtension name == ext
-  GlobRootExt ext -> takeExtension name == ext
+  GlobRecursiveExt ext -> eqExt (takeExtension name) ext
+  GlobRootExt ext -> eqExt (takeExtension name) ext
+  where
+    eqExt a b = map toLower a == map toLower b
 
 -- | List a workspace directory as @{ name, kind }@ entries (@file@ / @dir@).
 listDir :: Workspace -> Text -> IO (Either RuntimeError [(Text, Text)])
