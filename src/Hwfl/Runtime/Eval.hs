@@ -487,17 +487,21 @@ doHostRun ctx mode m op args = do
   result <- runHostOp host op args
   flushStream
   case result of
-    Left e -> do
-      abortOrCatch ctx mode m e >>= \case
-        Right sr -> do
-          mSeq <- persist ctx (Just op) Nothing sr.srMachine.mStatus (Just sr.srMachine)
-          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) mSeq
-          pure (Right sr)
-        Left _ -> do
-          let m' = m {mStatus = MsFailed, mError = Just e}
-          mSeq <- persist ctx (Just op) Nothing MsFailed (Just m')
-          closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) mSeq
-          pure (Left e)
+    Left e -> case dispatchCatch m e of
+      -- Close the host span before unwinding FrRegion frames so auto-unwind
+      -- does not steal this close (and its snapshot_seq) from a parent region.
+      Just (caught, discarded) -> do
+        let m' = pauseIfStep mode caught
+        mSeq <- persist ctx (Just op) Nothing m'.mStatus (Just m')
+        closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) mSeq
+        closeSpanFrames ctx discarded e
+        pure (Right (StepResult m' True))
+      Nothing -> do
+        let m' = m {mStatus = MsFailed, mError = Just e}
+        mSeq <- persist ctx (Just op) Nothing MsFailed (Just m')
+        closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr e]) mSeq
+        closeSpanFrames ctx m.mFrames e
+        pure (Left e)
     Right hr -> do
       let m' = pauseIfStep mode (m {mCurrent = CurReturn hr.hrValue})
       mSeq <- persist ctx (Just op) (Just hr.hrValue) m'.mStatus (Just m')
@@ -676,22 +680,28 @@ stepAgentModel ctx mode m ag
       result <- safeLlmChat ctx.rcHost.heProvider req
       sink.ssFlush
       case result of
-        Left pe -> do
-          closeSpan ctx.rcStore ctx.rcSpans roundSid SsError (object ["error" .= renderProviderError pe]) Nothing
-          failAgent ctx mode m ag' (ProviderErr (renderProviderError pe))
+        Left pe ->
+          -- failAgent owns agent_round / agent span teardown (L-1).
+          failAgent
+            ctx
+            mode
+            m
+            ag'
+            (ProviderErr (renderProviderError pe))
+            Nothing
         Right pr
           | pr.prFinishReason == FinishLength -> do
               let attrs =
                     mergeObjects
                       (agentProviderCloseAttrs ctx ag.agModel pr)
                       (object ["error" .= ("output truncated" :: Text)])
-              closeSpan ctx.rcStore ctx.rcSpans roundSid SsError attrs Nothing
               failAgent
                 ctx
                 mode
                 m
                 ag'
                 (ProviderErr "provider finished with length (output truncated)")
+                (Just attrs)
           | null pr.prToolCalls -> finishAgentText ctx mode m ag' pr
           | otherwise -> do
               let roundAttrs = agentProviderCloseAttrs ctx ag.agModel pr
@@ -730,18 +740,7 @@ finishAgentText ::
   ProviderResult ->
   IO (Either RuntimeError StepResult)
 finishAgentText ctx mode m ag pr = case ag.agSubmitSchema of
-  Just _ -> do
-    mapM_
-      ( \sid ->
-          closeSpan
-            ctx.rcStore
-            ctx.rcSpans
-            sid
-            SsError
-            (object ["error" .= ("submit required" :: Text)])
-            Nothing
-      )
-      ag.agRoundSpanId
+  Just _ ->
     failAgent
       ctx
       mode
@@ -750,6 +749,7 @@ finishAgentText ctx mode m ag pr = case ag.agSubmitSchema of
       ( ProviderErr
           "agent finished with plain text but this step requires a terminating submit call"
       )
+      (Just (object ["error" .= ("submit required" :: Text)]))
   Nothing -> do
     mapM_
       ( \sid ->
@@ -1281,25 +1281,31 @@ recoverableTool ::
 recoverableTool ctx mode m ag tr err =
   completeToolCall ctx mode m ag tr (ToolErr ("tool error: " <> renderErr err))
 
+-- | Tear down active tool / agent_round / agent spans, then abort or catch.
+-- Optional @mRoundAttrs@ replaces the default error attrs on the round close
+-- (e.g. truncated finish still records usage / finish_reason once).
 failAgent ::
   RunCtx ->
   StepMode ->
   Machine ->
   AgentState ->
   RuntimeError ->
+  Maybe Aeson.Value ->
   IO (Either RuntimeError StepResult)
-failAgent ctx mode m ag err = do
+failAgent ctx mode m ag err mRoundAttrs = do
+  let errAttrs = object ["error" .= renderErr err]
+      roundAttrs = fromMaybe errAttrs mRoundAttrs
   case ag.agToolRound of
     Just tr ->
       mapM_
         ( \sid ->
-            closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr err]) Nothing
+            closeSpan ctx.rcStore ctx.rcSpans sid SsError errAttrs Nothing
         )
         tr.trActiveSpanId
     Nothing -> pure ()
   mapM_
     ( \sid ->
-        closeSpan ctx.rcStore ctx.rcSpans sid SsError (object ["error" .= renderErr err]) Nothing
+        closeSpan ctx.rcStore ctx.rcSpans sid SsError roundAttrs Nothing
     )
     ag.agRoundSpanId
   closeSpan
@@ -1307,7 +1313,7 @@ failAgent ctx mode m ag err = do
     ctx.rcSpans
     ag.agSpanId
     SsError
-    (object ["error" .= renderErr err])
+    errAttrs
     Nothing
   abortOrCatch ctx mode m err >>= \case
     Right sr -> do
@@ -2358,37 +2364,57 @@ renderErr :: RuntimeError -> Text
 renderErr = T.pack . show
 
 -- | Nearest @FrTry@ on the kont stack (innermost first).
-tryFrame :: [Frame] -> Maybe (Ident, Env, Expr, [Frame])
+-- Returns discarded frames between the top and the handler (span-owning
+-- frames there must be closed on catch — L-2).
+tryFrame :: [Frame] -> Maybe (Ident, Env, Expr, [Frame], [Frame])
 tryFrame frames =
   case break isTryFr frames of
-    (_, FrTry var handlerEnv handler : after) ->
-      Just (var, handlerEnv, handler, after)
+    (discarded, FrTry var handlerEnv handler : after) ->
+      Just (var, handlerEnv, handler, discarded, after)
     _ -> Nothing
   where
     isTryFr (FrTry {}) = True
     isTryFr _ = False
 
-dispatchCatch :: Machine -> RuntimeError -> Maybe Machine
+dispatchCatch :: Machine -> RuntimeError -> Maybe (Machine, [Frame])
 dispatchCatch m err
   | isCatchable err,
-    Just (var, handlerEnv, handler, rest) <- tryFrame m.mFrames =
+    Just (var, handlerEnv, handler, discarded, rest) <- tryFrame m.mFrames =
       Just
-        m
-          { mStatus = MsRunning,
-            mError = Nothing,
-            mCurrent =
-              CurEval
-                handler
-                (extendEnv var (VString (renderRuntimeError err)) handlerEnv),
-            mFrames = rest
-          }
+        ( m
+            { mStatus = MsRunning,
+              mError = Nothing,
+              mCurrent =
+                CurEval
+                  handler
+                  (extendEnv var (VString (renderRuntimeError err)) handlerEnv),
+              mFrames = rest
+            },
+          discarded
+        )
   | otherwise = Nothing
+
+-- | Close span-owning frames discarded by abort/catch (regions, nested modules).
+closeSpanFrames :: RunCtx -> [Frame] -> RuntimeError -> IO ()
+closeSpanFrames ctx frames err = do
+  let attrs = object ["error" .= renderRuntimeError err]
+  mapM_ (closeOne attrs) frames
+  where
+    closeOne attrs = \case
+      FrRegion sid ->
+        closeSpan ctx.rcStore ctx.rcSpans sid SsError attrs Nothing
+      FrInvoke _ sid _ ->
+        closeSpan ctx.rcStore ctx.rcSpans sid SsError attrs Nothing
+      _ -> pure ()
 
 abortOrCatch ::
   RunCtx -> StepMode -> Machine -> RuntimeError -> IO (Either RuntimeError StepResult)
 abortOrCatch ctx mode m err = case dispatchCatch m err of
-  Nothing -> pure (Left err)
-  Just caught -> do
+  Nothing -> do
+    closeSpanFrames ctx m.mFrames err
+    pure (Left err)
+  Just (caught, discarded) -> do
+    closeSpanFrames ctx discarded err
     let m' = pauseIfStep mode caught
     _ <- persist ctx Nothing Nothing m'.mStatus (Just m')
     pure (Right (StepResult m' True))

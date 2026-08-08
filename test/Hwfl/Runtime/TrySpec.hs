@@ -1,5 +1,6 @@
 module Hwfl.Runtime.TrySpec (spec) where
 
+import Data.Either (isRight)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..))
@@ -8,6 +9,7 @@ import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
 import Hwfl.Llm.Types (ProviderError (..))
 import Hwfl.Obs.Observer (noopObserver)
+import Hwfl.Obs.Span (SpanRecord (..), SpanStatus (..))
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
@@ -16,6 +18,7 @@ import Hwfl.Runtime.Run
     emptySkillRuntime,
     runLoadedModule,
   )
+import Hwfl.Runtime.Store (readSpanRecords)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -259,6 +262,77 @@ spec = describe "try/catch runtime (E10)" $ do
               }
       outcome <- runModule trapSrc path opts
       outcome `shouldSatisfy` isLeft
+
+  it "closes obs.span regions discarded by catch (L-2)" $
+    withSystemTempDirectory "hwfl-try-region" $ \dir -> do
+      let src =
+            T.unlines
+              [ "---",
+                "name: workflows/region-catch",
+                "inputs: {}",
+                "outputs:",
+                "  msg: String",
+                "effects: [Read]",
+                "---",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun main(_): { msg: String } =",
+                "  { msg =",
+                "    try",
+                "      obs.span(\"inside\")(fun () => fs.read(\"missing.txt\").text)",
+                "    catch (err) => $\"caught: {err}\"",
+                "  }",
+                "```"
+              ]
+          path = dir </> "region-catch.md"
+          opts =
+            RunOptions
+              { roWorkspace = dir,
+                roProvider = mockProviderWith (\_ -> Left (OtherProviderError "unused")),
+                roInputs = [],
+                roRunId = Just "test-region-catch",
+                roEntry = path,
+                roMode = StepRun,
+                roProjectHash = Nothing,
+                roExec = Nothing,
+                roObserver = noopObserver,
+                roCost = False,
+                roModelCatalog = "model-catalog.json",
+                roSkillCatalog = fst emptySkillRuntime,
+                roSkillModules = snd emptySkillRuntime,
+                roEntryModules = mempty
+              }
+      writeFile path (T.unpack src)
+      case loadModuleText path src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          outcome <- runLoadedModule opts loaded
+          case outcome of
+            OutcomeCompleted (VRecord fields) store _ -> do
+              case lookup (Ident "msg") fields of
+                Just (VString msg) ->
+                  msg `shouldSatisfy` ("caught:" `T.isPrefixOf`)
+                _ -> expectationFailure "expected msg field"
+              records <- readSpanRecords store
+              let regionOpens =
+                    [ r.srId
+                      | r <- records,
+                        r.srOp == "open",
+                        r.srName == Just "inside"
+                    ]
+                  regionCloses =
+                    [ r
+                      | r <- records,
+                        r.srOp == "close",
+                        r.srId `elem` regionOpens
+                    ]
+              regionOpens `shouldSatisfy` (not . null)
+              length regionCloses `shouldBe` length regionOpens
+              map (.srStatus) regionCloses `shouldSatisfy` all (== Just SsError)
+            other -> expectationFailure (show other)
 
 isLeft :: Either a b -> Bool
 isLeft = \case

@@ -1,5 +1,6 @@
--- | Append-only span writer / reader. O(1) per open/close — never rebuilds
--- the full history into RAM on each transition (spec §07 §8).
+-- | Append-only span writer / reader. Open is O(1); close is O(depth) when
+-- unwinding nested children — never rebuilds the full history into RAM on
+-- each transition (spec §07 §8).
 module Hwfl.Obs.Trace
   ( SpanState (..),
     newSpanState,
@@ -20,12 +21,15 @@ module Hwfl.Obs.Trace
   )
 where
 
+import Control.Monad (when)
 import Data.Aeson (Value (..), object, (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.KeyMap qualified as KM
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
@@ -58,6 +62,8 @@ data SpanState = SpanState
   { ssCounter :: IORef Int,
     -- | Innermost span id at the head.
     ssStack :: IORef [SpanId],
+    -- | Spans that have already emitted a close (idempotent closeSpan).
+    ssClosed :: IORef (Set SpanId),
     -- | Running LLM cost (microdollars) for @--debug@ / @--cost@ ledger prefix.
     ssRunCostMicros :: IORef Int,
     -- | Live observer (span open/close, progress). Default: noop.
@@ -69,7 +75,12 @@ newSpanState = newSpanStateWith noopObserver
 
 newSpanStateWith :: Observer -> IO SpanState
 newSpanStateWith obs =
-  SpanState <$> newIORef 0 <*> newIORef [] <*> newIORef 0 <*> pure obs
+  SpanState
+    <$> newIORef 0
+    <*> newIORef []
+    <*> newIORef Set.empty
+    <*> newIORef 0
+    <*> pure obs
 
 getSpanStack :: SpanState -> IO [SpanId]
 getSpanStack st = readIORef st.ssStack
@@ -144,7 +155,12 @@ openSpan store st name kind attrs = do
     )
   pure sid
 
--- | Close a span: append one jsonl line, pop stack, notify observer. O(1).
+-- | Close a span: append one jsonl line, pop stack, notify observer.
+--
+-- Idempotent: a second close of the same id is a no-op (no duplicate record,
+-- no double cost charge). If @sid@ is not the stack head, open children above
+-- it are closed first as 'SsError' with @unwound=true@ so the stack never
+-- retains phantom parents after an out-of-order close (L-1 / L-2).
 closeSpan ::
   RunStore ->
   SpanState ->
@@ -154,36 +170,59 @@ closeSpan ::
   Maybe Int ->
   IO ()
 closeSpan store st sid status attrs mSeq = do
-  chargeCostFromAttrs st attrs
-  now <- isoNow
-  modifyIORef' st.ssStack (pop sid)
-  let redacted = redactJson attrs
-  appendSpanLine
-    store
-    ( object
-        [ "op" .= String "close",
-          "id" .= sid,
-          "t_end" .= now,
-          "status" .= spanStatusText status,
-          "attrs" .= redacted,
-          "snapshot_seq" .= mSeq
-        ]
-    )
-  prefix <- runCostPrefix st
-  st.ssObserver
-    ( ObsSpanClose
-        SpanCloseInfo
-          { scId = sid,
-            scStatus = status,
-            scAttrs = redacted,
-            scSnapshotSeq = mSeq,
-            scCostPrefix = prefix
-          }
-    )
-  where
-    pop target = \case
-      (x : xs) | x == target -> xs
-      xs -> xs
+  closed <- readIORef st.ssClosed
+  when (Set.notMember sid closed) $ do
+    stack <- readIORef st.ssStack
+    case break (== sid) stack of
+      (_, []) ->
+        -- Not on the open stack (already popped, or never pushed): still
+        -- record a single close so callers that race a pop stay honest.
+        emitClose store st sid status attrs mSeq
+      (above, _ : below) -> do
+        writeIORef st.ssStack below
+        let unwindAttrs = object ["unwound" .= True]
+        mapM_ (\cid -> emitClose store st cid SsError unwindAttrs Nothing) above
+        emitClose store st sid status attrs mSeq
+
+-- | Emit one close record and mark the id closed. Skips if already closed
+-- (used when unwinding a prefix that overlaps a prior close).
+emitClose ::
+  RunStore ->
+  SpanState ->
+  SpanId ->
+  SpanStatus ->
+  Aeson.Value ->
+  Maybe Int ->
+  IO ()
+emitClose store st sid status attrs mSeq = do
+  closed <- readIORef st.ssClosed
+  when (Set.notMember sid closed) $ do
+    modifyIORef' st.ssClosed (Set.insert sid)
+    chargeCostFromAttrs st attrs
+    now <- isoNow
+    let redacted = redactJson attrs
+    appendSpanLine
+      store
+      ( object
+          [ "op" .= String "close",
+            "id" .= sid,
+            "t_end" .= now,
+            "status" .= spanStatusText status,
+            "attrs" .= redacted,
+            "snapshot_seq" .= mSeq
+          ]
+      )
+    prefix <- runCostPrefix st
+    st.ssObserver
+      ( ObsSpanClose
+          SpanCloseInfo
+            { scId = sid,
+              scStatus = status,
+              scAttrs = redacted,
+              scSnapshotSeq = mSeq,
+              scCostPrefix = prefix
+            }
+      )
 
 appendEvent :: RunStore -> SpanState -> Text -> Text -> Aeson.Value -> IO ()
 appendEvent store st level message fields = do

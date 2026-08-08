@@ -216,10 +216,26 @@ spec = describe "exception containment (H-2)" $ do
     withSystemTempDirectory "hwfl-exc-agent" $ \dir -> do
       let path = dir </> "agent.md"
           opts = (runOpts dir path "test-exc-agent") {roProvider = throwingProvider}
-      (err, _) <- failureOf =<< runSource agentSrc path opts
+      (err, store) <- failureOf =<< runSource agentSrc path opts
       case err of
         ProviderErr msg -> msg `shouldSatisfy` ("connection reset" `T.isInfixOf`)
         other -> expectationFailure ("expected ProviderErr, got " <> show other)
+      records <- readSpanRecords store
+      let opened =
+            [ r.srId
+              | r <- records,
+                r.srOp == "open",
+                maybe False ("agent_round" `T.isPrefixOf`) r.srName
+            ]
+          roundCloses =
+            [ r
+              | r <- records,
+                r.srOp == "close",
+                r.srId `elem` opened
+            ]
+      opened `shouldSatisfy` (not . null)
+      -- L-1: exactly one close per agent_round open (no double-close via failAgent).
+      length roundCloses `shouldBe` length opened
 
   it "reports a crash inside a step as a non-catchable internal error" $
     withSystemTempDirectory "hwfl-exc-step" $ \dir -> do

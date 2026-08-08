@@ -952,6 +952,7 @@ spec = describe "runtime agent (M7)" $ do
                           r.srId `elem` opened
                       ]
                 opened `shouldSatisfy` (not . null)
+                length roundCloses `shouldBe` length opened
                 map (.srStatus) roundCloses `shouldSatisfy` all (== Just SsError)
                 let attrs = map (.srAttrs) roundCloses
                 any (T.isInfixOf "finish_reason" . T.pack . show) attrs `shouldBe` True

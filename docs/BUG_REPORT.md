@@ -397,8 +397,8 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 
 | ID   | Location                                                     | Issue                                                                                                                                                                                  |
 | ---- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| L-1  | `Eval.hs:626+1194, 675+1194`                                 | Double-close of the agent round span on provider error / submit-required path. `closeSpan` is not idempotent (`Trace.hs:129-143`); duplicate close records, cost attrs charged twice.  |
-| L-2  | `Run.hs:1183-1192`, `Trace.hs:141-143`                       | Span-stack staleness: mid-region failure leaves `FrRegion` open; `pop` is a no-op for non-head ids; resumed runs parent new spans under closed ids.                                    |
+| L-1  | `Eval.hs`, `Trace.hs`                                        | **Fixed** (2026-08): `failAgent` sole closer for agent_round; `closeSpan` idempotent (no double cost / duplicate close).                                                              |
+| L-2  | `Eval.hs`, `Trace.hs`                                        | **Fixed** (2026-08): LIFO unwind on non-head close; `abortOrCatch` closes discarded `FrRegion` / `FrInvoke` spans.                                                                   |
 | L-3  | `Snapshot.hs:186-188,93`                                     | `parsePauseReason` ends in `<\|> pure PauseExplicit` — malformed pause payloads silently downgrade to explicit; `snapshot_format` never validated (future format bumps undetected).    |
 | L-4  | `Store.hs:336-355,373-380`                                   | No fsync anywhere (tmp + rename only; spans/events plain append). Crash-safe, not power-loss-safe; power loss can lose the rename or persist a torn file → run unrecoverable.          |
 | L-5  | `Parse/Expr.hs`                                              | **Fixed** (2026-08): tight `a/b` is QName; spaced `a / b` is division.                                                                                                                  |
@@ -442,14 +442,14 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 ## Recommended fix order
 
 **Completed (2026-08):** all High; Medium except M-3 / M-16 / M-18; selected
-Lows (L-5, L-6, L-14, L-16, L-19, L-24). See [TASKS.md](TASKS.md) archive.
+Lows (L-1, L-2, L-5, L-6, L-14, L-16, L-19, L-24). See [TASKS.md](TASKS.md) archive.
 
 **Still open (deferred — fix only if they bite):**
 
 1. **M-3** — skill-body prompt trust (when third-party skills matter).
 2. **M-18** — project-hash / prose-edit resume UX (if comment edits brick resume often).
 3. **M-16** — multi-process run-store locking (when parallel lab processes share a run dir).
-4. Remaining **Lows** opportunistically (spans, snapshot parse, fsync, slugs, CLI, …).
+4. Remaining **Lows** opportunistically (snapshot parse, fsync, slugs, CLI, …).
 
 Active product work has moved to agent substrate (MCP / git / terminals).
 

@@ -23,6 +23,8 @@ import Hwfl.Obs.Trace
   ( SpanNode (..),
     buildSpanForest,
     closeSpan,
+    currentSpanId,
+    getSpanStack,
     newSpanState,
     openSpan,
     readSpanRecords,
@@ -187,6 +189,40 @@ spec = describe "observability (M6)" $ do
           [1 .. 12 :: Int]
         prefix <- runCostPrefix st
         prefix `shouldBe` "$0.01 │ "
+
+  describe "closeSpan stack discipline (L-1 / L-2)" $ do
+    it "is idempotent: second close does not re-charge cost or emit another record" $
+      withSystemTempDirectory "hwfl-span-idem" $ \dir -> do
+        store <- openRunDir dir "idem"
+        st <- newSpanState
+        sid <- openSpan store st "once" SkHost (object [])
+        let attrs = object ["cost_micros" .= (10000 :: Int)]
+        closeSpan store st sid SsOk attrs Nothing
+        closeSpan store st sid SsOk attrs Nothing
+        prefix <- runCostPrefix st
+        prefix `shouldBe` "$0.01 │ "
+        records <- readSpanRecords store
+        length [r | r <- records, r.srOp == "close"] `shouldBe` 1
+        getSpanStack st `shouldReturn` []
+
+    it "unwinds open children when closing a non-head span" $
+      withSystemTempDirectory "hwfl-span-unwind" $ \dir -> do
+        store <- openRunDir dir "unwind"
+        st <- newSpanState
+        parent <- openSpan store st "parent" SkRegion (object [])
+        child <- openSpan store st "child" SkHost (object [])
+        currentSpanId st `shouldReturn` Just child
+        closeSpan store st parent SsOk (object []) Nothing
+        getSpanStack st `shouldReturn` []
+        records <- readSpanRecords store
+        let closes = [r | r <- records, r.srOp == "close"]
+            byId = Map.fromList [(r.srId, r) | r <- closes]
+        length closes `shouldBe` 2
+        (byId Map.! child).srStatus `shouldBe` Just SsError
+        (byId Map.! parent).srStatus `shouldBe` Just SsOk
+        case (byId Map.! child).srAttrs of
+          Aeson.Object km -> KM.lookup "unwound" km `shouldBe` Just (Aeson.Bool True)
+          _ -> expectationFailure "expected unwound attrs on child"
 
   describe "obs.log (non-snapshotting)" $ do
     it "emits spans and events without machine snapshot transitions" $
