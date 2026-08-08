@@ -40,7 +40,7 @@ Order matters; do not skip ahead of H-6.
 
 - [x] **M-8** — Resource limits: YAML alias bomb, parse depth, digit `read`,
       pure-eval / machine step budget, type-alias memoization
-- [ ] **M-6** — `exec.run`: stream/truncate before full buffer; process-group
+- [x] **M-6** — `exec.run`: stream/truncate before full buffer; process-group
       kill; validate timeout / max_output numerics
 - [ ] **M-10** — Effect residuals through let-aliases of top-level funs
 - [ ] **M-12** — Par: treat `PauseAwaitingAgent` / crash-recovery as not
@@ -108,6 +108,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-6** — `exec.run` caps stdout/stderr while reading; timeout SIGTERM/SIGKILL
+  the process group and returns partial capture; `timeout_ms` /
+  `max_output_bytes` validated at project load and run (2026-08)
 - **M-8** — Resource ceilings for untrusted input: frontmatter YAML rejects
   aliases and caps nesting/nodes; parsers bound nesting depth; digit literals
   parse linearly with a length cap; pure eval and CEK frames are fuel/depth

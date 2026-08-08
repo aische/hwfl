@@ -21,6 +21,7 @@ import Control.Monad (filterM)
 import Data.Aeson (FromJSON (..), withObject, (.:), (.:?))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types ((.!=))
+import Data.Foldable (for_)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -101,20 +102,32 @@ instance FromJSON EffectsPolicy where
           )
 
 instance FromJSON ExecPolicy where
-  parseJSON = withObject "exec" $ \o -> do
-    allow <- o .:? "allow" .!= ([] :: [Text])
-    env <- o .:? "env" .!= ([] :: [Text])
-    timeout <- o .:? "timeout_ms"
-    maxOut <- o .:? "max_output_bytes"
-    confirm <- o .:? "confirm" .!= True
-    pure
-      ExecPolicy
-        { execAllow = allow,
-          execEnv = env,
-          execTimeoutMs = timeout,
-          execMaxOutputBytes = maxOut,
-          execConfirm = confirm
-        }
+  parseJSON =
+    withObject "exec" $ \o -> do
+      allow <- o .:? "allow" .!= ([] :: [Text])
+      env <- o .:? "env" .!= ([] :: [Text])
+      timeout <- o .:? "timeout_ms"
+      maxOut <- o .:? "max_output_bytes"
+      confirm <- o .:? "confirm" .!= True
+      for_ timeout validateTimeoutMs
+      for_ maxOut validateMaxOutputBytes
+      pure
+        ExecPolicy
+          { execAllow = allow,
+            execEnv = env,
+            execTimeoutMs = timeout,
+            execMaxOutputBytes = maxOut,
+            execConfirm = confirm
+          }
+    where
+      -- Must stay positive and small enough that @timeout_ms * 1000@ fits in 'Int'.
+      validateTimeoutMs n
+        | n <= 0 = fail "exec.timeout_ms must be positive"
+        | n > maxBound `div` 1000 = fail "exec.timeout_ms is too large"
+        | otherwise = pure ()
+      validateMaxOutputBytes n
+        | n < 0 = fail "exec.max_output_bytes must be non-negative"
+        | otherwise = pure ()
 
 instance FromJSON ProjectConfig where
   parseJSON = withObject "project.json" $ \o -> do

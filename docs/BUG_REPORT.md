@@ -233,12 +233,18 @@ also terminates any future alias cycle. Regression coverage verifies external,
 internal-alias, and self-loop directory links for both `fs.find` and
 glob-less `fs.grep`.
 
-### M-6 — `exec.run` resource handling: output fully buffered, timeout kills only the direct child
+### M-6 — Fixed: `exec.run` stream caps, process-group kill, policy numerics
 
-- **Location:** `src/Hwfl/Runtime/Exec.hs:93,102-118,144-147`
-- **Verification:** `[Reported]`, code read at `Exec.hs:36-153`
+- **Location:** `src/Hwfl/Runtime/Exec.hs`, `src/Hwfl/Project.hs`
+- **Verification:** **Fixed** (2026-08-08)
 
-`truncateStream` runs **after** typed-process has accumulated the child's entire output in memory — a child printing gigabytes for the full 120 s timeout OOMs the host despite `execMaxOutputBytes`. `System.Timeout.timeout` interrupts the thread and `withProcessTerm` terminates only the direct pid, not the process group: grandchildren (`sh -c 'server &'`, `make` children) survive, keep the pipes open, and their output is discarded on timeout (empty stdout/stderr in the timed-out outcome). Policy numerics unvalidated: negative `timeout_ms` → 1 µs timeout; negative `max_output_bytes` → empty output.
+Stdout/stderr are read through capped pipe readers that retain at most
+`max_output_bytes` and drain the rest, so a noisy child cannot OOM the host.
+Children spawn in a new process group; on timeout the group receives SIGTERM
+then SIGKILL, and any bytes already captured are returned with
+`timed_out = true`. `timeout_ms` / `max_output_bytes` are validated in
+`project.json` parse and again in `runExec` (positive timeout; non-negative
+cap; no `Int` overflow on µs conversion).
 
 ### M-7 — Fixed: module / project / catalog reads return stable diagnostics
 
@@ -392,7 +398,7 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 ## Verified solid (do not re-report)
 
 - **Read-path sandbox** — `resolvePath` (lexical `..`/absolute rejection) + `resolveContainedPath` (canonicalize + root-prefix) correctly block `..`, absolute, and symlink escapes for read/list/remove/stat/read_slice/edit/patch; null bytes surface as caught `IOException` → `HostErr`, never an escape.
-- **`exec.run` policy** — bare-basename-only (no `/`), allowlist gates the binary, `setEnv` replaces the whole environment with only `exec.env` keys (no parent-env leakage), confirm default `True`, stdout/stderr fully captured (never leaks to terminal), `withProcessTerm` on timeout. Defaults are safe: `allow`/`env` default to `[]`.
+- **`exec.run` policy** — bare-basename-only (no `/`), allowlist gates the binary, `setEnv` replaces the whole environment with only `exec.env` keys (no parent-env leakage), confirm default `True`, stdout/stderr captured via capped pipes (never leaks to terminal), process-group SIGTERM/SIGKILL on timeout with partial capture. Defaults are safe: `allow`/`env` default to `[]`.
 - **Corrupt-snapshot handling** — all parser `fail` sites (`Snapshot.hs:571-574`, `:821`, `:829-832`, …) are contained by `parseEither`; corrupt `snapshot.json`/`meta.json` → clean `ConfigErr "missing meta.json or snapshot.json"`, never a crash or state corruption. Project-hash check refuses stale-project resume.
 - **Division by zero** — `div2` (`Eval/Prelude.hs:173-177`) guards **both** `Int` and `Float` zero divisors with `Trap`. _One review claimed Int div-by-zero was unguarded; direct read shows it is guarded — corrected here to prevent re-reporting._ `/` routes `BDiv → div2`.
 - **Alias cycle detection** — `resolveAliasDef`/`resolveTypeFrom` stack-seeded, self-/mutual-/deep cycles all produce `AliasCycle`; `DuplicateType`/`DuplicateFun` cover redecls.

@@ -12,6 +12,10 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **M-6 fixed** — `exec.run` stream-caps output while reading; timeout kills
+  the process group (SIGTERM then SIGKILL) and returns partial capture;
+  `timeout_ms` / `max_output_bytes` rejected when invalid at project load and
+  at run
 - **M-8 fixed** — Resource ceilings on untrusted input: YAML aliases forbidden
   with nesting/node caps; parse depth bounded; linear digit literals; pure-eval
   fuel and CEK frame depth; memoized type-alias expansion
@@ -24,27 +28,15 @@ product. Broader lab framing in [idea.md](idea.md).
   schemas. Events and debug stderr redact sensitive keys, embedded JSON, and
   common credential text before persistence or display.
 - **M-14 fixed** — `text.split_sentences` retains an unterminated final
-  sentence after completed ones; regression tests cover both sentence forms,
-  one fragment, and whitespace-only input
-- **M-13 fixed** — Ordinary evaluator failures persist their failed root
-  machine before finalization; `meta.json` and `snapshot.json` report the same
-  terminal status, and resume cannot replay the failed step
-- **M-5 fixed** — Shared filesystem traversal refuses directory-symlink
-  descent; every listed directory has canonical containment and cycle checks
-- **M-19 fixed** — Record-domain host calls normalize packed records and accept
-  checked positionals; multi-parameter functions unpack lone records; runtime
-  parameters resolve aliases and bare singleton parameters are Unit thunks
-- **M-1 fixed** — `llm.object` validates provider responses with
-  `validateAgainstSchema` before `jsonToValue`, so malformed or mistyped model
-  output is a normal `HostErr` rather than a checker-soundness violation
-- **H-5 + L-19 / H-3 / H-4 / H-6 / H-2 / H-7 / H-1a** — See prior entries /
-  [BUG_REPORT.md](BUG_REPORT.md); P0 High cluster closed
+  sentence after completed ones; regression coverage for both sentence forms
+- **M-13 / M-5 / M-19 / M-1 / H-cluster** — See [BUG_REPORT.md](BUG_REPORT.md);
+  P0 High and several Mediums closed
 
 ## Blockers
 None.
 
 ## Next up
-1. P2: M-6 (exec.run resources), then M-10 / M-12 / M-9
+1. P2: M-10 (effect residuals via let-aliases), M-12 (par agent pause), M-9
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 
