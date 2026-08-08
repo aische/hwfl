@@ -38,7 +38,11 @@ Two separate tasks (do L1 before L2):
       - Assemble: pins + optional summary + recent window → next context
       - Pin / note store shape (workspace FS and/or run-store); projects
         only pass knobs
-      - Follow-up: `consolidate = "llm"` (extra model-round summarizer)
+      - Follow-up: `consolidate = "llm"` (extra model-round summarizer) —
+        **must** extend agent seed/return with lasting compact state
+        (`context`: pins + summary + watermark) so outer `history`
+        loops do not re-summarize; update language-reference +
+        spec/05-host-ops in the same change
 
 ## Next — coding-agent / observability / research
 
@@ -63,7 +67,9 @@ From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate.
 
 ## Low priority
 
-- [ ] `consolidate = "llm"` — Context L2 LLM summarizer round
+- [ ] `consolidate = "llm"` — Context L2 LLM summarizer + lasting
+      `context` seed/return (pins/summary/watermark); update host-op /
+      language-reference signatures
 - [ ] Alternate `LlmProvider` (OpenAI/Anthropic SDK, etc.)
 - [ ] In-language `lib/` modules per [stdlib.md](stdlib.md)
 - [ ] `hwfl init` / shell completions

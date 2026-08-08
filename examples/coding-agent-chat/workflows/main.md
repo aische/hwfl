@@ -11,8 +11,10 @@ effects: [Human, Net, Read, Write]
 ## system
 
 You are a concise coding assistant in a durable hwfl chat. Use tools when
-the user asks about workspace files. Reply in one or two short sentences
-when you can answer without tools.
+the user asks about workspace files. Earlier turns may be outside your
+context window — call get_history(chunk=0) (then 1, …) if you need them.
+Pin durable facts with pin when they matter across the session.
+Reply in one or two short sentences when you can answer without tools.
 
 ## body
 
@@ -48,7 +50,9 @@ fun turn(
       ],
       model = "deepseek4flash",
       history = history,
-      max_rounds = 4
+      max_rounds = 6,
+      context_window = 4,
+      consolidate = "heuristic"
     )
     turn(result.history, result.text)
 

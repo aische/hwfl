@@ -97,7 +97,8 @@ depends on it. See [spec/08-llm-provider.md](spec/08-llm-provider.md).
 **Agent context:** L1 window + `get_history` and L2 heuristic
 consolidate / pins / assemble live in hwfl (`Hwfl.Runtime.Context`).
 Full `agHistory` remains snapshot truth; wire context is a view.
-`consolidate = "llm"` is documented but not implemented yet —
+`consolidate = "llm"` is deferred and must ship with lasting compact
+state on the agent API (seed/return alongside `history`) —
 [TASKS.md](TASKS.md); decision: [log/2026-08.md](log/2026-08.md).
 
 ## Persistence layout

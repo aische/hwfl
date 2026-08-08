@@ -93,6 +93,15 @@ pins + summary + L1 window. `consolidate = "llm"` is reserved for a
 future extra model-round summarizer (rejected until implemented). Pins
 live on agent state (snapshot); `agHistory` stays audit truth.
 
+**Lasting compact state (with `"llm"`):** today only `history` threads
+across outer `llm.agent` calls. Heuristic rebuild is free; an LLM
+summarizer must not re-pay for already-folded spans. When implementing
+`consolidate = "llm"`, extend seed/return (prefer one opaque `context`
+record: pins + summary + watermark) so chat loops and other history
+chunkers can carry compact memory without token waste. Update the
+signatures in this section and
+[language-reference.md](../language-reference.md) in the same change.
+
 **`max_rounds` budget:** Exhausting `max_rounds` pauses the in-flight
 agent (`PauseAwaitingAgent` / status `awaiting_extend`) instead of
 failing the run. The operator extends this call’s budget with

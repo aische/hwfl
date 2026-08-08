@@ -148,12 +148,22 @@ chunks (`chunk=0` = most recent hidden page). Optional
 | omit / off | No auto compact; no `pin` / `consolidate` tools |
 | `"heuristic"` | Requires `context_window`. Before each model round, fold the droppable prefix into pins + a short summary; inject `pin` and `consolidate` tools |
 | `"manual"` | Inject `pin` / `consolidate` only (no auto). Pins still assemble ahead of the wire view |
-| `"llm"` | **Planned** — extra model round to summarize the droppable span; rejected at runtime until implemented |
+| `"llm"` | **Planned** — extra model round to summarize the droppable span; rejected until implemented. **Requires** lasting `context` seed/return (see below) |
 
 Assemble order on the wire: pins block + optional earlier-context summary,
 then the L1 window (capped tool results). `max_pins` (default 32) and
 `max_summary_chars` (default 2000) bound retained memory. Full
 `agHistory` is never rewritten.
+
+Pins / summary / watermark live on in-flight agent state (and snapshots)
+for a single `llm.agent` call. Outer workflows that re-enter with only
+`history` (e.g. `examples/coding-agent-chat`) rebuild heuristic memory
+cheaply; they do **not** carry explicit pins across human turns. When
+shipping `consolidate = "llm"`, extend the agent API so paid compact
+state can seed/return across calls — e.g. optional `context` in/out
+`{ pins, summary, watermark }` alongside `history` — otherwise chat-style
+re-entry re-summarizes overlapping spans and wastes tokens. Update this
+section and [spec/05-host-ops.md](spec/05-host-ops.md) when that lands.
 
 ### Human / observability / meta
 

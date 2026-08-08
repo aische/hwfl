@@ -12,6 +12,8 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **coding-agent-chat** — `context_window = 4`, `consolidate =
+  "heuristic"`; README notes lasting `context` lands with `"llm"`
 - **Context L2** — `consolidate = heuristic|manual` (opt-out default);
   auto/heuristic extract pins + summary; assemble ahead of L1 window;
   injected `pin` / `consolidate` tools; `"llm"` documented, rejected
@@ -30,12 +32,14 @@ None.
 
 ## Next up
 1. Tier A agent ops: MCP client, git (read-heavy), persistent terminals
-2. Context L2 follow-up: `consolidate = "llm"` (extra model-round summary)
+2. Context L2 follow-up: `consolidate = "llm"` + lasting `context`
+   seed/return (update host-op / language-reference API docs)
 3. Skills coding-agent variant (separate example) when substrate exists
 4. Opportunistic Lows; M-3 / M-18 only if they bite
 
 ## Deferred
-- **`consolidate = "llm"`** — LLM compact backend for Context L2
+- **`consolidate = "llm"`** — LLM compact backend + lasting agent
+  `context` (pins/summary/watermark) seed/return
 - **M-3** skill-body prompt trust (when third-party skills matter)
 - **M-18** project-hash / prose-edit resume UX (only if comment edits brick resume often)
 - **M-16** multi-process run-store locking (until parallel lab processes share a run dir)
