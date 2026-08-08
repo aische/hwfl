@@ -12,20 +12,17 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
-- **coding-agent-chat** — `context_window = 4`, `consolidate =
-  "heuristic"`; README notes lasting `context` lands with `"llm"`
-- **Context L2** — `consolidate = heuristic|manual` (opt-out default);
-  auto/heuristic extract pins + summary; assemble ahead of L1 window;
-  injected `pin` / `consolidate` tools; `"llm"` documented, rejected
-- **Context L1** — `context_window` / wire view; injected `get_history`;
-  optional `max_tool_result_chars` (default 16k when windowed); full
-  `agHistory` unchanged in snapshots (`Hwfl.Runtime.Context`)
-- **L-15** — Nullary variants encode as `{"tag":…}` (not bare strings);
-  Option Some/None interop unchanged
-- **L-7** — Empty / duplicate H2/H3 slugs fail at load and `md.sections`
-- **L-13** — CLI: `wantsJson` / `--` end-of-options; typed `StaleProjectErr`
-- Bug-report: all High (H-1a–H-7; H-1 retracted) and Medium except
-  M-3 / M-16 / M-18 — see [BUG_REPORT.md](BUG_REPORT.md)
+- **Context L1+L2** — `context_window` / wire view + `get_history`;
+  `consolidate = heuristic|manual` (omit = off); pins + summary +
+  assemble; `"llm"` documented but rejected. Module:
+  `Hwfl.Runtime.Context`. Full `agHistory` unchanged in snapshots.
+- **coding-agent-chat** — dogfoods L1+L2 (`context_window = 4`,
+  `consolidate = "heuristic"`); lasting `context` across outer turns
+  waits on `"llm"`
+- **Bug-report pass** — all High (H-1 retracted) and Medium except
+  M-3 / M-16 / M-18; selected Lows through L-15 — see
+  [BUG_REPORT.md](BUG_REPORT.md) and
+  [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md)
 
 ## Blockers
 None.

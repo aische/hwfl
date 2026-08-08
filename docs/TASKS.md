@@ -13,36 +13,6 @@ Prefer MCP / workflow modules over growing the host-op set.
 - [ ] Git (read-heavy host ops or MCP) — status / diff / log
 - [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot
       `exec.run`
-- [ ] Opt-in `exec.runtime` = `host` \| `docker` behind `exec.run`
-      (spec [05-host-ops.md](spec/05-host-ops.md) §3.1) — when untrusted
-      spawn bites
-
-## Next — agent context (long-running)
-
-Shared in hwfl once (not per project; not via llm-simple `LLM.Agent`).
-Full `agHistory` stays snapshot / resume / audit truth; window and compact
-only the **wire / working** view. Design notes:
-[log/2026-08.md](log/2026-08.md) (2026-08-08 — agent context layers).
-
-Two separate tasks (do L1 before L2):
-
-- [x] **Context L1 — window + history slices**
-      - Pure helper: window transcript (e.g. last N user turns + follow-ons)
-      - Apply window before each agent model round (provider sees suffix only)
-      - Tool to fetch older chunks / slices of the full history on demand
-      - Prefer also capping / folding huge tool results (otherwise windowing
-        alone may not save the context)
-- [x] **Context L2 — consolidate + assemble**
-      - Helpers to extract pins / structured notes from a droppable span
-      - Compact: summary (or synthetic turn) + rewrite working history
-      - Assemble: pins + optional summary + recent window → next context
-      - Pin / note store shape (workspace FS and/or run-store); projects
-        only pass knobs
-      - Follow-up: `consolidate = "llm"` (extra model-round summarizer) —
-        **must** extend agent seed/return with lasting compact state
-        (`context`: pins + summary + watermark) so outer `history`
-        loops do not re-summarize; update language-reference +
-        spec/05-host-ops in the same change
 
 ## Next — coding-agent / observability / research
 
@@ -69,7 +39,12 @@ From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate.
 
 - [ ] `consolidate = "llm"` — Context L2 LLM summarizer + lasting
       `context` seed/return (pins/summary/watermark); update host-op /
-      language-reference signatures
+      language-reference signatures. Design notes:
+      [log/2026-08.md](log/2026-08.md) (2026-08-08 — agent context layers /
+      coding-agent-chat lasting context)
+- [ ] Opt-in `exec.runtime` = `host` \| `docker` behind `exec.run`
+      (spec [05-host-ops.md](spec/05-host-ops.md) §3.1) — when untrusted
+      spawn bites
 - [ ] Alternate `LlmProvider` (OpenAI/Anthropic SDK, etc.)
 - [ ] In-language `lib/` modules per [stdlib.md](stdlib.md)
 - [ ] `hwfl init` / shell completions
@@ -91,8 +66,8 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
-Bug-fix High + Medium (except deferred M-3 / M-16 / M-18) and selected
-Lows archived in
+Context L1+L2 (heuristic), bug-fix High + Medium (except deferred
+M-3 / M-16 / M-18), and selected Lows archived in
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 Earlier milestones in
 [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md).

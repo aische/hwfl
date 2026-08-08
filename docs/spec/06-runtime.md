@@ -192,6 +192,12 @@ model_call → (tool_call → tool_result →)* → final
 Each model/tool call is snapshotted. Tools invoke ordinary functions /
 host ops under the agent frame.
 
+**Wire context:** optional `context_window` / `consolidate` bound what the
+provider sees; full `agHistory` stays snapshot / resume truth. Helpers and
+injected tools live in `Hwfl.Runtime.Context`. See
+[05-host-ops.md](05-host-ops.md) and
+[language-reference.md](../language-reference.md).
+
 **Skills:** mid-loop `skill.load` may expand the active tool set (callable)
 or append instruction context (rebuild-from-ids on resume). Checkpoints
 persist `active_tool_ids` / `loaded_instruction_ids`. Agent tool spans

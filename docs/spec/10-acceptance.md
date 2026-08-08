@@ -81,6 +81,10 @@
 - [x] Streaming LLM spans — progressive events on open `llm.chat` /
       `agent_round` spans ([07-observability.md](07-observability.md) §9);
       mock-proven; host return types / snapshot grain unchanged
+- [x] Agent context L1 — `context_window` / wire view + `get_history`;
+      optional `max_tool_result_chars` (`Hwfl.Runtime.Context`)
+- [x] Agent context L2 — `consolidate = heuristic|manual`; pins /
+      summary / assemble; `"llm"` deferred with lasting `context` API
 
 ## 3. v0 release gate
 
@@ -88,10 +92,12 @@
 default substrate for all new agent work vs hwfi:
 
 - **Ongoing fitness:** resume, span comprehension, semantic-check-class ergonomics
-- **Deferred / low priority:** second LLM provider adapter (interface already exists)
+- **Deferred / low priority:** second LLM provider adapter (interface already exists);
+  `consolidate = "llm"` + lasting agent `context`
 - **Shipped post-M9:** skills progressive disclosure A–C
   ([skills-plan.md](../skills-plan.md)); optional phase D extraction writer;
-  streaming LLM spans (07 §9)
+  streaming LLM spans (07 §9); agent context L1+L2 heuristic
+  ([language-reference.md](../language-reference.md))
 ## 4. Explicit non-acceptance
 
 - Shipping a second step-DSL

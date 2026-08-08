@@ -442,16 +442,19 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 ## Recommended fix order
 
 **Completed (2026-08):** all High; Medium except M-3 / M-16 / M-18; selected
-Lows (L-1–3, L-5, L-6, L-14, L-16, L-19, L-22, L-24). See [TASKS.md](TASKS.md) archive.
+Lows (L-1–3, L-5–8, L-11, L-13–16, L-19, L-22, L-24). See
+[log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 
 **Still open (deferred — fix only if they bite):**
 
 1. **M-3** — skill-body prompt trust (when third-party skills matter).
 2. **M-18** — project-hash / prose-edit resume UX (if comment edits brick resume often).
 3. **M-16** — multi-process run-store locking (when parallel lab processes share a run dir).
-4. Remaining **Lows** opportunistically (fsync, CLI, ignore/glob, …).
+4. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17–18,
+   L-20–21, L-23, L-25 — fsync, CLI, ignore/glob, …).
 
-Active product work has moved to agent substrate (MCP / git / terminals).
+Agent context L1+L2 (heuristic) shipped. Active product work: agent
+substrate (MCP / git / terminals). See [STATUS.md](STATUS.md).
 
 ---
 
