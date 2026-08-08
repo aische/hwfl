@@ -624,7 +624,7 @@ spec = describe "runtime agent (M7)" $ do
             (initialMachine "project" (CurAgent ag))
               { mStatus =
                   MsPaused
-                    (PauseAwaitingAgent (AgentExhaustedRequest maxBound maxBound 0))
+                    (PauseAwaitingAgent (AgentExhaustedRequest maxBound maxBound 0 Nothing))
               }
       extendAgentMachine 0 exhausted `shouldSatisfy` isLeft
       extendAgentMachine 1 exhausted `shouldSatisfy` isLeft

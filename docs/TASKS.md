@@ -43,7 +43,7 @@ Order matters; do not skip ahead of H-6.
 - [x] **M-6** — `exec.run`: stream/truncate before full buffer; process-group
       kill; validate timeout / max_output numerics
 - [x] **M-10** — Effect residuals through let-aliases of top-level funs
-- [ ] **M-12** — Par: treat `PauseAwaitingAgent` / crash-recovery as not
+- [x] **M-12** — Par: treat `PauseAwaitingAgent` / crash-recovery as not
       runnable
 - [x] **M-9** — Diagnose YAML duplicate frontmatter keys
 - [x] **M-15** — Surface pricing/catalog decode failure (do not silent-zero)
@@ -108,6 +108,9 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-12** — Par cooperative freeze for agent budget exhaustion: not-runnable
+  in `pickRunnable`, absorb/drain like human gates, `extend` bumps the branch
+  `agMaxRounds`; crash-recovery branches stay parked (2026-08)
 - **M-9** — Frontmatter YAML event walk rejects duplicate mapping keys
   (top-level and nested) before aeson last-wins decode (2026-08)
 - **M-10** — `ELet` propagates callee residuals (and alias types) so

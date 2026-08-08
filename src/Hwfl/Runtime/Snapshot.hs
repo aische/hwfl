@@ -154,7 +154,7 @@ parseStatus txt pauseVal = case txt of
   "awaiting_extend" -> case pauseVal of
     Just v -> MsPaused <$> parsePauseReason v
     Nothing ->
-      pure (MsPaused (PauseAwaitingAgent (AgentExhaustedRequest 0 0 0)))
+      pure (MsPaused (PauseAwaitingAgent (AgentExhaustedRequest 0 0 0 Nothing)))
   other -> fail ("unknown status: " <> T.unpack other)
 
 parsePauseReason :: Aeson.Value -> Parser PauseReason
@@ -546,6 +546,7 @@ parToJson p =
       "confirm_queue" .= map confirmToJson p.pjsConfirmQueue,
       "choice_queue" .= map choiceToJson p.pjsChoiceQueue,
       "ask_queue" .= map askToJson p.pjsAskQueue,
+      "agent_queue" .= map agentExhaustedToJson p.pjsAgentQueue,
       "parent_env" .= envToJson p.pjsParentEnv
     ]
 
@@ -568,6 +569,7 @@ parsePar = withObject "ParJoinState" $ \o -> do
   cq <- o .: "confirm_queue" >>= mapM parseConfirm
   chq <- o .:? "choice_queue" .!= [] >>= mapM parseChoice
   aq <- o .:? "ask_queue" .!= [] >>= mapM parseAsk
+  agq <- o .:? "agent_queue" .!= [] >>= mapM parseAgentExhausted
   penv <- o .: "parent_env" >>= parseEnv
   let onErr = if onE == ("collect" :: Text) then ParCollect else ParFail
   pure
@@ -584,6 +586,7 @@ parsePar = withObject "ParJoinState" $ \o -> do
         pjsConfirmQueue = cq,
         pjsChoiceQueue = chq,
         pjsAskQueue = aq,
+        pjsAgentQueue = agq,
         pjsParentEnv = penv
       }
 
@@ -623,6 +626,8 @@ slotToJson = \case
     object ["tag" .= String "awaiting_choice", "choice" .= choiceToJson c]
   ParSlotAwaitingAsk a ->
     object ["tag" .= String "awaiting_ask", "ask" .= askToJson a]
+  ParSlotAwaitingAgent r ->
+    object ["tag" .= String "awaiting_extend", "agent" .= agentExhaustedToJson r]
 
 parseSlot :: Aeson.Value -> Parser ParSlot
 parseSlot = withObject "ParSlot" $ \o -> do
@@ -635,6 +640,7 @@ parseSlot = withObject "ParSlot" $ \o -> do
     "awaiting_confirm" -> ParSlotAwaitingConfirm <$> (o .: "confirm" >>= parseConfirm)
     "awaiting_choice" -> ParSlotAwaitingChoice <$> (o .: "choice" >>= parseChoice)
     "awaiting_ask" -> ParSlotAwaitingAsk <$> (o .: "ask" >>= parseAsk)
+    "awaiting_extend" -> ParSlotAwaitingAgent <$> (o .: "agent" >>= parseAgentExhausted)
     other -> fail ("bad slot: " <> T.unpack other)
 
 confirmToJson :: ConfirmRequest -> Aeson.Value
@@ -702,8 +708,12 @@ agentExhaustedToJson r =
     [ "rounds_used" .= r.aerRoundsUsed,
       "rounds_budget" .= r.aerRoundsBudget,
       "suggested_extra" .= r.aerSuggestedExtra,
+      "branch_index" .= r.aerBranchIndex,
       "reason" .= String "awaiting_extend"
     ]
+
+parseAgentExhausted :: Aeson.Value -> Parser AgentExhaustedRequest
+parseAgentExhausted = withObject "AgentExhaustedRequest" parseAgentExhaustedObject
 
 parseAgentExhaustedObject :: Aeson.Object -> Parser AgentExhaustedRequest
 parseAgentExhaustedObject o =
@@ -711,6 +721,7 @@ parseAgentExhaustedObject o =
     <$> (o .:? "rounds_used" .!= 0)
     <*> (o .:? "rounds_budget" .!= 0)
     <*> (o .:? "suggested_extra" .!= 0)
+    <*> o .:? "branch_index"
 
 envToJson :: Env -> Aeson.Value
 envToJson env =

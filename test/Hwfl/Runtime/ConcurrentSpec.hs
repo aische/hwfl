@@ -1,5 +1,6 @@
 module Hwfl.Runtime.ConcurrentSpec (spec) where
 
+import Data.Aeson (object, (.=))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..))
@@ -11,21 +12,37 @@ import Hwfl.Driver
     driverRun,
   )
 import Hwfl.Eval.Value (Value (..))
-import Hwfl.Llm.Mock (mockProvider)
+import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
+import Hwfl.Llm.Types
+  ( ChatRequest (..),
+    FinishReason (..),
+    ProviderResult (..),
+    TokenUsage (..),
+    ToolCall (..),
+    Turn (..),
+  )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Error (RuntimeError (..), renderRuntimeError)
 import Hwfl.Runtime.Eval (StepMode (..))
-import Hwfl.Runtime.Machine (AskRequest (..), ChoiceRequest (..), MachineStatus (..), PauseReason (..))
+import Hwfl.Runtime.Machine
+  ( AgentExhaustedRequest (..),
+    AskRequest (..),
+    ChoiceRequest (..),
+    MachineStatus (..),
+    PauseReason (..),
+  )
 import Hwfl.Runtime.Run
   ( RunOptions (..),
     RunOutcome (..),
     approveRun,
     chooseRun,
+    emptySkillRuntime,
+    extendAgentRun,
     replyRun,
     resumeRun,
     runLoadedModule,
-    emptySkillRuntime)
+  )
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -165,6 +182,40 @@ parAskSrc =
       "  let results =",
       "    par(max = 2) for name in [\"first\", \"second\"] {",
       "      human.ask({ prompt = name })",
+      "    }",
+      "  { results }",
+      "```"
+    ]
+
+parAgentSrc :: Text
+parAgentSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/par-agent",
+      "inputs: {}",
+      "outputs:",
+      "  results: \"List<{ text: String, rounds: Int }>\"",
+      "effects: [Read, Net, Parallel]",
+      "---",
+      "",
+      "## system",
+      "",
+      "Use tools until done.",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "fun main(_): { results: List<{ text: String, rounds: Int }> } =",
+      "  let results =",
+      "    par(max = 1) for p in [\"note.txt\"] {",
+      "      let result = llm.agent(",
+      "        system = @system,",
+      "        prompt = \"read note\",",
+      "        tools = [tool(fs.read)],",
+      "        model = \"gpt-5\",",
+      "        max_rounds = 1",
+      "      )",
+      "      { text = result.text, rounds = result.rounds }",
       "    }",
       "  { results }",
       "```"
@@ -439,6 +490,74 @@ spec = describe "runtime par/confirm/step (M5)" $ do
           case final of
             OutcomeCompleted (VRecord [(Ident "results", VList values)]) _ _ ->
               values `shouldBe` [VString "one", VString "two"]
+            other -> expectationFailure (show other)
+
+  it "par + agent max_rounds soft-lands; extend continues branch" $
+    withSystemTempDirectory "hwfl-paragent" $ \dir -> do
+      writeFile (dir </> "note.txt") "extend me"
+      path <- writeMod dir parAgentSrc
+      let mock =
+            mockProviderWith $ \req ->
+              if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
+                then
+                  Right
+                    ProviderResult
+                      { prContent = "done after extend",
+                        prToolCalls = [],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishStop
+                      }
+                else
+                  Right
+                    ProviderResult
+                      { prContent = "need read",
+                        prToolCalls =
+                          [ ToolCall
+                              "c1"
+                              "fs_read"
+                              (object ["path" .= ("note.txt" :: Text)])
+                          ],
+                        prUsage = Just (TokenUsage 1 1),
+                        prFinishReason = FinishToolCalls
+                      }
+      case loadModuleText path parAgentSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          paused <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = mock,
+                  roInputs = [],
+                  roRunId = Just "pag1",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime,
+                  roEntryModules = mempty
+                }
+              loaded
+          case paused of
+            OutcomePaused (MsPaused (PauseAwaitingAgent r)) _ _ _ -> do
+              aerRoundsUsed r `shouldBe` 1
+              aerRoundsBudget r `shouldBe` 1
+              aerBranchIndex r `shouldBe` Just 0
+            other -> expectationFailure ("expected awaiting extend, got " <> show other)
+          resumed <- resumeRun dir "pag1" mock "model-catalog.json" noopObserver
+          case resumed of
+            OutcomePaused (MsPaused (PauseAwaitingAgent _)) _ _ _ -> pure ()
+            other -> expectationFailure ("resume should stay paused, got " <> show other)
+          extended <- extendAgentRun dir "pag1" 4 mock "model-catalog.json" noopObserver
+          case extended of
+            OutcomeCompleted (VRecord [(Ident "results", VList [VRecord fs])]) _ _ -> do
+              lookup (Ident "text") fs `shouldBe` Just (VString "done after extend")
+              lookup (Ident "rounds") fs `shouldBe` Just (VInt 2)
             other -> expectationFailure (show other)
 
   it "step then resume" $

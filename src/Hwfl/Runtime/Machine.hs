@@ -60,7 +60,9 @@ data AgentExhaustedRequest = AgentExhaustedRequest
   { aerRoundsUsed :: Int,
     aerRoundsBudget :: Int,
     -- | Suggested bump (rounded to next-power-of-two, shown to operator).
-    aerSuggestedExtra :: Int
+    aerSuggestedExtra :: Int,
+    -- | Set when the exhausted agent is a @par@ branch (cooperative freeze).
+    aerBranchIndex :: Maybe Int
   }
   deriving stock (Eq, Show)
 
@@ -208,6 +210,7 @@ data ParJoinState = ParJoinState
     pjsConfirmQueue :: [ConfirmRequest],
     pjsChoiceQueue :: [ChoiceRequest],
     pjsAskQueue :: [AskRequest],
+    pjsAgentQueue :: [AgentExhaustedRequest],
     pjsParentEnv :: Env
   }
   deriving stock (Eq, Show)
@@ -220,6 +223,7 @@ data ParSlot
   | ParSlotAwaitingConfirm ConfirmRequest
   | ParSlotAwaitingChoice ChoiceRequest
   | ParSlotAwaitingAsk AskRequest
+  | ParSlotAwaitingAgent AgentExhaustedRequest
   deriving stock (Eq, Show)
 
 data ParPoolPhase

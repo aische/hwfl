@@ -301,10 +301,15 @@ coverage in `ModuleSpec`.
 
 ### M-12 — Par branch agent-budget exhaustion misclassified as "no progress"
 
-- **Location:** `src/Hwfl/Runtime/Eval.hs:1900-1903,1865`
-- **Verification:** `[Reported]`
+- **Location:** `src/Hwfl/Runtime/Eval.hs` (`pickRunnable`, `stepParWith`, `extendAgentMachine`)
+- **Verification:** **Fixed** (2026-08-08)
 
-`pickRunnable`'s catch-all `_ -> True` treats `MsPaused (PauseAwaitingAgent _)` (and `PauseCrashRecovery`) as runnable; the picked branch's step makes no transition → "par branch made no progress" trap → `absorbFailed` → with `ParFail` the whole join fails. The awaiting-extend pause is unreachable inside `par`.
+`PauseAwaitingAgent` and `PauseCrashRecovery` are not runnable in `par`.
+Agent budget exhaustion absorbs like human gates (`ParSlotAwaitingAgent` /
+`pjsAgentQueue`), drains the pool, and surfaces root `awaiting_extend`.
+`extendAgentMachine` bumps the tagged branch's `agMaxRounds` and resumes
+scheduling. Regression: `par` + `max_rounds = 1` soft-lands, bare resume stays
+paused, `extend` completes the join.
 
 ### M-13 — Failure states are not durable; meta/snapshot status divergence
 

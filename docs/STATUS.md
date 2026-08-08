@@ -3,7 +3,7 @@ Last updated: 2026-08-08
 
 ## Current focus
 **Bug-fix pass** — Work [BUG_REPORT.md](BUG_REPORT.md) in the order in
-[TASKS.md](TASKS.md) (P0 High → P1 Medium → remaining). Agent substrate
+[TASKS.md](TASKS.md) (remaining Medium → selected Lows). Agent substrate
 (MCP / git / terminals) waits until that backlog clears.
 
 ## North star
@@ -12,15 +12,11 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
-- **M-9 fixed** — Frontmatter libyaml event walk rejects duplicate mapping keys
-  (top-level and nested) before aeson decode; last-wins overrides are diagnosed
-- **M-10 fixed** — Let-aliases of top-level (and import) funs propagate callee
-  residuals into `EffEnv`, so `let g = f in g()` cannot sneak past an effects
-  ceiling; pure shadows still drop the outer residual
-- **M-6 fixed** — `exec.run` stream-caps output while reading; timeout kills
-  the process group (SIGTERM then SIGKILL) and returns partial capture;
-  `timeout_ms` / `max_output_bytes` rejected when invalid at project load and
-  at run
+- **M-12 fixed** — Par treats `PauseAwaitingAgent` / crash-recovery as not
+  runnable; agent budget exhaustion freezes the pool like human gates and
+  surfaces `awaiting_extend` so `hwfl extend` can bump the branch budget
+- **M-9 / M-10 / M-6** — Duplicate YAML keys, let-alias residuals, `exec.run`
+  stream caps + process-group timeout
 - **M-8 / M-7 / M-15 / M-2 / M-11(b) / M-14** — Resource ceilings, contained
   module/catalog I/O, secret re-wrap + redaction, sentence split; see report
 - **M-13 / M-5 / M-19 / M-1 / H-cluster** — See [BUG_REPORT.md](BUG_REPORT.md);
@@ -30,8 +26,8 @@ product. Broader lab framing in [idea.md](idea.md).
 None.
 
 ## Next up
-1. P2: M-12 (par agent pause)
-2. Remaining Medium + selected Lows (see TASKS)
+1. Remaining Medium: M-4, M-11(a), M-3, M-17, M-18
+2. Selected Lows (L-5 / L-6 / L-14 / L-16 and opportunistic hygiene)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 
 ## Deferred

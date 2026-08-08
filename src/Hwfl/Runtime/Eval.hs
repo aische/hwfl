@@ -638,7 +638,8 @@ stepAgentModel ctx mode m ag
             AgentExhaustedRequest
               { aerRoundsUsed = ag.agRound,
                 aerRoundsBudget = ag.agMaxRounds,
-                aerSuggestedExtra = suggestExtraRounds ag.agMaxRounds
+                aerSuggestedExtra = suggestExtraRounds ag.agMaxRounds,
+                aerBranchIndex = Nothing
               }
           m' = m {mStatus = MsPaused (PauseAwaitingAgent req), mCurrent = CurAgent ag}
       _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
@@ -1701,22 +1702,93 @@ nextPow2 n
 -- | Bump @agMaxRounds@ by @extraRounds@ and resume from an exhausted-budget pause.
 extendAgentMachine :: Int -> Machine -> Either RuntimeError Machine
 extendAgentMachine extra m = case m.mStatus of
-  MsPaused (PauseAwaitingAgent _) -> case m.mCurrent of
-    CurAgent ag
-      | ag.agMaxRounds <= 0 ->
-          Left (ConfigErr "agent round budget must be positive")
-      | extra <= 0 ->
-          Left (ConfigErr "agent round extension must be positive")
-      | extra > maxBound - ag.agMaxRounds ->
-          Left (ConfigErr "agent round extension exceeds the maximum round budget")
-      | otherwise ->
+  MsPaused (PauseAwaitingAgent r) -> case (m.mFrames, m.mCurrent) of
+    (FrPar pjs : rest, _) -> extendPar extra r pjs rest m
+    (FrInvoke q sid (BranchMachine bm) : rest, _) ->
+      case extendAgentMachine extra bm of
+        Left e -> Left e
+        Right bm' ->
           Right
             m
               { mStatus = MsRunning,
-                mCurrent = CurAgent ag {agMaxRounds = ag.agMaxRounds + extra}
+                mCurrent = CurInvoke,
+                mFrames = FrInvoke q sid (mkBranch bm') : rest
               }
+    (_, CurAgent ag)
+      | Just tr <- ag.agToolRound,
+        Just (BranchMachine bm) <- tr.trActiveMachine,
+        MsPaused (PauseAwaitingAgent _) <- bm.mStatus ->
+          case extendAgentMachine extra bm of
+            Left e -> Left e
+            Right bm' ->
+              let tr' = tr {trActiveMachine = Just (mkBranch bm')}
+                  ag' = ag {agToolRound = Just tr'}
+               in Right
+                    m
+                      { mStatus = MsRunning,
+                        mCurrent = CurAgent ag'
+                      }
+    (_, CurAgent ag) ->
+      bumpAgentBudget extra ag >>= \ag' ->
+        Right
+          m
+            { mStatus = MsRunning,
+              mCurrent = CurAgent ag'
+            }
     _ -> Left (ConfigErr "run is not awaiting agent budget extension")
   _ -> Left (ConfigErr "run is not awaiting agent budget extension")
+
+bumpAgentBudget :: Int -> AgentState -> Either RuntimeError AgentState
+bumpAgentBudget extra ag
+  | ag.agMaxRounds <= 0 =
+      Left (ConfigErr "agent round budget must be positive")
+  | extra <= 0 =
+      Left (ConfigErr "agent round extension must be positive")
+  | extra > maxBound - ag.agMaxRounds =
+      Left (ConfigErr "agent round extension exceeds the maximum round budget")
+  | otherwise =
+      Right ag {agMaxRounds = ag.agMaxRounds + extra}
+
+extendPar ::
+  Int ->
+  AgentExhaustedRequest ->
+  ParJoinState ->
+  [Frame] ->
+  Machine ->
+  Either RuntimeError Machine
+extendPar extra r pjs rest m = do
+  let idx = fromMaybe 0 r.aerBranchIndex
+  BranchMachine bm <-
+    maybe
+      (Left (ConfigErr "par branch awaiting agent extension is missing"))
+      Right
+      (Map.lookup idx pjs.pjsActive)
+  ag <- case bm.mCurrent of
+    CurAgent a -> Right a
+    _ -> Left (ConfigErr "par branch is not awaiting agent budget extension")
+  ag' <- bumpAgentBudget extra ag
+  let pjs' =
+        pjs
+          { pjsPhase = ParScheduling,
+            pjsAgentQueue = drop 1 pjs.pjsAgentQueue,
+            pjsSlots = setSlot idx ParSlotRunning pjs.pjsSlots,
+            pjsActive =
+              Map.insert
+                idx
+                ( mkBranch
+                    bm
+                      { mStatus = MsRunning,
+                        mCurrent = CurAgent ag'
+                      }
+                )
+                pjs.pjsActive
+          }
+  Right
+    m
+      { mStatus = MsRunning,
+        mCurrent = CurParPool,
+        mFrames = FrPar pjs' : rest
+      }
 
 approvePar :: Bool -> ConfirmRequest -> ParJoinState -> [Frame] -> Machine -> Machine
 approvePar yes c pjs rest m =
@@ -1900,7 +1972,22 @@ stepParWith ctx mode m pjs rest
                             mFrames = FrPar pjs' : rest
                           }
                    in tryFinishDrain ctx mode m' pjs' rest
+                MsPaused (PauseAwaitingAgent r) ->
+                  let r' = r {aerBranchIndex = Just idx}
+                      pjs' = absorbAgent pjs idx bm' r'
+                      m' =
+                        m
+                          { mStatus = MsDraining,
+                            mCurrent = CurParPool,
+                            mFrames = FrPar pjs' : rest
+                          }
+                   in tryFinishDrain ctx mode m' pjs' rest
                 MsPaused PauseExplicit -> do
+                  let pjs' = pjs {pjsActive = Map.insert idx (mkBranch bm') pjs.pjsActive}
+                      m' = m {mCurrent = CurParPool, mFrames = FrPar pjs' : rest}
+                  finishParStep ctx mode m' True
+                MsPaused PauseCrashRecovery -> do
+                  -- Legacy crash-paused branch: keep parked; never force-step.
                   let pjs' = pjs {pjsActive = Map.insert idx (mkBranch bm') pjs.pjsActive}
                       m' = m {mCurrent = CurParPool, mFrames = FrPar pjs' : rest}
                   finishParStep ctx mode m' True
@@ -1921,11 +2008,13 @@ awaitingHuman pjs =
   not (null pjs.pjsConfirmQueue)
     || not (null pjs.pjsChoiceQueue)
     || not (null pjs.pjsAskQueue)
+    || not (null pjs.pjsAgentQueue)
     || any
       ( \case
           ParSlotAwaitingConfirm _ -> True
           ParSlotAwaitingChoice _ -> True
           ParSlotAwaitingAsk _ -> True
+          ParSlotAwaitingAgent _ -> True
           _ -> False
       )
       pjs.pjsSlots
@@ -1939,6 +2028,8 @@ pickRunnable pjs =
               MsPaused (PauseAwaitingConfirm _) -> False
               MsPaused (PauseAwaitingChoice _) -> False
               MsPaused (PauseAwaitingAsk _) -> False
+              MsPaused (PauseAwaitingAgent _) -> False
+              MsPaused PauseCrashRecovery -> False
               MsCompleted -> False
               MsFailed -> False
               _ -> True
@@ -2028,7 +2119,18 @@ tryFinishDrain ctx mode m pjs rest
                   (hostOpenAttrs HostHumanAsk [(Just (Ident "prompt"), VString a.askPrompt)])
               _ <- persist ctx (Just HostHumanAsk) Nothing (MsPaused (PauseAwaitingAsk a)) (Just m')
               pure (Right (StepResult m' True))
-            [] -> finishJoin ctx mode m pjs rest
+            [] -> case agentQueue pjs of
+              (r : rs) -> do
+                let pjs' = pjs {pjsPhase = ParPausedConfirm, pjsAgentQueue = r : rs}
+                    m' =
+                      m
+                        { mStatus = MsPaused (PauseAwaitingAgent r),
+                          mCurrent = CurParPool,
+                          mFrames = FrPar pjs' : rest
+                        }
+                _ <- persist ctx (Just HostLlmAgent) Nothing (MsPaused (PauseAwaitingAgent r)) (Just m')
+                pure (Right (StepResult m' True))
+              [] -> finishJoin ctx mode m pjs rest
   | otherwise =
       finishParStep
         ctx
@@ -2040,7 +2142,7 @@ tryFinishDrain ctx mode m pjs rest
           }
         True
 
--- | Branches awaiting human input are not runnable; drain completes when none remain.
+-- | Branches awaiting human or agent-extend input are not runnable; drain completes when none remain.
 noRunnableActive :: ParJoinState -> Bool
 noRunnableActive pjs =
   all
@@ -2048,6 +2150,8 @@ noRunnableActive pjs =
         MsPaused (PauseAwaitingConfirm _) -> True
         MsPaused (PauseAwaitingChoice _) -> True
         MsPaused (PauseAwaitingAsk _) -> True
+        MsPaused (PauseAwaitingAgent _) -> True
+        MsPaused PauseCrashRecovery -> True
         _ -> False
     )
     (Map.elems pjs.pjsActive)
@@ -2074,6 +2178,14 @@ askQueue pjs
   | otherwise =
       [ a
         | ParSlotAwaitingAsk a <- pjs.pjsSlots
+      ]
+
+agentQueue :: ParJoinState -> [AgentExhaustedRequest]
+agentQueue pjs
+  | not (null pjs.pjsAgentQueue) = pjs.pjsAgentQueue
+  | otherwise =
+      [ r
+        | ParSlotAwaitingAgent r <- pjs.pjsSlots
       ]
 
 finishJoin ::
@@ -2171,6 +2283,15 @@ absorbAsk pjs idx bm a =
       pjsActive = Map.insert idx (mkBranch bm) pjs.pjsActive,
       pjsPhase = ParDraining,
       pjsAskQueue = pjs.pjsAskQueue ++ [a]
+    }
+
+absorbAgent :: ParJoinState -> Int -> Machine -> AgentExhaustedRequest -> ParJoinState
+absorbAgent pjs idx bm r =
+  pjs
+    { pjsSlots = setSlot idx (ParSlotAwaitingAgent r) pjs.pjsSlots,
+      pjsActive = Map.insert idx (mkBranch bm) pjs.pjsActive,
+      pjsPhase = ParDraining,
+      pjsAgentQueue = pjs.pjsAgentQueue ++ [r]
     }
 
 setSlot :: Int -> ParSlot -> [ParSlot] -> [ParSlot]
@@ -2355,6 +2476,7 @@ pendingPar opts var body env =
       pjsConfirmQueue = [],
       pjsChoiceQueue = [],
       pjsAskQueue = [],
+      pjsAgentQueue = [],
       pjsParentEnv = env
     }
 
