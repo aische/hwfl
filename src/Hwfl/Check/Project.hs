@@ -199,17 +199,33 @@ topoSort nodes lp = go [] (Set.toList nodes)
           i <- fmImports m.lmFrontmatter,
           Set.member i nodes
       ]
-    findCycle qs = case qs of
-      q : _ -> cycleFrom q []
-      [] -> []
-    cycleFrom start path =
-      if start `elem` path
-        then reverse path ++ [start]
-        else
-          let nexts = deps start
-           in case nexts of
-                n : _ -> cycleFrom n (start : path)
-                [] -> reverse (start : path)
+    -- Reconstruct a real cycle among the Kahn remainder. Walk only edges
+    -- still inside @remaining@ and backtrack across all deps — the previous
+    -- first-edge walk could report a non-cyclic path (L-8).
+    findCycle remaining =
+      let remSet = Set.fromList remaining
+          depsInRem q = filter (`Set.member` remSet) (deps q)
+          search [] = []
+          search (q : qs) = case dfs q [] of
+            Just cyc -> cyc
+            Nothing -> search qs
+          dfs u path =
+            let path' = u : path
+             in case
+                  [ cyc
+                    | v <- depsInRem u,
+                      Just cyc <-
+                        [ if v `elem` path'
+                            then Just (closeCycle v path')
+                            else dfs v path'
+                        ]
+                  ]
+                of
+                  cyc : _ -> Just cyc
+                  [] -> Nothing
+          closeCycle v path' =
+            v : reverse (takeWhile (/= v) path') ++ [v]
+       in search remaining
     pick sortedSet = find (all (`Set.member` sortedSet) . deps)
 
 checkOne ::

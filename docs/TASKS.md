@@ -35,8 +35,8 @@ From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate.
       too often)
 - [ ] **M-16** — Multi-process run-store locking (when parallel lab processes
       share a run dir)
-- [ ] **Remaining Lows** — L-4, L-7–13, L-15, L-17–18, L-20–21, L-23, L-25
-      (fsync, slugs, CLI, variants, ignore/glob, …)
+- [ ] **Remaining Lows** — L-4, L-7, L-9–13, L-15, L-17–18, L-20–21, L-23,
+      L-25 (fsync, slugs, CLI, variants, ignore/glob, …)
 
 ## Low priority
 

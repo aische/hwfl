@@ -23,6 +23,26 @@ spec = describe "project check (M9)" $ do
       Left (PceImportCycle _) -> pure ()
       other -> expectationFailure ("expected import cycle, got: " <> show other)
 
+  -- L-8: first import of a is already-sorted lib/base; the cycle is a↔b.
+  -- The old first-edge walker reported a non-cycle including lib/base.
+  it "reports the real cycle when the first import is already sorted (L-8)" $ do
+    result <- checkProject (fixtureRoot "check-project-cycle-misleading")
+    case result of
+      Left (PceImportCycle qs) -> do
+        qs `shouldContain` ["workflows/a"]
+        qs `shouldContain` ["workflows/b"]
+        qs `shouldSatisfy` (notElem "lib/base")
+        case qs of
+          (x : _) -> last qs `shouldBe` x
+          [] -> expectationFailure "empty cycle path"
+      other -> expectationFailure ("expected import cycle, got: " <> show other)
+
+  it "reports a self-import as a cycle" $ do
+    result <- checkProject (fixtureRoot "check-project-cycle-self")
+    case result of
+      Left (PceImportCycle qs) -> qs `shouldBe` ["workflows/a", "workflows/a"]
+      other -> expectationFailure ("expected self-import cycle, got: " <> show other)
+
   it "buildImportGraph collects reachable modules" $ do
     lp <- loadProjectOrFail (fixtureRoot "check-project")
     case buildImportGraph lp (QName [Ident "workflows", Ident "main"]) of
