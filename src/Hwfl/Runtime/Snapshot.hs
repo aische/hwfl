@@ -2,6 +2,7 @@
 module Hwfl.Runtime.Snapshot
   ( RunMeta (..),
     RunSnapshot (..),
+    currentSnapshotFormat,
     valueToJson,
     valueFromJson,
     machineToJson,
@@ -13,7 +14,6 @@ module Hwfl.Runtime.Snapshot
   )
 where
 
-import Control.Applicative ((<|>))
 import Control.Monad (unless)
 import Data.Aeson (Value (..), object, withObject, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
@@ -64,6 +64,10 @@ data RunSnapshot = RunSnapshot
   }
   deriving stock (Eq, Show)
 
+-- | Only format currently written and accepted on load.
+currentSnapshotFormat :: Int
+currentSnapshotFormat = 1
+
 parseMetaValue :: Aeson.Value -> Parser RunMeta
 parseMetaValue = withObject "RunMeta" $ \o ->
   RunMeta
@@ -92,6 +96,12 @@ snapshotToJson s =
 parseSnapshotValue :: Aeson.Value -> Parser RunSnapshot
 parseSnapshotValue = withObject "RunSnapshot" $ \o -> do
   fmt <- o .: "snapshot_format"
+  unless (fmt == currentSnapshotFormat) $
+    fail $
+      "unsupported snapshot_format: "
+        <> show fmt
+        <> "; supported: "
+        <> show currentSnapshotFormat
   runId <- o .: "run_id"
   seqNo <- o .: "seq"
   stTxt <- o .: "status"
@@ -158,25 +168,22 @@ parseStatus txt pauseVal = case txt of
   other -> fail ("unknown status: " <> T.unpack other)
 
 parsePauseReason :: Aeson.Value -> Parser PauseReason
-parsePauseReason v =
-  withObject
-    "pause"
-    ( \o -> do
-        mReason <- o .:? "reason"
-        case mReason :: Maybe Text of
-          Just "explicit" -> pure PauseExplicit
-          Just "crash" -> pure PauseCrashRecovery
-          Just "awaiting_choice" -> PauseAwaitingChoice <$> parseChoiceObject o
-          Just "awaiting_input" -> PauseAwaitingAsk <$> parseAskObject o
-          Just "awaiting_confirm" -> PauseAwaitingConfirm <$> parseConfirmObject o
-          Just "awaiting_extend" -> PauseAwaitingAgent <$> parseAgentExhaustedObject o
-          _ ->
-            case KM.lookup "options" o of
-              Just _ -> PauseAwaitingChoice <$> parseChoiceObject o
-              Nothing -> PauseAwaitingConfirm <$> parseConfirmObject o
-    )
-    v
-    <|> pure PauseExplicit
+parsePauseReason =
+  withObject "pause" $ \o -> do
+    mReason <- o .:? "reason"
+    case mReason :: Maybe Text of
+      Just "explicit" -> pure PauseExplicit
+      Just "crash" -> pure PauseCrashRecovery
+      Just "awaiting_choice" -> PauseAwaitingChoice <$> parseChoiceObject o
+      Just "awaiting_input" -> PauseAwaitingAsk <$> parseAskObject o
+      Just "awaiting_confirm" -> PauseAwaitingConfirm <$> parseConfirmObject o
+      Just "awaiting_extend" -> PauseAwaitingAgent <$> parseAgentExhaustedObject o
+      Just other -> fail ("unknown pause reason: " <> T.unpack other)
+      -- Legacy snapshots omitted `reason`; infer from shape, else fail closed.
+      Nothing ->
+        case KM.lookup "options" o of
+          Just _ -> PauseAwaitingChoice <$> parseChoiceObject o
+          Nothing -> PauseAwaitingConfirm <$> parseConfirmObject o
 
 -------------------------------------------------------------------------------
 -- Machine codec

@@ -37,6 +37,7 @@ import Hwfl.Runtime.MetaInvokeSpec
 import Hwfl.Runtime.MetaReadSpec
 import Hwfl.Runtime.ObjectSpec
 import Hwfl.Runtime.RunSpec
+import Hwfl.Runtime.SnapshotSpec
 import Hwfl.Runtime.StoreSpec
 import Hwfl.Runtime.TrySpec
 import Hwfl.Runtime.SkillSpec
@@ -69,6 +70,7 @@ main = hspec $ do
   Hwfl.Llm.ProviderSpec.spec
   Hwfl.Runtime.WorkspaceSpec.spec
   Hwfl.Runtime.RunSpec.spec
+  Hwfl.Runtime.SnapshotSpec.spec
   Hwfl.Runtime.StoreSpec.spec
   Hwfl.Runtime.TrySpec.spec
   Hwfl.Runtime.ExceptionSpec.spec

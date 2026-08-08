@@ -82,6 +82,7 @@ import Hwfl.Runtime.Machine (Machine, MachineStatus)
 import Hwfl.Runtime.Snapshot
   ( RunMeta (..),
     RunSnapshot (..),
+    currentSnapshotFormat,
     parseMetaValue,
     parseSnapshotValue,
     snapshotToJson,
@@ -318,7 +319,7 @@ persistTransition store seqRef projectHash mHost mVal status mMachine spanStack 
   let at = T.pack (formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" now)
       snap =
         RunSnapshot
-          { rsFormat = 1,
+          { rsFormat = currentSnapshotFormat,
             rsRunId = store.storeRunId,
             rsSeq = seqNo,
             rsStatus = status,

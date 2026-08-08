@@ -196,6 +196,7 @@ test-suite hwfl-test
         Hwfl.Runtime.MetaReadSpec
         Hwfl.Runtime.ObjectSpec
         Hwfl.Runtime.RunSpec
+        Hwfl.Runtime.SnapshotSpec
         Hwfl.Runtime.StoreSpec
         Hwfl.Runtime.TrySpec
         Hwfl.Runtime.SemanticCheckSpec
