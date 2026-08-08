@@ -273,10 +273,13 @@ alias expansion so DAG-shaped aliases no longer expand exponentially.
 
 ### M-9 — YAML duplicate keys silently last-wins
 
-- **Location:** `src/Hwfl/Parse/Frontmatter.hs:93-100`
-- **Verification:** `[Reported]`
+- **Location:** `src/Hwfl/Parse/YamlSafe.hs` (via `Frontmatter.hs`)
+- **Verification:** **Fixed** (2026-08-08)
 
-`Data.Yaml.decodeEither'` builds a map-backed KeyMap; `name: a` then `name: b` (and duplicate `inputs:`/`outputs:` fields) silently override — wrong module identity/typing accepted with no diagnostic.
+Libyaml event validation rejects duplicate mapping keys (including nested
+`inputs` / `outputs` / `skill` maps) before aeson decode. Duplicate keys
+surface as frontmatter diagnostics instead of silent last-wins overrides.
+Regression coverage in `FrontmatterSpec`.
 
 ### M-10 — Effects of a top-level fun called through a let-alias are lost
 

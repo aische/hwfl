@@ -110,6 +110,52 @@ spec = describe "frontmatter examples" $ do
           `shouldContain` ["examples item has unknown fields: description"]
       Right _ -> expectationFailure "expected parse failure"
 
+  describe "duplicate keys (M-9)" $ do
+    it "rejects duplicate top-level frontmatter keys" $ do
+      let src =
+            T.unlines
+              [ "name: workflows/a",
+                "name: workflows/b",
+                "inputs:",
+                "  path: FileRef",
+                "outputs:",
+                "  summary: String"
+              ]
+      case parseFm src of
+        Left diags ->
+          diagMsg diags
+            `shouldSatisfy` any ("duplicate key: name" `T.isInfixOf`)
+        Right _ -> expectationFailure "expected duplicate key rejection"
+
+    it "rejects duplicate keys under inputs" $ do
+      let src =
+            T.unlines
+              [ "name: workflows/summarise",
+                "inputs:",
+                "  path: FileRef",
+                "  path: String",
+                "outputs:",
+                "  summary: String"
+              ]
+      case parseFm src of
+        Left diags ->
+          diagMsg diags
+            `shouldSatisfy` any ("duplicate key: path" `T.isInfixOf`)
+        Right _ -> expectationFailure "expected nested duplicate key rejection"
+
+    it "rejects duplicate keys under nested skill" $ do
+      let src =
+            baseFm
+              [ "skill:",
+                "  kind: callable",
+                "  kind: instruction"
+              ]
+      case parseFm src of
+        Left diags ->
+          diagMsg diags
+            `shouldSatisfy` any ("duplicate key: kind" `T.isInfixOf`)
+        Right _ -> expectationFailure "expected skill duplicate key rejection"
+
   describe "resource limits (M-8)" $ do
     it "rejects YAML aliases in frontmatter" $ do
       let src =

@@ -12,6 +12,8 @@ Coding-agent and semantic-check are benchmarks / dogfood, not the
 product. Broader lab framing in [idea.md](idea.md).
 
 ## Done recently
+- **M-9 fixed** — Frontmatter libyaml event walk rejects duplicate mapping keys
+  (top-level and nested) before aeson decode; last-wins overrides are diagnosed
 - **M-10 fixed** — Let-aliases of top-level (and import) funs propagate callee
   residuals into `EffEnv`, so `let g = f in g()` cannot sneak past an effects
   ceiling; pure shadows still drop the outer residual
@@ -28,7 +30,7 @@ product. Broader lab framing in [idea.md](idea.md).
 None.
 
 ## Next up
-1. P2: M-12 (par agent pause), M-9 (YAML duplicate keys)
+1. P2: M-12 (par agent pause)
 2. Remaining Medium + selected Lows (see TASKS)
 3. Then Tier A agent ops (MCP, git, terminals) / skills variant
 

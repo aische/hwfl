@@ -45,7 +45,7 @@ Order matters; do not skip ahead of H-6.
 - [x] **M-10** — Effect residuals through let-aliases of top-level funs
 - [ ] **M-12** — Par: treat `PauseAwaitingAgent` / crash-recovery as not
       runnable
-- [ ] **M-9** — Diagnose YAML duplicate frontmatter keys
+- [x] **M-9** — Diagnose YAML duplicate frontmatter keys
 - [x] **M-15** — Surface pricing/catalog decode failure (do not silent-zero)
 - [ ] **M-4** — `requestToTurns`: preserve all `RoleSystem` messages
 - [ ] **M-11(a)** — Optional schema fields / `null` → option representation
@@ -108,6 +108,8 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 
 ## Done
 
+- **M-9** — Frontmatter YAML event walk rejects duplicate mapping keys
+  (top-level and nested) before aeson last-wins decode (2026-08)
 - **M-10** — `ELet` propagates callee residuals (and alias types) so
   `let g = f in g()` cannot under-report `f`'s effects past the module ceiling
   (2026-08)
