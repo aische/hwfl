@@ -89,7 +89,8 @@ We want language-level ergonomics **and** document-shaped authoring.
   behind an internal `LlmProvider` interface so production backends can
   replace it without rewriting workflows
 - Security defaults: workspace sandbox, opt-in `exec`, secret redaction
-- Prefer MCP / in-language modules over growing the host-op set
+- Prefer MCP **client** / in-language modules over growing the host-op
+  set (stdio servers: KB, web search, … — [spec/13-mcp.md](spec/13-mcp.md))
 - **Project** (workflow modules / genome) ≠ **workspace** (sandbox data +
   `.hwfl/runs`); lab and control plane materialize both as directories
 

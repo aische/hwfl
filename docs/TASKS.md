@@ -7,9 +7,12 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 ## Now — agent substrate
 
-Prefer MCP / workflow modules over growing the host-op set.
+Prefer MCP client / workflow modules over growing the host-op set.
 
-- [ ] MCP client (tool provider behind `tool(f)` / host-op story)
+- [ ] **MCP client** (stdio) — implement [spec/13-mcp.md](spec/13-mcp.md):
+      `project.json` `mcp.servers`, `mcp.call` (+ optional `schema(T)`),
+      `mcp.tools` (filter + `bind`), agent dispatch, resume/reconnect.
+      Dogfood: external TS KB MCP + other stdio servers (e.g. web search)
 - [ ] Git (read-heavy host ops or MCP) — status / diff / log
 - [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot
       `exec.run`
@@ -62,6 +65,14 @@ Delay until a measured coding-agent gap.
 IDE surface, inline diff UX, browser / multimodal — control-plane or
 other product; hwfl stays the orchestration kernel. Control plane /
 Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
+
+### Super low priority
+
+- [ ] **hwfl as MCP server** — expose check / run / approve (etc.) over
+      MCP for Cursor and similar hosts. Distinct from the **MCP client**
+      in Now ([spec/13-mcp.md](spec/13-mcp.md)). Older log notes that
+      bundled this with Servant are outdated for priority; do not start
+      before the client dogfoods external servers.
 
 ## Done
 

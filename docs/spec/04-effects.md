@@ -11,7 +11,7 @@ full user-defined algebraic effects in v0.
 | `Read` | Read workspace, env, spans, run metadata |
 | `Write` | Mutate workspace files |
 | `Net` | LLM (and future HTTP) |
-| `Exec` | Process spawn |
+| `Exec` | Process spawn (`exec.run`, MCP stdio client) |
 | `Parallel` | Use `par` / `join` |
 | `Human` | `confirm` and similar gates |
 | `Meta` | Invoke modules dynamically, eval, introspect other runs |
@@ -27,7 +27,9 @@ pure.
 3. A module’s `effects:` frontmatter is the ceiling for its `main` and
    exports called from outside (library internals can be tighter).
 4. Project `effects.deny` always wins.
-5. `Exec` additionally requires `project.json` `exec.allow` non-empty.
+5. `Exec` additionally requires `project.json` `exec.allow` non-empty for
+   `exec.run`. MCP host ops require `project.json` `mcp.servers.<id>`
+   (and the same class of spawn allowlist — see [13-mcp.md](13-mcp.md)).
 6. Calling another module unions its residual effects into the caller
    (or requires the callee’s effects ⊆ caller allow-set). Same-project
    entry call `qname(inputs)` uses this rule only — it does **not**
@@ -52,7 +54,8 @@ Distinguishing `Net` vs `Write` vs `Human` enables:
 
 Reading `ctx.run` / `ctx.env` requires at least `Read`.  
 Writing via `fs.*` requires `Write`.  
-`llm.*` requires `Net`.
+`llm.*` requires `Net`.  
+`mcp.*` requires `Exec` ([13-mcp.md](13-mcp.md)).
 
 ## 6. Deferrals
 

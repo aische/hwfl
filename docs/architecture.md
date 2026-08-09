@@ -69,6 +69,7 @@ All side effects go through **host ops** registered in the runtime:
 | FS          | `fs.read`, `fs.write`, `fs.copy`, `fs.mkdir`, …       |
 | LLM         | `llm.chat`, `llm.object`, `llm.agent`                 |
 | Process     | `exec.run`                                            |
+| MCP         | `mcp.call`, `mcp.tools` (stdio client — [13-mcp.md](spec/13-mcp.md)) |
 | Human       | `human.confirm`, `human.choice`, `human.ask`          |
 | Meta        | `meta.invoke`, `meta.list_runs`, …                    |
 | Observability | `obs.log`, `obs.span` (spans/events; not snapshot boundaries) |
@@ -93,6 +94,17 @@ Workflow ──► llm.* host ops ──► LlmProvider ──► llm-simple
 
 Workflows never import `llm-simple`. Only `Hwfl.Llm.Simple` (or equivalent)
 depends on it. See [spec/08-llm-provider.md](spec/08-llm-provider.md).
+
+## MCP client boundary
+
+```text
+Workflow ──► mcp.call / mcp.tools ──► MCP client ──► stdio server
+Agent    ──► ToolSpec (MCP callee) ─┘
+```
+
+External servers (TypeScript KB, web search, …) are configured in
+`project.json` and stay out-of-process. Prefer this over new domain host
+ops. See [spec/13-mcp.md](spec/13-mcp.md).
 
 **Agent context:** L1 window + `get_history` and L2 heuristic
 consolidate / pins / assemble live in hwfl (`Hwfl.Runtime.Context`).
@@ -182,8 +194,10 @@ task truly is “edit the project in place.”
 ## Stdlib policy
 
 - Prefer **hwfl modules** under `lib/` for list/string/json helpers.
+- Prefer **MCP client** ([13-mcp.md](spec/13-mcp.md)) for external tool
+  ecosystems (KB, search, …) over one-off domain host ops.
 - Host ops only when the implementation _must_ be in Haskell (LLM, FS sandbox,
-  process, snapshot, true parallelism).
+  process, snapshot, true parallelism, MCP transport).
 - Never grow the host op set to paper over a missing kernel feature.
 
 ## Relationship of control flow constructs

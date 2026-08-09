@@ -113,17 +113,20 @@ structured exhausted return with `history` for outer workflow chaining
 
 ### 2.1 Agent tools
 
-A tool is a **typed function** reference plus schema:
+A tool is a **typed function** reference plus schema, **or** an MCP tool
+projected via `mcp.tools` ([13-mcp.md](13-mcp.md)):
 
 ```text
 tools = [
   tool(fs.read),           -- prelude helper wrapping host op
-  tool(lib/search.run)     -- user function
+  tool(lib/search.run),    -- user function
+  ...mcp.tools({ server = "kb", names = ["kb_store"] })
 ]
 ```
 
 The agent loop is a machine `Current` state (multi-transition), not a
-single opaque host call — same idea as hwfi agent stepping.
+single opaque host call — same idea as hwfi agent stepping. MCP callees
+dispatch with `tools/call` (no nested CEK apply of a hwfl function).
 
 ## 3. Process (`Exec`)
 
@@ -269,6 +272,24 @@ Progressive-disclosure skill catalog for agents. Design + acceptance:
 - Authors must list `tool(skill.discover)` / `tool(skill.load)` explicitly —
   no auto-injection into every agent.
 - Do not treat `fs.read` of `skills/*.md` as a substitute inside agents.
+
+## 6.2 MCP client (`Exec`)
+
+Consume external MCP servers (stdio v1). Full design:
+[13-mcp.md](13-mcp.md).
+
+| Op | Effects | Signature (sketch) |
+|----|---------|-------------------|
+| `mcp.call` | Exec | `{ server, name, arguments: Json, schema? } -> Json` (or `T` when `schema = schema(T)`) |
+| `mcp.tools` | Exec | `{ server, names?, bind? } -> List<ToolSpec>` |
+
+- Deterministic workflow RPCs use `mcp.call` (e.g. `kb_open` on a
+  TypeScript KB server). Agent toolboxes use `mcp.tools` (filter +
+  optional `bind` to inject/hide handles like `session_id`).
+- Requires `project.json` `mcp.servers.<id>`. Spawn is not `exec.run`;
+  do not reuse one-shot capture for the session process.
+- MCP children bypass the `fs.*` sandbox — policy is command/env/cwd.
+- Exposing **hwfl as** an MCP server is deferred (TASKS Future).
 
 `meta.check_module` signature (sketch):
 
