@@ -205,6 +205,8 @@ checkErrorKindRoot = \case
   CE.ExecNotConfigured -> "ExecNotConfigured"
   CE.ExampleInputsMismatch {} -> "ExampleInputsMismatch"
   CE.ExampleDuplicateName {} -> "ExampleDuplicateName"
+  CE.ExampleTypeMismatch {} -> "ExampleTypeMismatch"
+  CE.ExampleNotFound {} -> "ExampleNotFound"
   CE.Unsupported {} -> "Unsupported"
   CE.ErrAt _ e -> checkErrorKindRoot e
 

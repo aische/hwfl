@@ -53,6 +53,10 @@ data CheckError
   | -- | Frontmatter @examples@ entry keys do not match @inputs@ (missing / unknown).
     ExampleInputsMismatch (Maybe Text) [Ident] [Ident]
   | ExampleDuplicateName Text
+  | -- | Example input values failed JSON-schema validation vs frontmatter types.
+    ExampleTypeMismatch (Maybe Text) Text
+  | -- | CLI @--example@ name not found in frontmatter @examples@.
+    ExampleNotFound Text
   | Unsupported Text
   | -- | Source location wrapper. Innermost location wins under 'attachPos'.
     ErrAt Pos CheckError
@@ -146,6 +150,11 @@ renderCheckErrorRoot' = \case
           <> ")"
   ExampleDuplicateName n ->
     "duplicate examples name: " <> n
+  ExampleTypeMismatch mName reason ->
+    let label = maybe "examples[]" (\n -> "examples[" <> n <> "]") mName
+     in label <> " inputs type mismatch: " <> reason
+  ExampleNotFound n ->
+    "example not found: " <> n
   Unsupported msg -> "unsupported in type checker: " <> msg
   ErrAt _ e -> renderCheckErrorRoot' e
 

@@ -51,6 +51,14 @@ spec = do
           f.rfJson `shouldBe` True
           f.rfCost `shouldBe` True
         Left err -> expectationFailure err
+    it "parses --example and --input together" $
+      case parseRunFlags ["mod.md", "--example", "note", "--input", "path=other.md"] of
+        Right f -> do
+          f.rfExample `shouldBe` Just "note"
+          f.rfInputs `shouldBe` ["path=other.md"]
+        Left err -> expectationFailure err
+    it "treats --example as value-taking for wantsJson" $
+      wantsJson ["--example", "--json", "mod.md"] `shouldBe` False
 
   describe "parseWsRun" $ do
     it "accepts dash-prefixed workspace after --" $

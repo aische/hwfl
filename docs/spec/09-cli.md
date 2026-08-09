@@ -7,7 +7,7 @@ Executable name provisional: **`hwfl`**.
 | Command                                                 | Purpose                                          |
 | ------------------------------------------------------- | ------------------------------------------------ |
 | `hwfl check <project> [--json]`                                  | Load + type + effects + graph; exit ≠0 on error  |
-| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--debug] [--cost] [--dump] [--json] [--interactive]` | Check (unless `--no-check`) + execute entrypoint |
+| `hwfl run <project> [--workspace <dir>] [--input k=v…] [--example <name>] [--debug] [--cost] [--dump] [--json] [--interactive]` | Check (unless `--no-check`) + execute entrypoint |
 | `hwfl step <workspace> <run-id>`                        | One transition, then pause                       |
 | `hwfl resume <workspace> <run-id>`                      | Continue until end / pause / fail                |
 | `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |
@@ -50,8 +50,18 @@ Prefer:
 hwfl run ./examples/hello --workspace /tmp/ws --input path=README.md
 ```
 
+Or pick a named frontmatter `examples:` entry (values already typed at
+`hwfl check`):
+
+```bash
+hwfl run examples/summarise.md --workspace /tmp/ws --example note
+```
+
+`--input k=v` overrides keys from `--example` when both are given.
+
 Typed coercion from CLI strings per `inputs` types (`FileRef`, `String`,
-`Int`, `Bool`, JSON for complex — document).
+`Int`, `Bool`, JSON for complex — document). Example YAML values use the
+JSON Schema path (same as tool-arg decode), not the CLI string heuristics.
 
 ## 3. Exit codes
 

@@ -168,6 +168,8 @@ data DriverRunRequest = DriverRunRequest
   { drrTarget :: FilePath,
     drrWorkspace :: FilePath,
     drrInputs :: [(Ident, Value)],
+    -- | Named frontmatter @examples@ entry (CLI @--example@).
+    drrExample :: Maybe Text,
     drrProvider :: LlmProvider,
     -- | Skip static check before execute (CLI @--no-check@).
     drrSkipCheck :: Bool,
@@ -185,6 +187,7 @@ defaultDriverRunRequest target workspace provider =
     { drrTarget = target,
       drrWorkspace = workspace,
       drrInputs = [],
+      drrExample = Nothing,
       drrProvider = provider,
       drrSkipCheck = False,
       drrModelCatalog = "model-catalog.json",
@@ -198,6 +201,7 @@ toRunTargetRequest :: DriverRunRequest -> RunTargetRequest
 toRunTargetRequest req =
   (defaultRunTargetRequest req.drrTarget req.drrWorkspace req.drrProvider)
     { rtrInputs = req.drrInputs,
+      rtrExample = req.drrExample,
       rtrSkipCheck = req.drrSkipCheck,
       rtrModelCatalog = req.drrModelCatalog,
       rtrMode = req.drrMode,

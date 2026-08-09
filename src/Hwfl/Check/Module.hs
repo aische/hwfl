@@ -7,10 +7,15 @@ module Hwfl.Check.Module
     ModuleCheckContext (..),
     emptyModuleCheckContext,
     elaborateMainIO,
+    lookupNamedExample,
+    decodeExampleInputs,
+    resolveNamedExampleInputs,
+    mergeExampleWithCliInputs,
   )
 where
 
 import Control.Applicative ((<|>))
+import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as K
 import Data.Aeson.KeyMap qualified as KM
 import Data.List (nub, (\\))
@@ -37,6 +42,10 @@ import Hwfl.Check.Env
   )
 import Hwfl.Check.Error (CheckError (..))
 import Hwfl.Check.Infer (check, infer, inferModuleEnv)
+import Hwfl.Check.Schema (typeToSchema)
+import Hwfl.Eval.Value (Value (..))
+import Hwfl.Json.Encode (jsonToValueWithSchema)
+import Hwfl.Json.Validate (validateAgainstSchema)
 import Hwfl.Project (EffectsPolicy (..), ProjectConfig (..))
 
 data CheckResult = CheckResult
@@ -104,7 +113,7 @@ checkLoadedModule loaded = do
   body <- elaborateMainIO fm body0
   result <- checkModuleBodyInContext ctx body
   checkMainIO fm body result.crEnv
-  checkExamples fm
+  checkExamples result.crEnv fm
   let ceiling_ = Set.fromList (fromMaybe [] fm.fmEffects)
   checkEffectsCeiling ceiling_ True result.crEffects
   pure result
@@ -122,17 +131,18 @@ checkLoadedModuleInContext cfg execAllowed importExports loaded = do
   body <- elaborateMainIO fm body0
   result <- checkModuleBodyInContext ctx body
   checkMainIO fm body result.crEnv
-  checkExamples fm
+  checkExamples result.crEnv fm
   let ceiling_ = effectiveEffects cfg fm
   checkEffectsCeiling ceiling_ execAllowed result.crEffects
   pure result
 
 -- | When @examples@ is present, each entry's input keys must match frontmatter
--- @inputs@ exactly (values remain untyped for now).
-checkExamples :: Frontmatter -> Either CheckError ()
-checkExamples fm = do
+-- @inputs@ exactly, and values must validate against those types.
+checkExamples :: TypeEnv -> Frontmatter -> Either CheckError ()
+checkExamples env fm = do
   checkDuplicateExampleNames fm.fmExamples
   mapM_ (checkExampleKeys (map fst fm.fmInputs)) fm.fmExamples
+  mapM_ (checkExampleValues env fm) fm.fmExamples
 
 checkDuplicateExampleNames :: [ExampleInputs] -> Either CheckError ()
 checkDuplicateExampleNames exs =
@@ -155,6 +165,47 @@ checkExampleKeys declared ex =
    in if null missing && null unknown
         then pure ()
         else Left (ExampleInputsMismatch ex.eiName missing unknown)
+
+checkExampleValues :: TypeEnv -> Frontmatter -> ExampleInputs -> Either CheckError ()
+checkExampleValues env fm ex = do
+  schema <- typeToSchema env (TRecord fm.fmInputs)
+  case validateAgainstSchema schema (Aeson.Object ex.eiInputs) of
+    Left reason -> Left (ExampleTypeMismatch ex.eiName reason)
+    Right () -> pure ()
+
+-- | Find a named frontmatter example (for CLI @--example@).
+lookupNamedExample :: Frontmatter -> Text -> Either CheckError ExampleInputs
+lookupNamedExample fm name =
+  case [ex | ex <- fm.fmExamples, ex.eiName == Just name] of
+    [ex] -> Right ex
+    [] -> Left (ExampleNotFound name)
+    _ -> Left (ExampleDuplicateName name)
+
+-- | Decode example YAML/JSON inputs to runtime values using @inputs@ types.
+decodeExampleInputs ::
+  TypeEnv -> Frontmatter -> ExampleInputs -> Either CheckError [(Ident, Value)]
+decodeExampleInputs env fm ex = do
+  schema <- typeToSchema env (TRecord fm.fmInputs)
+  case validateAgainstSchema schema (Aeson.Object ex.eiInputs) of
+    Left reason -> Left (ExampleTypeMismatch ex.eiName reason)
+    Right () -> case jsonToValueWithSchema schema (Aeson.Object ex.eiInputs) of
+      Left reason -> Left (ExampleTypeMismatch ex.eiName reason)
+      Right (VRecord fields) -> Right fields
+      Right _ ->
+        Left (ExampleTypeMismatch ex.eiName "decoded inputs were not a record")
+
+-- | Lookup + decode a named example.
+resolveNamedExampleInputs ::
+  TypeEnv -> Frontmatter -> Text -> Either CheckError [(Ident, Value)]
+resolveNamedExampleInputs env fm name = do
+  ex <- lookupNamedExample fm name
+  decodeExampleInputs env fm ex
+
+-- | Example fields as base; CLI @--input@ entries override by key.
+mergeExampleWithCliInputs ::
+  [(Ident, Value)] -> [(Ident, Value)] -> [(Ident, Value)]
+mergeExampleWithCliInputs exampleInputs cliInputs =
+  Map.toList (Map.fromList exampleInputs <> Map.fromList cliInputs)
 
 effectiveEffects :: ProjectConfig -> Frontmatter -> Set Effect
 effectiveEffects cfg fm =

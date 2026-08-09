@@ -32,7 +32,7 @@ From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate.
       too often)
 - [ ] **M-16** — Multi-process run-store locking (when parallel lab processes
       share a run dir)
-- [ ] **Remaining Lows** — L-4, L-9–10, L-12, L-17–18, L-20–21, L-23,
+- [ ] **Remaining Lows** — L-4, L-9–10, L-12, L-17, L-20–21, L-23,
       L-25 (fsync, CLI, ignore/glob, …)
 
 ## Low priority
@@ -48,7 +48,6 @@ From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate.
 - [ ] Alternate `LlmProvider` (OpenAI/Anthropic SDK, etc.)
 - [ ] In-language `lib/` modules per [stdlib.md](stdlib.md)
 - [ ] `hwfl init` / shell completions
-- [ ] Typed validation of example values vs `TypeExpr`; CLI `--example`
 
 ## Future / nice-to-have (coding-agent Tier B)
 
@@ -67,7 +66,8 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 ## Done
 
 Context L1+L2 (heuristic), bug-fix High + Medium (except deferred
-M-3 / M-16 / M-18), and selected Lows archived in
+M-3 / M-16 / M-18), selected Lows through L-15 + L-18, and typed
+`--example` archived in
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 Earlier milestones in
 [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md).

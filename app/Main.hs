@@ -134,7 +134,7 @@ usage = do
     "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
-    "  run options: --workspace <dir> --input k=v --llm-provider mock|simple --no-check --step -v|--verbose --debug --cost --dump --json --interactive"
+    "  run options: --workspace <dir> --input k=v --example <name> --llm-provider mock|simple --no-check --step -v|--verbose --debug --cost --dump --json --interactive"
   hPutStrLn stderr "  check options: --json"
   hPutStrLn stderr "  use -- before dash-prefixed paths (e.g. hwfl check -- -odd.md)"
   exitWith (ExitFailure 2)
@@ -221,6 +221,7 @@ cmdRun rest = case parseRunFlags rest of
         req =
           (defaultDriverRunRequest flags.rfModule ws provider)
             { drrInputs = inputs,
+              drrExample = T.pack <$> flags.rfExample,
               drrSkipCheck = flags.rfNoCheck,
               drrModelCatalog = flags.rfCatalog,
               drrMode = if flags.rfStep then StepOnce else StepRun,

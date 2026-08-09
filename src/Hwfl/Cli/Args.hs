@@ -55,6 +55,7 @@ valueTakingFlags :: [String]
 valueTakingFlags =
   [ "--workspace",
     "--input",
+    "--example",
     "--llm-provider",
     "--model-catalog",
     "--filter",
@@ -67,6 +68,8 @@ data RunFlags = RunFlags
   { rfModule :: FilePath,
     rfWorkspace :: Maybe FilePath,
     rfInputs :: [String],
+    -- | Named frontmatter @examples@ entry (CLI @--example@).
+    rfExample :: Maybe String,
     rfProvider :: String,
     rfNoCheck :: Bool,
     rfCatalog :: FilePath,
@@ -112,6 +115,7 @@ parseRunFlags args = do
         { rfModule = "",
           rfWorkspace = Nothing,
           rfInputs = [],
+          rfExample = Nothing,
           rfProvider = "simple",
           rfNoCheck = False,
           rfCatalog = "model-catalog.json",
@@ -153,6 +157,9 @@ runFlag x xs f cont = case x of
   "--input" -> Just $ case xs of
     (kv : rest) -> cont rest f {rfInputs = f.rfInputs ++ [kv]} False
     [] -> Left "--input needs k=v"
+  "--example" -> Just $ case xs of
+    (name : rest) -> cont rest f {rfExample = Just name} False
+    [] -> Left "--example needs a name"
   "--llm-provider" -> Just $ case xs of
     (p : rest) -> cont rest f {rfProvider = p} False
     [] -> Left "--llm-provider needs a name"

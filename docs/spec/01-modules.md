@@ -97,14 +97,17 @@ docs). Omit, `null`, or `[]` means none. Each item:
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `name` | no | Non-empty string label for UI / `--example` later |
+| `name` | no | Non-empty string label for UI / `hwfl run --example <name>` |
 | `inputs` | yes | YAML mapping → JSON object; keys must match frontmatter `inputs` |
 
 At `hwfl check`, when `examples` is non-empty, each entry’s `inputs` keys
 must match frontmatter `inputs` exactly (missing or unknown keys are
-errors). Values are not type-checked against `TypeExpr` yet. Keep samples
-small and free of secrets. Do **not** put example JSON in a prose `##`
-section (those are `@section` prompt bindings).
+errors), and values are validated against those `TypeExpr`s (via JSON
+Schema). Keep samples small and free of secrets. Do **not** put example
+JSON in a prose `##` section (those are `@section` prompt bindings).
+
+`hwfl run --example <name>` loads the named entry as run inputs (CLI
+`--input k=v` overrides individual keys).
 
 Example:
 

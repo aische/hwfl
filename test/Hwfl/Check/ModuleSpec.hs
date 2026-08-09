@@ -294,6 +294,38 @@ spec = describe "type checker" $ do
                   [Ident "other"]
               )
 
+    it "rejects examples whose values do not match input types" $ do
+      let src =
+            T.unlines
+              [ "---",
+                "name: workflows/typed",
+                "inputs:",
+                "  n: Int",
+                "outputs:",
+                "  n: Int",
+                "effects: []",
+                "examples:",
+                "  - name: bad",
+                "    inputs:",
+                "      n: not-an-int",
+                "---",
+                "",
+                "## body",
+                "",
+                "```hwfl",
+                "fun main(inputs): { n: Int } =",
+                "  { n = inputs.n }",
+                "```"
+              ]
+      case loadModuleText "typed.md" src of
+        Left diags -> expectationFailure (show diags)
+        Right loaded ->
+          checkLoadedModule loaded
+            `shouldSatisfy` ( \case
+                                Left (ExampleTypeMismatch (Just "bad") _) -> True
+                                _ -> False
+                            )
+
     it "rejects duplicate example names" $ do
       let src =
             T.unlines

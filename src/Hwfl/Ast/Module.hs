@@ -16,7 +16,8 @@ import Hwfl.Ast.Skill (SkillMeta)
 import Hwfl.Ast.Type (Effect, TypeExpr)
 
 -- | Authoring / tooling sample run inputs (frontmatter @examples@).
--- Not a runtime binding; values are JSON-shaped (untyped vs TypeExpr for now).
+-- Not a runtime binding; values are JSON-shaped and checked against
+-- frontmatter @inputs@ types at @hwfl check@ / @--example@ decode.
 data ExampleInputs = ExampleInputs
   { eiName :: Maybe Text,
     eiInputs :: Object

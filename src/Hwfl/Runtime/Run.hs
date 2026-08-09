@@ -43,7 +43,13 @@ import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
 import Hwfl.Check.Env (TypeEnv, resolveType)
 import Hwfl.Check.Error (CheckError, renderLocatedCheckError)
 import Hwfl.Check.Infer (inferModuleEnv)
-import Hwfl.Check.Module (checkLoadedModule, elaborateMainIO)
+import Hwfl.Check.Module
+  ( CheckResult (..),
+    checkLoadedModule,
+    elaborateMainIO,
+    mergeExampleWithCliInputs,
+    resolveNamedExampleInputs,
+  )
 import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Check.Project
   ( CheckProjectResult (..),
@@ -173,6 +179,8 @@ data RunTargetRequest = RunTargetRequest
   { rtrTarget :: FilePath,
     rtrWorkspace :: FilePath,
     rtrInputs :: [(Ident, Value)],
+    -- | Named frontmatter @examples@ entry (CLI @--example@).
+    rtrExample :: Maybe Text,
     rtrProvider :: LlmProvider,
     rtrSkipCheck :: Bool,
     rtrModelCatalog :: FilePath,
@@ -188,6 +196,7 @@ defaultRunTargetRequest target workspace provider =
     { rtrTarget = target,
       rtrWorkspace = workspace,
       rtrInputs = [],
+      rtrExample = Nothing,
       rtrProvider = provider,
       rtrSkipCheck = False,
       rtrModelCatalog = "model-catalog.json",
@@ -235,17 +244,23 @@ runTargetProject req = do
           case Map.lookup entry lp.lpModules of
             Nothing ->
               pure (Left (RtProject (PceEntryNotFound (qnameToText entry))))
-            Just loaded -> do
-              let opts =
-                    mkTargetRunOptions
-                      req
-                      entryPath
-                      (Just (projectHashForModules lp.lpModules))
-                      lp.lpConfig.pcExec
-                      catalog
-                      skillMods
-                      entryMods
-              Right <$> runLoadedModule opts loaded
+            Just loaded ->
+              case exampleTypeEnv loaded of
+                Left err -> pure (Left (RtModule entryPath err))
+                Right env ->
+                  case resolveRunInputs req entryPath loaded env of
+                    Left e -> pure (Left e)
+                    Right inputs -> do
+                      let opts =
+                            mkTargetRunOptions
+                              req {rtrInputs = inputs}
+                              entryPath
+                              (Just (projectHashForModules lp.lpModules))
+                              lp.lpConfig.pcExec
+                              catalog
+                              skillMods
+                              entryMods
+                      Right <$> runLoadedModule opts loaded
 
 resolveTargetCatalog ::
   Bool ->
@@ -291,14 +306,22 @@ runTargetModule req = do
           if not req.rtrSkipCheck
             then case checkLoadedModule loaded of
               Left err -> pure (Left (RtModule req.rtrTarget err))
-              Right _ -> runMod loaded
-            else runMod loaded
+              Right checked ->
+                case resolveRunInputs req req.rtrTarget loaded checked.crEnv of
+                  Left e -> pure (Left e)
+                  Right inputs -> runMod inputs loaded
+            else case exampleTypeEnv loaded of
+              Left err -> pure (Left (RtModule req.rtrTarget err))
+              Right env ->
+                case resolveRunInputs req req.rtrTarget loaded env of
+                  Left e -> pure (Left e)
+                  Right inputs -> runMod inputs loaded
   where
-    runMod loaded = do
+    runMod inputs loaded = do
       let (catalog, skillMods) = emptySkillRuntime
           opts =
             mkTargetRunOptions
-              req
+              req {rtrInputs = inputs}
               req.rtrTarget
               Nothing
               Nothing
@@ -306,6 +329,25 @@ runTargetModule req = do
               skillMods
               Map.empty
       Right <$> runLoadedModule opts loaded
+
+-- | Apply optional @--example@ (base) then CLI @--input@ overrides.
+resolveRunInputs ::
+  RunTargetRequest ->
+  FilePath ->
+  LoadedModule ->
+  TypeEnv ->
+  Either RunTargetError [(Ident, Value)]
+resolveRunInputs req path loaded env = case req.rtrExample of
+  Nothing -> Right req.rtrInputs
+  Just name ->
+    case resolveNamedExampleInputs env (lmFrontmatter loaded) name of
+      Left err -> Left (RtModule path err)
+      Right base -> Right (mergeExampleWithCliInputs base req.rtrInputs)
+
+exampleTypeEnv :: LoadedModule -> Either CheckError TypeEnv
+exampleTypeEnv loaded = do
+  body <- elaborateMainIO (lmFrontmatter loaded) (lmBody loaded)
+  inferModuleEnv body
 
 mkTargetRunOptions ::
   RunTargetRequest ->
