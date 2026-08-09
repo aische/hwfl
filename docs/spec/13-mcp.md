@@ -1,8 +1,8 @@
 # 13 — MCP client
 
 Normative design for **consuming** external MCP servers from hwfl
-workflows and agents. Implementation status: **planned** (Tier A agent
-substrate).
+workflows and agents. Implementation status: **shipped** (stdio client;
+dogfood: `examples/story-writer`, `examples/real-story-writer`).
 
 **Out of scope for this doc / this priority:** exposing hwfl itself as an
 MCP server (CLI/run-store façade for Cursor et al.). That remains a
@@ -168,7 +168,9 @@ pretending the TypeScript server exports hwfl types.
 
 - `startToolCall` recognizes MCP callees: pass JSON args (after bind
   merge), `tools/call`, map result to tool content string, `completeToolCall`.
-- Do not open a nested machine for MCP tools (unlike `tool(fs.read)`).
+- MCP tool callees reuse the same one-shot host-op apply path as
+  `tool(fs.read)` (span + persist checkpoint); there is no separate
+  CEK evaluation loop for the tool body.
 - Spans: keep `tool:<name>`; attrs may include `mcp.server`.
 - Synthetic agent tools (`submit`, `get_history`, `pin`, …) unchanged.
 
@@ -183,14 +185,14 @@ pretending the TypeScript server exports hwfl types.
 
 ## 8. Acceptance (v1)
 
-1. Fake stdio MCP server in tests: list + call round-trip.
-2. `mcp.call` from a workflow with and without `schema(T)`.
-3. `llm.agent` with `mcp.tools` — mock provider issues a tool call; result
+1. [x] Fake stdio MCP server in tests: list + call round-trip.
+2. [x] `mcp.call` from a workflow with and without `schema(T)`.
+3. [x] `llm.agent` with `mcp.tools` — mock provider issues a tool call; result
    appears in transcript.
 4. Resume after snapshot with MCP tools still advertised; reconnect works
    or fails closed without corrupting the machine.
-5. Dogfood path documented: external KB / web-search stdio server via
-   `project.json` (example may land with implementation).
+5. [x] Dogfood path documented: external kb-mcp via `project.json`
+   (`examples/story-writer`, `examples/real-story-writer`).
 
 ## 9. Deferred
 

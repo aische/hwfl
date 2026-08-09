@@ -254,7 +254,7 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | `examples/evolve-agent` | Lab: evolve coding-agent genomes on a fixed task |
 | `examples/semantic-check` | Multi-layer review workflow |
 | `examples/story-writer` | MCP fixture: planted continuity clash / snapshot |
-| `examples/real-story-writer` | Product demo: premise → bible → chapters + KB |
+| `examples/real-story-writer` | Product demo: bible → chapters + layered KB repair |
 
 The coding session (`workflows/coding`) lists `skill.discover` /
 `skill.load` and loads stack instruction skills (python / react /

@@ -62,7 +62,7 @@ multi-tenant runtime, package registry, embedding JS/Python/Lua VMs.
 | ---------------------------- | ---------------------------------------------------- |
 | `00`–`10`, `11-grammar`      | Yes for v0 intent                                    |
 | `12-example-suite`           | Design oracle; syntax may evolve but contracts stick |
-| `13-mcp`                     | MCP **client** design (stdio); implementation planned |
+| `13-mcp`                     | MCP **client** (stdio) — shipped; dogfood examples    |
 | `idea.md`, `architecture.md` | Guiding; defer to numbered specs on conflict         |
 | `skills-plan.md`             | Design + acceptance for skills (A–C shipped; phase D optional) |
 | `semantic-check-plan.md`     | Research backlog for semantic-check (S1–S3 + S5 shipped; S4/S6 later) |

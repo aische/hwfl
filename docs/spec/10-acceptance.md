@@ -97,7 +97,8 @@ default substrate for all new agent work vs hwfi:
 - **Shipped post-M9:** skills progressive disclosure A–C
   ([skills-plan.md](../skills-plan.md)); optional phase D extraction writer;
   streaming LLM spans (07 §9); agent context L1+L2 heuristic
-  ([language-reference.md](../language-reference.md))
+  ([language-reference.md](../language-reference.md)); MCP stdio client
+  ([13-mcp.md](13-mcp.md)) + story-writer / real-story-writer dogfood
 ## 4. Explicit non-acceptance
 
 - Shipping a second step-DSL

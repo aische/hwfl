@@ -210,8 +210,9 @@ claim extract + dry_run/regen/commit. Requires built `KB_MCP_ROOT`.
 
 **Shipped:** `examples/real-story-writer` — product-demo pipeline on the
 same kb-mcp spawn pattern. Smoke (no LLM): multi-chapter deltas + planted
-clash + growing snapshots. Live: bible → outlines → per-chapter
-write/extract/dry_run/regen/commit. Does not replace E24 fixture.
+clash + growing snapshots. Live: bible → outlines → per-chapter layered
+repair (extract → chapter rewrite → outline regen → `kb_gap`) + pass-2;
+`strict_kb` gates `ok` on full canon commit. Does not replace E24 fixture.
 
 
 ---

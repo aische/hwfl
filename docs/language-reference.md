@@ -211,17 +211,19 @@ instruction context or expands tools; outside, instruction returns `content`.
 List both ops in `tools = […]` when needed — no auto-injection. Budgets:
 optional `project.json` `skills` stanza.
 
-### MCP (planned)
+### MCP
 
 | Op | Effects | Signature |
 |----|---------|-----------|
 | `mcp.call` | Exec | `{ server, name, arguments: Json, schema? } -> Json` (→ `T` when `schema = schema(T)`) |
 | `mcp.tools` | Exec | `{ server, names?, bind? } -> List<ToolSpec>` |
 
-Stdio MCP **client**. Configure servers under `project.json` `mcp.servers`.
-Use `mcp.call` for deterministic tool RPCs; use `mcp.tools` to build an
-agent toolbox (optional `names` filter, optional `bind` to inject hidden
-args such as `session_id`). See [spec/13-mcp.md](spec/13-mcp.md).
+Stdio MCP **client** (shipped). Configure servers under `project.json`
+`mcp.servers`. Use `mcp.call` for deterministic tool RPCs; use `mcp.tools`
+to build an agent toolbox (optional `names` filter, optional `bind` to
+inject hidden args such as `session_id`). Dogfood:
+`examples/story-writer`, `examples/real-story-writer`. See
+[spec/13-mcp.md](spec/13-mcp.md).
 
 ## Control sugar
 

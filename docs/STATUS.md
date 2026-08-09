@@ -1,5 +1,5 @@
 # Status
-Last updated: 2026-08-09
+Last updated: 2026-08-10
 
 ## Current focus
 **Agent substrate** — MCP client dogfooded; product-demo story pipeline
