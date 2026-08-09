@@ -13,12 +13,15 @@ Prefer MCP client / workflow modules over growing the host-op set.
       `project.json` `mcp.servers`, `mcp.call` (+ optional `schema(T)`),
       `mcp.tools` (filter + `bind`, schema stripping), agent dispatch,
       per-run lazy connect / teardown. Dogfood:
-      [`examples/story-writer`](../examples/story-writer) against external
-      kb-mcp (`fiction.v1` assert / snapshot). Further servers (e.g. web
-      search) still welcome as examples
+      [`examples/story-writer`](../examples/story-writer) (fixture) +
+      [`examples/real-story-writer`](../examples/real-story-writer)
+      (product demo: bible → outlines → chapters + assert loop) against
+      external kb-mcp (`fiction.v1`). Further servers still welcome
 - [ ] Git (read-heavy host ops or MCP) — status / diff / log
 - [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot
       `exec.run`
+- [ ] Optional: real-story-writer agent tools (`world_*` via `mcp.tools`,
+      bind `project_id`; filter so model cannot commit)
 
 ## Next — coding-agent / observability / research
 

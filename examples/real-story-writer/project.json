@@ -1,0 +1,24 @@
+{
+  "name": "real-story-writer",
+  "version": "0.1.0",
+  "entrypoint": "workflows/main",
+  "env": [],
+  "effects": {
+    "default": ["Human", "Read", "Write", "Net", "Exec"],
+    "deny": []
+  },
+  "mcp": {
+    "servers": {
+      "kb": {
+        "command": "bash",
+        "args": [
+          "-c",
+          "ROOT=\"${KB_MCP_ROOT:-}\"; if [ -z \"$ROOT\" ]; then for c in \"$HOME/code/typescript/2026/kb-mcp\"; do [ -f \"$c/dist/cli.js\" ] && ROOT=\"$c\" && break; done; fi; if [ -z \"$ROOT\" ] || [ ! -f \"$ROOT/dist/cli.js\" ]; then echo 'real-story-writer: set KB_MCP_ROOT to a built kb-mcp checkout' >&2; exit 1; fi; DB=\"${KB_MCP_DB:-.kb/story.sqlite}\"; mkdir -p \"$(dirname \"$DB\")\"; exec node \"$ROOT/dist/cli.js\" serve --db \"$DB\" --profile \"${KB_MCP_PROFILE:-workflow}\""
+        ],
+        "cwd": "workspace",
+        "env": ["PATH", "HOME", "KB_MCP_ROOT", "KB_MCP_DB", "KB_MCP_PROFILE"],
+        "timeout_ms": 120000
+      }
+    }
+  }
+}

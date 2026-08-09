@@ -5,6 +5,10 @@ Dogfoods hwfl’s **MCP client** against the external kb-mcp stdio server
 planted continuity contradiction with `kb_assert_delta(dry_run)`, then
 commit a clean chapter.
 
+For the multi-chapter product-demo pipeline (premise → bible → outlines →
+chapters), see [`examples/real-story-writer`](../real-story-writer). This
+project stays the small MCP regression fixture.
+
 ```text
 ensure project (fiction.v1)
   → commit bible seed (Elara @ Harbor, alive)

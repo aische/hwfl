@@ -206,6 +206,13 @@ with **no-op rejection**, then gen-rotated structural fallbacks. Isolated
 continuity clash dry_run → commit → snapshot. Live mode: chapter write +
 claim extract + dry_run/regen/commit. Requires built `KB_MCP_ROOT`.
 
+## E25 — Real story writer (multi-chapter + KB) **H**
+
+**Shipped:** `examples/real-story-writer` — product-demo pipeline on the
+same kb-mcp spawn pattern. Smoke (no LLM): multi-chapter deltas + planted
+clash + growing snapshots. Live: bible → outlines → per-chapter
+write/extract/dry_run/regen/commit. Does not replace E24 fixture.
+
 
 ---
 
@@ -226,9 +233,10 @@ claim extract + dry_run/regen/commit. Requires built `KB_MCP_ROOT`.
 | E22     | ✓           | ✓   | —        | nested invoke + spans |
 | E23     | ✓           | ✓   | —        | evolve agent genomes  |
 | E24     | ✓           | ✓*  | —        | mcp.call → kb-mcp     |
+| E25     | ✓           | ✓*  | —        | multi-chapter + assert |
 
-\*E24 fixture run needs a built external kb-mcp (`KB_MCP_ROOT`); check is
-local.
+\*E24/E25 fixture/smoke runs need a built external kb-mcp (`KB_MCP_ROOT`);
+check is local.
 
 ## Using the suite
 
