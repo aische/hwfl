@@ -1,0 +1,8 @@
+Write a short chapter (3-5 paragraphs) continuing this story.
+
+Continuity constraints (must obey):
+- Elara (char:elara) is a Person; status=alive at ch1.
+- Elara is located_in Harbor (place:harbor) at ch1.
+- Do not kill Elara or place a dead character in a location.
+
+Tone: quiet fantasy, no preamble, no bullet lists.

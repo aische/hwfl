@@ -12,11 +12,10 @@ Prefer MCP client / workflow modules over growing the host-op set.
 - [x] **MCP client** (stdio) — [spec/13-mcp.md](spec/13-mcp.md) implemented:
       `project.json` `mcp.servers`, `mcp.call` (+ optional `schema(T)`),
       `mcp.tools` (filter + `bind`, schema stripping), agent dispatch,
-      per-run lazy connect / teardown. See 2026-08-09 log for the one
-      deliberate deviation from the spec text (host-op tool calls,
-      including MCP, still run inside a trivial one-step nested machine).
-      Follow-up: dogfood external TS KB MCP + other stdio servers
-      (e.g. web search) in a real example project
+      per-run lazy connect / teardown. Dogfood:
+      [`examples/story-writer`](../examples/story-writer) against external
+      kb-mcp (`fiction.v1` assert / snapshot). Further servers (e.g. web
+      search) still welcome as examples
 - [ ] Git (read-heavy host ops or MCP) — status / diff / log
 - [ ] Persistent terminal sessions (`term.*` or MCP) vs one-shot
       `exec.run`

@@ -253,6 +253,7 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | `examples/compare` | Lab: compare → mutate genomes → next generation |
 | `examples/evolve-agent` | Lab: evolve coding-agent genomes on a fixed task |
 | `examples/semantic-check` | Multi-layer review workflow |
+| `examples/story-writer` | MCP dogfood: kb-mcp continuity assert / snapshot |
 
 The coding session (`workflows/coding`) lists `skill.discover` /
 `skill.load` and loads stack instruction skills (python / react /

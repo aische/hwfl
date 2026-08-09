@@ -199,6 +199,13 @@ with **no-op rejection**, then gen-rotated structural fallbacks. Isolated
 `trials/g{N}/{id}/`. Fixture: `EvolveAgentSpec` (mock; winner = `tight`;
 3 gens → 6 trials; `mut-g0` ≠ `mut-g1`).
 
+## E24 — Story writer + KB MCP dogfood **H**
+
+**Shipped:** `examples/story-writer` — external stdio **kb-mcp** via
+`mcp.call` (`fiction.v1`). Fixture mode (no LLM): seed → planted
+continuity clash dry_run → commit → snapshot. Live mode: chapter write +
+claim extract + dry_run/regen/commit. Requires built `KB_MCP_ROOT`.
+
 
 ---
 
@@ -218,6 +225,10 @@ with **no-op rejection**, then gen-rotated structural fallbacks. Isolated
 | E21     | ✓           | ✓   | mid-tool | agent_object + exec   |
 | E22     | ✓           | ✓   | —        | nested invoke + spans |
 | E23     | ✓           | ✓   | —        | evolve agent genomes  |
+| E24     | ✓           | ✓*  | —        | mcp.call → kb-mcp     |
+
+\*E24 fixture run needs a built external kb-mcp (`KB_MCP_ROOT`); check is
+local.
 
 ## Using the suite
 
