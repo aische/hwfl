@@ -299,6 +299,17 @@ hostOpenAttrs op args = case op of
       [ "op" .= hostOpName op,
         "id" .= stringAttr (Ident "id") args
       ]
+  HostMcpCall ->
+    object
+      [ "op" .= hostOpName op,
+        "server" .= stringAttr (Ident "server") args,
+        "name" .= stringAttr (Ident "name") args
+      ]
+  HostMcpTools ->
+    object
+      [ "op" .= hostOpName op,
+        "server" .= stringAttr (Ident "server") args
+      ]
   HostLlmChat ->
     object
       [ "op" .= hostOpName op,

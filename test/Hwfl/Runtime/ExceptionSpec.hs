@@ -68,7 +68,7 @@ runOpts dir path runId =
       roEntry = path,
       roMode = StepRun,
       roProjectHash = Nothing,
-      roExec = Nothing,
+      roExec = Nothing, roMcp = mempty, roProjectRoot = "",
       roObserver = noopObserver,
       roCost = False,
       roModelCatalog = "model-catalog.json",

@@ -118,6 +118,8 @@ infer' env = \case
     | isMetaInvoke f -> inferMetaInvokeApp env args
     | isMetaReadSpans f -> inferMetaReadSpansApp env args
     | isFsCopy f -> inferFsCopyApp env args
+    | isMcpCall f -> inferMcpCallApp env args
+    | isMcpTools f -> inferMcpToolsApp env args
     | isHumanConfirm f -> inferHumanConfirmApp env args
     | isHumanChoice f -> inferHumanChoiceApp env args
     | isHumanAsk f -> inferHumanAskApp env args
@@ -999,6 +1001,63 @@ inferFsCopyApp env args = case classifyArgs args of
     pure tUnit
   Right (Positional _) ->
     Left (TypeMismatchMsg "fs.copy requires named arguments" (TRecord []) (TRecord []))
+
+-- | @mcp.call({ server, name, arguments, schema? })@ — @schema = schema(T)@
+-- returns @T@ (E14 pattern, spec §13 §4.1); otherwise @Json@.
+isMcpCall :: Expr -> Bool
+isMcpCall = \case
+  EProj (EVar (Ident "mcp")) (Ident "call") -> True
+  _ -> False
+
+inferMcpCallApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferMcpCallApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Named nes) -> do
+    serverE <- maybe (Left (MissingNamedArg (Ident "server"))) pure (lookup (Ident "server") nes)
+    nameE <- maybe (Left (MissingNamedArg (Ident "name"))) pure (lookup (Ident "name") nes)
+    argsE <- maybe (Left (MissingNamedArg (Ident "arguments"))) pure (lookup (Ident "arguments") nes)
+    check env serverE tString
+    check env nameE tString
+    checkJsonish env argsE
+    let known = [Ident "server", Ident "name", Ident "arguments", Ident "schema"]
+    mapM_
+      ( \(n, _) ->
+          unless (n `elem` known) $
+            Left (UnknownField n (TRecord [(Ident "server", tString)]))
+      )
+      nes
+    case schemaArgExpr args of
+      Just (ESchema te) -> resolveType env te
+      _ -> pure tJson
+  Right (Positional xs) -> Left (ArityMismatch 1 (length xs))
+
+-- | @mcp.tools({ server, names?, bind? })@ ⇒ @List<ToolSpec>@ (spec §13 §4.2).
+isMcpTools :: Expr -> Bool
+isMcpTools = \case
+  EProj (EVar (Ident "mcp")) (Ident "tools") -> True
+  _ -> False
+
+inferMcpToolsApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
+inferMcpToolsApp env args = case classifyArgs args of
+  Left err -> Left err
+  Right (Named nes) -> do
+    serverE <- maybe (Left (MissingNamedArg (Ident "server"))) pure (lookup (Ident "server") nes)
+    check env serverE tString
+    case lookup (Ident "names") nes of
+      Nothing -> pure ()
+      Just e -> check env e (TList tString)
+    case lookup (Ident "bind") nes of
+      Nothing -> pure ()
+      Just e -> checkJsonish env e
+    let known = [Ident "server", Ident "names", Ident "bind"]
+    mapM_
+      ( \(n, _) ->
+          unless (n `elem` known) $
+            Left (UnknownField n (TRecord [(Ident "server", tString)]))
+      )
+      nes
+    pure (TList tToolSpec)
+  Right (Positional xs) -> Left (ArityMismatch 1 (length xs))
 
 -- | @human.confirm({ title, detail? })@ or positional record; sugar @confirm@.
 isHumanConfirm :: Expr -> Bool

@@ -16,8 +16,8 @@ module Hwfl.Runtime.Exec
   )
 where
 
-import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, threadDelay)
-import Control.Exception (IOException, SomeException, try)
+import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
+import Control.Exception (IOException, try)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.Map.Strict qualified as Map
@@ -27,14 +27,11 @@ import Data.Text.Encoding (decodeUtf8With, encodeUtf8)
 import Data.Text.Encoding.Error (lenientDecode)
 import Hwfl.Project (ExecPolicy (..))
 import Hwfl.Runtime.Error (RuntimeError (..))
+import Hwfl.Runtime.ProcGroup (groupKillGraceUs, killProcessGroup)
 import Hwfl.Runtime.Workspace (Workspace, workspaceRoot)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.IO (Handle, hSetBinaryMode)
-import System.Posix.Process (getProcessGroupIDOf)
-import System.Posix.Signals (sigKILL, sigTERM, signalProcessGroup)
-import System.Posix.Types (ProcessGroupID)
-import System.Process (ProcessHandle, getPid)
 import System.Process.Typed
   ( ProcessConfig,
     byteStringInput,
@@ -59,10 +56,6 @@ defaultExecTimeoutMs = 120_000
 
 defaultExecMaxOutputBytes :: Int
 defaultExecMaxOutputBytes = 1_048_576
-
--- | Grace window between SIGTERM and SIGKILL of the process group.
-groupKillGraceUs :: Int
-groupKillGraceUs = 100_000
 
 data ExecArgs = ExecArgs
   { eaProgram :: Text,
@@ -217,24 +210,6 @@ readCapped cap h = do
         Right chunk
           | BS.null chunk -> pure ()
           | otherwise -> drain handle
-
--- | SIGTERM the process group, then SIGKILL after a short grace. Best-effort:
--- missing pid / already-reaped groups are ignored.
-killProcessGroup :: ProcessHandle -> IO ()
-killProcessGroup ph = do
-  mpid <- getPid ph
-  case mpid of
-    Nothing -> pure ()
-    Just pid -> do
-      mpgid <-
-        try (getProcessGroupIDOf pid) :: IO (Either IOException ProcessGroupID)
-      case mpgid of
-        Left _ -> pure ()
-        Right pgid -> do
-          _ <- try (signalProcessGroup sigTERM pgid) :: IO (Either SomeException ())
-          threadDelay groupKillGraceUs
-          _ <- try (signalProcessGroup sigKILL pgid) :: IO (Either SomeException ())
-          pure ()
 
 currentEnvFor :: [Text] -> IO [(Text, Text)]
 currentEnvFor names = do

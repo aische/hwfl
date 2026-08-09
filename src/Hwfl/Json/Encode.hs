@@ -197,6 +197,7 @@ valueToAeson = \case
   VEntryMain q -> Right (Aeson.String ("<entry:" <> qnameToText q <> ">"))
   VSchema schema -> Right schema
   VTurn t -> Right (turnToJson t)
+  VMcpTool server name _ -> Right (Aeson.String ("<mcp_tool:" <> server <> "/" <> name <> ">"))
   where
     encodeField (Ident name, value) =
       (Key.fromText name,) <$> valueToAeson value

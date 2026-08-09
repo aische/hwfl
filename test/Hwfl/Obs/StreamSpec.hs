@@ -115,7 +115,7 @@ spec = describe "streaming LLM spans" $ do
                     roEntry = dir </> "e03.md",
                     roMode = StepRun,
                     roProjectHash = Nothing,
-                    roExec = Nothing,
+                    roExec = Nothing, roMcp = mempty, roProjectRoot = "",
                     roObserver = noopObserver,
                     roCost = False,
                     roModelCatalog = "model-catalog.json",

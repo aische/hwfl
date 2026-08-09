@@ -68,6 +68,7 @@ library
         Hwfl.Llm.Provider
         Hwfl.Llm.Simple
         Hwfl.Llm.Types
+        Hwfl.Mcp.Client
         Hwfl.Obs.Redact
         Hwfl.Obs.Show
         Hwfl.Obs.Span
@@ -98,6 +99,8 @@ library
         Hwfl.Runtime.Host
         Hwfl.Runtime.Ignore
         Hwfl.Runtime.Machine
+        Hwfl.Runtime.Mcp
+        Hwfl.Runtime.ProcGroup
         Hwfl.Runtime.Run
         Hwfl.Runtime.Snapshot
         Hwfl.Runtime.Skills
@@ -174,6 +177,7 @@ test-suite hwfl-test
         Hwfl.Eval.PureSpec
         Hwfl.Llm.PricingSpec
         Hwfl.Llm.ProviderSpec
+        Hwfl.Mcp.ClientSpec
         Hwfl.Obs.SpanSpec
         Hwfl.Obs.StreamSpec
         Hwfl.Obs.ObserverSpec
@@ -196,6 +200,7 @@ test-suite hwfl-test
         Hwfl.Runtime.ExceptionSpec
         Hwfl.Runtime.ExecSpec
         Hwfl.Runtime.HostOpsSpec
+        Hwfl.Runtime.McpSpec
         Hwfl.Runtime.MetaInvokeSpec
         Hwfl.Runtime.MetaReadSpec
         Hwfl.Runtime.ObjectSpec

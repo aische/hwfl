@@ -20,6 +20,7 @@ import Data.Aeson (object, (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
+import Data.Bifunctor (first)
 import Data.IORef (IORef, readIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -41,6 +42,7 @@ import Hwfl.Eval.Prelude (applyBuiltin)
 import Hwfl.Eval.Pure (bindParams, matchPat)
 import Hwfl.Eval.Value
 import Hwfl.Exception (describeException, trySync)
+import Hwfl.Json.Encode (jsonToValue, valueToAeson)
 import Hwfl.Limits (maxMachineFrames, maxPureCrunchSteps)
 import Hwfl.Llm.Pricing (providerRoundCloseAttrs)
 import Hwfl.Llm.Provider (safeLlmChat)
@@ -101,6 +103,7 @@ import Hwfl.Runtime.Context
   )
 import Hwfl.Runtime.Error (RuntimeError (..), isCatchable, renderRuntimeError)
 import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), execNeedsConfirm, runHostOp)
+import Hwfl.Runtime.Mcp (mergeMcpBindArgs)
 import Hwfl.Runtime.Machine
 import Hwfl.Runtime.Skills
   ( AgentSkillLoad (..),
@@ -260,7 +263,33 @@ openApply ctx fv argv = case fv of
   -- Same-project entry call (E11): the caller drives a nested BranchMachine.
   VEntryMain q -> Right (CurEntryInvoke q argv)
   VHostOp op -> Right (CurHost op (normalizeHostArgs argv))
+  -- MCP tool callee (spec §13 §6): merge @bind@ into the model's arguments
+  -- and dispatch straight to @mcp.call@ — no bespoke nested-machine path,
+  -- 'startToolCall' already runs any 'CurHost' through one (same as e.g. a
+  -- 'VHostOp' tool callee).
+  VMcpTool server toolName bind -> do
+    argsJson <- first (HostErr . ("mcp tool arguments: " <>)) (namedArgsToJson argv)
+    merged <- first HostErr (mergeMcpBindArgs bind argsJson)
+    argsVal <- first (HostErr . ("mcp tool arguments: " <>)) (jsonToValue merged)
+    Right
+      ( CurHost
+          HostMcpCall
+          [ (Just (Ident "server"), VString server),
+            (Just (Ident "name"), VString toolName),
+            (Just (Ident "arguments"), argsVal)
+          ]
+      )
   _ -> Left (EvalErr (Trap "applied a non-function value"))
+
+-- | Rebuild a JSON object from an MCP tool's coerced named arguments (spec
+-- §13 §6) so 'mergeMcpBindArgs' can operate on it before the @mcp.call@ host
+-- op re-parses it back into a 'Value'.
+namedArgsToJson :: [(Maybe Ident, Value)] -> Either Text Aeson.Value
+namedArgsToJson argv = Aeson.object <$> traverse toField argv
+  where
+    toField = \case
+      (Just n, v) -> (Key.fromText (unIdent n),) <$> valueToAeson v
+      (Nothing, _) -> Left "mcp tool arguments must be named"
 
 -- | Record-domain host operations share the language call ABI: a single
 -- positional record is equivalent to its named fields. Host implementations

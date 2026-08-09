@@ -853,6 +853,13 @@ valueToJson = \case
     object ["tag" .= String "entry_main", "qname" .= qnameToText q]
   V.VSchema schema -> object ["tag" .= String "schema", "v" .= schema]
   V.VTurn t -> object ["tag" .= String "turn", "v" .= turnToJson t]
+  V.VMcpTool server toolName bind ->
+    object
+      [ "tag" .= String "mcp_tool",
+        "server" .= server,
+        "name" .= toolName,
+        "bind" .= bind
+      ]
 
 valueFromJson :: Aeson.Value -> Either String V.Value
 valueFromJson = parseEither parseValue
@@ -886,6 +893,7 @@ parseValue = withObject "Value" $ \o -> do
     "entry_main" -> V.VEntryMain . qnameFromText <$> o .: "qname"
     "schema" -> V.VSchema <$> o .: "v"
     "turn" -> V.VTurn <$> (o .: "v" >>= parseTurn)
+    "mcp_tool" -> V.VMcpTool <$> o .: "server" <*> o .: "name" <*> o .: "bind"
     other -> fail ("unknown value tag: " <> T.unpack other)
 
 parseHostOp :: Text -> Parser HostOpId
@@ -923,6 +931,8 @@ parseHostOp = \case
   "meta.read_snapshot" -> pure HostMetaReadSnapshot
   "skill.discover" -> pure HostSkillDiscover
   "skill.load" -> pure HostSkillLoad
+  "mcp.call" -> pure HostMcpCall
+  "mcp.tools" -> pure HostMcpTools
   other -> fail ("unknown host op: " <> T.unpack other)
 
 qnameFromText :: Text -> QName

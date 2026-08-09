@@ -744,6 +744,10 @@ coerceToolArgs ts json = case ts.tvsCallee of
   VTopFun {} -> namedObjectArgs json
   VClosure {} -> namedObjectArgs json
   VSkillMain {} -> namedObjectArgs json
+  -- MCP tools advertise an arbitrary JSON Schema, not hwfl param types, so
+  -- top-level keys are kept as opaque named values; 'openApply' reassembles
+  -- them into JSON and merges @bind@ before dispatching to @mcp.call@.
+  VMcpTool {} -> namedObjectArgs json
   _ -> Left "unsupported tool callee"
   where
     stringField o k = case KM.lookup (Key.fromText k) o of

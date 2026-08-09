@@ -28,6 +28,7 @@ preludeTypeEnv =
                  (Ident "exec", execType),
                  (Ident "meta", metaType),
                  (Ident "skill", skillType),
+                 (Ident "mcp", mcpType),
                  (Ident "list", listType),
                  (Ident "text", textType),
                  (Ident "md", mdType),
@@ -546,6 +547,36 @@ skillType =
                 (Ident "error", t "String")
               ]
           )
+      )
+    ]
+
+-- | @mcp.call@ / @mcp.tools@ (spec §13). Domains are documentation-only:
+-- Infer special-cases the optional @schema@ (call) / @names@, @bind@ (tools)
+-- fields, same pattern as @fs.copy@ / @meta.read_spans@.
+mcpType :: TypeExpr
+mcpType =
+  TRecord
+    [ ( Ident "call",
+        TEffFun
+          ( TRecord
+              [ (Ident "server", t "String"),
+                (Ident "name", t "String"),
+                (Ident "arguments", t "Json")
+              ]
+          )
+          [EffExec]
+          (t "Json")
+      ),
+      ( Ident "tools",
+        TEffFun
+          ( TRecord
+              [ (Ident "server", t "String"),
+                (Ident "names", TList (t "String")),
+                (Ident "bind", t "Json")
+              ]
+          )
+          [EffExec]
+          (TList (t "ToolSpec"))
       )
     ]
 

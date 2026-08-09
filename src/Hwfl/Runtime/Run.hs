@@ -23,6 +23,7 @@ module Hwfl.Runtime.Run
   )
 where
 
+import Control.Exception (finally)
 import Data.Aeson (object, (.=))
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
@@ -86,6 +87,8 @@ import Hwfl.Parse.Load (loadModule)
 import Hwfl.Project
   ( ExecPolicy (..),
     LoadedProject (..),
+    McpPolicy (..),
+    McpServerConfig,
     ProjectConfig (..),
     isProjectDir,
     loadProject,
@@ -106,6 +109,7 @@ import Hwfl.Runtime.Eval
   )
 import Hwfl.Runtime.Host (HostEnv (..), HostResult (..), hostOpsEnv)
 import Hwfl.Runtime.Machine
+import Hwfl.Runtime.Mcp (McpEnv, closeMcpEnv, newMcpEnv)
 import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..))
 import Hwfl.Runtime.Store
   ( RunStore,
@@ -154,6 +158,10 @@ data RunOptions = RunOptions
     roProjectHash :: Maybe Text,
     -- | Exec policy from @project.json@; 'Nothing' disables @exec.run@.
     roExec :: Maybe ExecPolicy,
+    -- | @mcp.servers@ from @project.json@; empty disables @mcp.call@ / @mcp.tools@.
+    roMcp :: Map Text McpServerConfig,
+    -- | Resolves @mcp.servers.<id>.cwd: "project"@ (spec §13 §3).
+    roProjectRoot :: FilePath,
     -- | Live span / pause observer (CLI @--debug@ installs stderr adapter).
     roObserver :: Observer,
     -- | Prefix host progress lines with running LLM cost (CLI @--cost@).
@@ -257,6 +265,8 @@ runTargetProject req = do
                               entryPath
                               (Just (projectHashForModules lp.lpModules))
                               lp.lpConfig.pcExec
+                              lp.lpConfig.pcMcp
+                              req.rtrTarget
                               catalog
                               skillMods
                               entryMods
@@ -325,6 +335,8 @@ runTargetModule req = do
               req.rtrTarget
               Nothing
               Nothing
+              Nothing
+              req.rtrWorkspace
               catalog
               skillMods
               Map.empty
@@ -354,11 +366,13 @@ mkTargetRunOptions ::
   FilePath ->
   Maybe Text ->
   Maybe ExecPolicy ->
+  Maybe McpPolicy ->
+  FilePath ->
   SkillCatalog ->
   Map QName LoadedModule ->
   Map QName LoadedModule ->
   RunOptions
-mkTargetRunOptions req entry hash execPol catalog skillMods entryMods =
+mkTargetRunOptions req entry hash execPol mcpPol projectRoot catalog skillMods entryMods =
   RunOptions
     { roWorkspace = req.rtrWorkspace,
       roProvider = req.rtrProvider,
@@ -368,6 +382,8 @@ mkTargetRunOptions req entry hash execPol catalog skillMods entryMods =
       roMode = req.rtrMode,
       roProjectHash = hash,
       roExec = execPol,
+      roMcp = maybe Map.empty mpServers mcpPol,
+      roProjectRoot = projectRoot,
       roObserver = req.rtrObserver,
       roCost = req.rtrCost,
       roModelCatalog = req.rtrModelCatalog,
@@ -513,9 +529,7 @@ runLoadedModule opts loaded = do
 
 startRun :: RunOptions -> LoadedModule -> Workspace -> RunMeta -> RunStore -> IO RunOutcome
 startRun opts loaded ws meta store = do
-  let runId = meta.rmRunId
-      started = meta.rmStartedAt
-      hash = meta.rmProjectHash
+  let hash = meta.rmProjectHash
   seqRef <- newIORef (0 :: Int)
   spans <- newSpanStateWith opts.roObserver
   pricingE <- loadModelPricing opts.roModelCatalog
@@ -532,60 +546,82 @@ startRun opts loaded ws meta store = do
       persistTransition store seqRef hash Nothing Nothing MsFailed (Just machine) stack counter
       finalizeOutcome store 0 machine opts.roObserver
     Right pricing -> do
-      let typeEnv = loadTypeEnv loaded
-          (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
-          baseEnv = withRunCtx runId started baseEnv0
-          skillFuns = buildSkillFunTables opts.roSkillModules
-          entryFuns = buildEntryFunTables opts.roEntryModules
-          host =
-            mkHostEnv
-              ws
-              opts.roProvider
-              opts.roExec
-              opts.roSkillCatalog
-              pricing
-              (mkHostLog opts.roCost spans)
-              (metaInvokeHandler ws opts)
-          ctx =
-            RunCtx
-              { rcHost = host,
-                rcSections = sectionMap loaded,
-                rcFuns = funs,
-                rcBaseEnv = baseEnv,
-                rcTypeEnv = typeEnv,
-                rcSchemaDocs = lmSchemaDocs loaded,
-                rcStore = store,
-                rcProjectHash = hash,
-                rcSeq = seqRef,
-                rcSpans = spans,
-                rcSkillFuns = skillFuns,
-                rcSkillModules = opts.roSkillModules,
-                rcEntryModules = entryFuns,
-                rcNestDepth = 0
+      mcpEnv <- newMcpEnv opts.roMcp opts.roProjectRoot (workspaceRoot ws) (mkHostLog opts.roCost spans)
+      startRunWithPricing opts loaded ws meta store pricing spans seqRef mcpEnv
+        `finally` closeMcpEnv mcpEnv
+
+-- | Split out of 'startRun' so 'closeMcpEnv' (spec §13 §5: kill on run
+-- completion) runs even if evaluation throws.
+startRunWithPricing ::
+  RunOptions ->
+  LoadedModule ->
+  Workspace ->
+  RunMeta ->
+  RunStore ->
+  ModelPricing ->
+  SpanState ->
+  IORef Int ->
+  McpEnv ->
+  IO RunOutcome
+startRunWithPricing opts loaded ws meta store pricing spans seqRef mcpEnv = do
+  let runId = meta.rmRunId
+      started = meta.rmStartedAt
+      hash = meta.rmProjectHash
+      typeEnv = loadTypeEnv loaded
+      (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
+      baseEnv = withRunCtx runId started baseEnv0
+      skillFuns = buildSkillFunTables opts.roSkillModules
+      entryFuns = buildEntryFunTables opts.roEntryModules
+      host =
+        mkHostEnv
+          ws
+          opts.roProvider
+          opts.roExec
+          opts.roSkillCatalog
+          pricing
+          mcpEnv
+          (mkHostLog opts.roCost spans)
+          (metaInvokeHandler ws opts)
+      ctx =
+        RunCtx
+          { rcHost = host,
+            rcSections = sectionMap loaded,
+            rcFuns = funs,
+            rcBaseEnv = baseEnv,
+            rcTypeEnv = typeEnv,
+            rcSchemaDocs = lmSchemaDocs loaded,
+            rcStore = store,
+            rcProjectHash = hash,
+            rcSeq = seqRef,
+            rcSpans = spans,
+            rcSkillFuns = skillFuns,
+            rcSkillModules = opts.roSkillModules,
+            rcEntryModules = entryFuns,
+            rcNestDepth = 0
+          }
+      modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
+  hPutStrLn stderr ("hwfl run: run_id=" <> T.unpack runId)
+  moduleSid <- openSpan store spans modName SkModule (object [])
+  case startMain funs baseEnv opts.roInputs of
+    Left err -> do
+      let m0 = initialMachine hash (CurReturn VUnit)
+          m =
+            m0
+              { mStatus = MsFailed,
+                mError = Just err
               }
-          modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
-      hPutStrLn stderr ("hwfl run: run_id=" <> T.unpack runId)
-      moduleSid <- openSpan store spans modName SkModule (object [])
-      case startMain funs baseEnv opts.roInputs of
-        Left err -> do
-          let m0 = initialMachine hash (CurReturn VUnit)
-              m =
-                m0
-                  { mStatus = MsFailed,
-                    mError = Just err
-                  }
-          stack <- getSpanStack spans
-          counter <- readIORef spans.ssCounter
-          persistTransition store seqRef hash Nothing Nothing MsFailed (Just m) stack counter
-          closeSpan store spans moduleSid SsError (object []) Nothing
-          notifyFinished store opts.roObserver "failed" (Just (renderRuntimeError err))
-          pure (OutcomeFailed err store 0)
-        Right current -> do
-          let m0 = initialMachine hash current
-          m1 <- runUntilPause ctx opts.roMode m0
-          seqNo <- readIORef seqRef
-          closeModuleSpan store spans moduleSid m1.mStatus
-          finalizeOutcome store seqNo m1 opts.roObserver
+      stack <- getSpanStack spans
+      counter <- readIORef spans.ssCounter
+      persistTransition store seqRef hash Nothing Nothing MsFailed (Just m) stack counter
+      closeSpan store spans moduleSid SsError (object []) Nothing
+      notifyFinished store opts.roObserver "failed" (Just (renderRuntimeError err))
+      pure (OutcomeFailed err store 0)
+    Right current -> do
+      let m0 = initialMachine hash current
+      m1 <- runUntilPause ctx opts.roMode m0
+      seqNo <- readIORef seqRef
+      closeModuleSpan store spans moduleSid m1.mStatus
+      finalizeOutcome store seqNo m1 opts.roObserver
 
 startMain :: FunTable -> Env -> [(Ident, Value)] -> Either RuntimeError Current
 startMain funs env inputs = case Map.lookup (Ident "main") funs of
@@ -730,10 +766,13 @@ mkCtx ::
   Map QName LoadedModule ->
   Map QName LoadedModule ->
   Maybe ExecPolicy ->
+  Map Text McpServerConfig ->
+  FilePath ->
   FilePath ->
   IO RunCtx
-mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods entryMods execPol modelCatalog = do
+mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods entryMods execPol mcpServers projectRoot modelCatalog = do
   ws <- newWorkspace wsRoot
+  mcpEnv <- newMcpEnv mcpServers projectRoot wsRoot (hPutStrLn stderr . T.unpack)
   let typeEnv = loadTypeEnv loaded
       (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
@@ -747,6 +786,8 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
             roMode = StepRun,
             roProjectHash = Just hash,
             roExec = execPol,
+            roMcp = mcpServers,
+            roProjectRoot = projectRoot,
             roObserver = spans.ssObserver,
             roCost = False,
             roModelCatalog = modelCatalog,
@@ -761,6 +802,7 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
           execPol
           catalog
           pricing
+          mcpEnv
           (hPutStrLn stderr . T.unpack)
           (metaInvokeHandler ws resumeOpts)
   pure
@@ -788,16 +830,18 @@ mkHostEnv ::
   Maybe ExecPolicy ->
   SkillCatalog ->
   ModelPricing ->
+  McpEnv ->
   (Text -> IO ()) ->
   ([(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)) ->
   HostEnv
-mkHostEnv ws provider execPol catalog pricing logFn invoke =
+mkHostEnv ws provider execPol catalog pricing mcpEnv logFn invoke =
   HostEnv
     { heWorkspace = ws,
       heProvider = provider,
       heExec = execPol,
       heSkillCatalog = catalog,
       hePricing = pricing,
+      heMcp = mcpEnv,
       heLog = logFn,
       heLlmOnChunk = Nothing,
       heMetaInvoke = invoke
@@ -976,13 +1020,14 @@ buildEntryFunTables =
                         }
                   else Nothing
 
--- | Load @exec@ policy from workspace @project.json@ when present.
-loadExecPolicy :: FilePath -> IO (Maybe ExecPolicy)
-loadExecPolicy root = do
+-- | Load @exec@ / @mcp@ policy from workspace @project.json@ when present
+-- (lone-module resume fallback).
+loadWorkspacePolicies :: FilePath -> IO (Maybe ExecPolicy, Map Text McpServerConfig)
+loadWorkspacePolicies root = do
   cfgE <- loadProjectConfig root
   pure $ case cfgE of
-    Right cfg -> cfg.pcExec
-    Left _ -> Nothing
+    Right cfg -> (cfg.pcExec, maybe Map.empty mpServers cfg.pcMcp)
+    Left _ -> (Nothing, Map.empty)
 
 -- | Empty skill catalog / modules for single-module runs and tests.
 emptySkillRuntime :: (SkillCatalog, Map QName LoadedModule)
@@ -1042,9 +1087,8 @@ loadExistingFrom store root provider catalogPath observer = do
           Right loaded -> do
             -- Project runs store projectHashForModules; lone modules store
             -- projectHashOf. Resolve the same way on resume/approve.
-            (hash, catalog, skillMods, entryMods, execPol) <-
-              resolveResumeProject meta.rmEntry loaded root
-            if hash /= snap.rsProjectHash
+            rp <- resolveResumeProject meta.rmEntry loaded root
+            if rp.rpHash /= snap.rsProjectHash
               then pure (Left StaleProjectErr)
               else do
                 seqRef <- newIORef snap.rsSeq
@@ -1062,52 +1106,82 @@ loadExistingFrom store root provider catalogPath observer = do
                         root
                         loaded
                         store
-                        hash
+                        rp.rpHash
                         meta.rmRunId
                         meta.rmStartedAt
                         seqRef
                         spans
-                        catalog
-                        skillMods
-                        entryMods
-                        execPol
+                        rp.rpCatalog
+                        rp.rpSkillModules
+                        rp.rpEntryModules
+                        rp.rpExec
+                        rp.rpMcp
+                        rp.rpProjectRoot
                         catalogPath
                     pure (Right (ctx, machine, store, seqRef))
     _ -> pure (Left (ConfigErr "missing meta.json or snapshot.json"))
 
--- | Match the hash / skill tables / exec policy used at start for project vs
--- lone-module runs. Exec must come from the *source* project (entry path), not
--- the workspace — interactive ask/reply would otherwise drop @exec.allow@.
-resolveResumeProject ::
-  FilePath ->
-  LoadedModule ->
-  FilePath ->
-  IO
-    ( Text,
-      SkillCatalog,
-      Map QName LoadedModule,
-      Map QName LoadedModule,
-      Maybe ExecPolicy
-    )
+-- | Resolved project context for a resumed run (spec §13 §5: reconnect MCP
+-- lazily on resume, same posture as re-checking @exec.allow@).
+data ResumeProject = ResumeProject
+  { rpHash :: Text,
+    rpCatalog :: SkillCatalog,
+    rpSkillModules :: Map QName LoadedModule,
+    rpEntryModules :: Map QName LoadedModule,
+    rpExec :: Maybe ExecPolicy,
+    rpMcp :: Map Text McpServerConfig,
+    -- | Resolves @mcp.servers.<id>.cwd: "project"@ on resume.
+    rpProjectRoot :: FilePath
+  }
+
+-- | Match the hash / skill tables / exec + mcp policy used at start for
+-- project vs lone-module runs. Exec/mcp must come from the *source* project
+-- (entry path), not the workspace — interactive ask/reply would otherwise
+-- drop @exec.allow@ / @mcp.servers@.
+resolveResumeProject :: FilePath -> LoadedModule -> FilePath -> IO ResumeProject
 resolveResumeProject entryPath loaded workspaceRoot = do
   mProjectRoot <- findProjectRoot entryPath
   case mProjectRoot of
     Just projectRoot -> do
       lpE <- loadProject projectRoot
       (catalog, skillMods) <- loadSkillRuntime projectRoot
-      let (hash, entryMods, execPol) = case lpE of
+      let (hash, entryMods, execPol, mcpServers) = case lpE of
             Right lp ->
               ( projectHashForModules lp.lpModules,
                 lp.lpModules,
-                lp.lpConfig.pcExec
+                lp.lpConfig.pcExec,
+                maybe Map.empty mpServers lp.lpConfig.pcMcp
               )
-            Left _ -> (projectHashOf loaded, Map.empty, Nothing)
-      pure (hash, catalog, skillMods, entryMods, execPol)
+            Left _ -> (projectHashOf loaded, Map.empty, Nothing, Map.empty)
+      pure
+        ResumeProject
+          { rpHash = hash,
+            rpCatalog = catalog,
+            rpSkillModules = skillMods,
+            rpEntryModules = entryMods,
+            rpExec = execPol,
+            rpMcp = mcpServers,
+            rpProjectRoot = projectRoot
+          }
     Nothing -> do
       (catalog, skillMods) <- loadSkillRuntime workspaceRoot
       -- Lone module: fall back to workspace project.json if present.
-      execPol <- loadExecPolicy workspaceRoot
-      pure (projectHashOf loaded, catalog, skillMods, Map.empty, execPol)
+      (execPol, mcpServers) <- loadWorkspacePolicies workspaceRoot
+      pure
+        ResumeProject
+          { rpHash = projectHashOf loaded,
+            rpCatalog = catalog,
+            rpSkillModules = skillMods,
+            rpEntryModules = Map.empty,
+            rpExec = execPol,
+            rpMcp = mcpServers,
+            rpProjectRoot = workspaceRoot
+          }
+
+-- | Tear down 'McpEnv' (spec §13 §5) once the driver call that opened it —
+-- and any connections it lazily spawned — is done, success or failure.
+withMcpTeardown :: RunCtx -> IO a -> IO a
+withMcpTeardown ctx act = act `finally` closeMcpEnv ctx.rcHost.heMcp
 
 findProjectRoot :: FilePath -> IO (Maybe FilePath)
 findProjectRoot start = go start (32 :: Int)
@@ -1128,7 +1202,7 @@ stepRun workspace runId provider catalogPath observer = do
   loaded <- loadExisting workspace runId provider catalogPath observer
   case loaded of
     Left e -> failed e
-    Right (ctx, machine0, store, seqRef) ->
+    Right (ctx, machine0, store, seqRef) -> withMcpTeardown ctx $
       case machine0.mStatus of
         MsPaused (PauseAwaitingConfirm _) -> do
           seqNo <- readIORef seqRef
@@ -1157,7 +1231,7 @@ resumeRun workspace runId provider catalogPath observer = do
   case loaded of
     Left e ->
       pure (OutcomeFailed e (runStoreHandle (runRef workspace runId)) 0)
-    Right (ctx, machine0, store, seqRef) ->
+    Right (ctx, machine0, store, seqRef) -> withMcpTeardown ctx $
       case machine0.mStatus of
         MsPaused (PauseAwaitingConfirm _) -> do
           seqNo <- readIORef seqRef
@@ -1192,7 +1266,7 @@ approveRun workspace runId yes provider catalogPath observer = do
   case loaded of
     Left e ->
       pure (OutcomeFailed e (runStoreHandle (runRef root runId)) 0)
-    Right (ctx, machine0, store, seqRef) ->
+    Right (ctx, machine0, store, seqRef) -> withMcpTeardown ctx $
       case approveMachine yes machine0 of
         Left e -> pure (OutcomeFailed e store 0)
         Right machine1 -> do
@@ -1232,7 +1306,7 @@ chooseRun workspace runId selected provider catalogPath observer = do
   case loaded of
     Left e ->
       pure (OutcomeFailed e (runStoreHandle (runRef root runId)) 0)
-    Right (ctx, machine0, store, seqRef) ->
+    Right (ctx, machine0, store, seqRef) -> withMcpTeardown ctx $
       case chooseMachine selected machine0 of
         Left e -> pure (OutcomeFailed e store 0)
         Right machine1 -> do
@@ -1272,7 +1346,7 @@ replyRun workspace runId text provider catalogPath observer = do
   case loaded of
     Left e ->
       pure (OutcomeFailed e (runStoreHandle (runRef root runId)) 0)
-    Right (ctx, machine0, store, seqRef) ->
+    Right (ctx, machine0, store, seqRef) -> withMcpTeardown ctx $
       case replyMachine text machine0 of
         Left e -> pure (OutcomeFailed e store 0)
         Right machine1 -> do
@@ -1313,7 +1387,7 @@ extendAgentRun workspace runId extra provider catalogPath observer = do
   case loaded of
     Left e ->
       pure (OutcomeFailed e (runStoreHandle (runRef root runId)) 0)
-    Right (ctx, machine0, store, seqRef) ->
+    Right (ctx, machine0, store, seqRef) -> withMcpTeardown ctx $
       case extendAgentMachine extra machine0 of
         Left e -> pure (OutcomeFailed e store 0)
         Right machine1 -> do

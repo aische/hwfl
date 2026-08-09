@@ -29,6 +29,7 @@ import Hwfl.Check.Module (CheckResult (..), checkLoadedModuleInContext)
 import Hwfl.Project
   ( ExecPolicy (..),
     LoadedProject (..),
+    McpPolicy (..),
     ProjectConfig (..),
     ProjectIndex (..),
     loadProject,
@@ -157,10 +158,20 @@ validateQname lp (q, m) = do
                 (qnameToText q)
             )
 
+-- | @Exec@ ceiling is satisfied by either @exec.allow@ (spawn allowlisted
+-- programs) or a configured @mcp.servers@ entry (spawn MCP stdio servers) —
+-- both release the same effect (spec §13 §7); per-server existence is a
+-- runtime check on @mcp.call@ / @mcp.tools@, same posture as @exec.run@'s
+-- allowlist not being checked statically either.
 execAllowed :: ProjectConfig -> Bool
-execAllowed cfg = case cfg.pcExec of
-  Nothing -> False
-  Just pol -> not (null pol.execAllow)
+execAllowed cfg = execViaExec || execViaMcp
+  where
+    execViaExec = case cfg.pcExec of
+      Nothing -> False
+      Just pol -> not (null pol.execAllow)
+    execViaMcp = case cfg.pcMcp of
+      Nothing -> False
+      Just pol -> not (Map.null pol.mpServers)
 
 reachableModules :: LoadedProject -> QName -> Either ProjectCheckError (Set QName)
 reachableModules = buildImportGraph

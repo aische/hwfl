@@ -25,7 +25,7 @@ import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Check.Project (checkProject, renderProjectCheckError)
 import Hwfl.Eval.Value
 import Hwfl.Exception (describeException, trySync)
-import Hwfl.Json.Encode (jsonToValue, jsonToValueWithSchema, schemaForProvider)
+import Hwfl.Json.Encode (jsonToValue, jsonToValueWithSchema, schemaForProvider, valueToAeson)
 import Hwfl.Json.Validate (validateAgainstSchema)
 import Hwfl.Llm.Pricing (ModelPricing, providerCloseAttrs)
 import Hwfl.Llm.Provider (LlmProvider (..), safeLlmChat)
@@ -38,12 +38,24 @@ import Hwfl.Llm.Types
     emptyChatRequest,
     renderProviderError,
   )
+import Hwfl.Mcp.Client
+  ( McpCallOutcome (..),
+    McpToolInfo (..),
+    callMcpTool,
+    listMcpTools,
+  )
 import Hwfl.Obs.Redact (redactJson)
 import Hwfl.Obs.Span (SpanRecord (..), spanKindText, spanStatusText)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Project (ExecPolicy (..))
+import Hwfl.Runtime.Agent (sanitizeToolName)
 import Hwfl.Runtime.Error (RuntimeError (..))
 import Hwfl.Runtime.Exec (ExecArgs (..), ExecOutcome (..), runExec)
+import Hwfl.Runtime.Mcp
+  ( McpEnv,
+    getMcpConnection,
+    stripBindFromSchema,
+  )
 import Hwfl.Runtime.Skills (discoverSkillsResult, loadSkillScripted)
 import Hwfl.Runtime.Snapshot (RunMeta (..), RunSnapshot (..), snapshotToJson, statusText)
 import Hwfl.Runtime.Store
@@ -84,6 +96,8 @@ data HostEnv = HostEnv
     heExec :: Maybe ExecPolicy,
     heSkillCatalog :: SkillCatalog,
     hePricing :: ModelPricing,
+    -- | MCP server config + per-run connection registry (spec §13).
+    heMcp :: McpEnv,
     heLog :: Text -> IO (),
     -- | Progressive LLM chunk hook for the in-flight @llm.chat@ / agent
     -- model call (set by Eval around the open span). Object mode leaves this
@@ -170,6 +184,12 @@ hostOpsEnv =
           [ (Ident "discover", VHostOp HostSkillDiscover),
             (Ident "load", VHostOp HostSkillLoad)
           ]
+      ),
+      ( Ident "mcp",
+        VRecord
+          [ (Ident "call", VHostOp HostMcpCall),
+            (Ident "tools", VHostOp HostMcpTools)
+          ]
       )
     ]
 
@@ -224,6 +244,8 @@ dispatchHostOp env op args = case op of
   HostMetaReadSnapshot -> doMetaReadSnapshot env args
   HostSkillDiscover -> doSkillDiscover env args
   HostSkillLoad -> doSkillLoad env args
+  HostMcpCall -> doMcpCall env args
+  HostMcpTools -> doMcpTools env args
   HostLlmAgent ->
     pure (Left (HostErr "llm.agent must be driven by the machine (agent loop)"))
   HostLlmAgentObject ->
@@ -284,6 +306,103 @@ skillHitCount = \case
     Just (VList xs) -> length xs
     _ -> 0
   _ -> 0
+
+-- | Deterministic @tools/call@ from workflow code (spec §13 §4.1). Tool-level
+-- @isError@ and transport failures both surface as a catchable 'HostErr' —
+-- author code decides whether/how to recover with @try@.
+doMcpCall :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doMcpCall env args = case parseMcpCallArgs args of
+  Left e -> pure (Left e)
+  Right (server, toolName, argsJson, mSchema) -> do
+    connE <- getMcpConnection env.heMcp server
+    case connE of
+      Left e -> pure (Left e)
+      Right conn -> do
+        env.heLog ("mcp.call " <> server <> "/" <> toolName)
+        callE <- callMcpTool conn toolName argsJson
+        pure $ case callE of
+          Left err -> Left (HostErr ("mcp.call " <> server <> "/" <> toolName <> ": " <> err))
+          Right (McpToolFailed msg) ->
+            Left
+              ( HostErr
+                  ("mcp.call " <> server <> "/" <> toolName <> " reported an error: " <> msg)
+              )
+          Right (McpCallOk resultJson) -> do
+            val <- decodeMcpResult mSchema resultJson
+            Right (HostResult val (object ["server" .= server, "tool" .= toolName]))
+
+decodeMcpResult :: Maybe Aeson.Value -> Aeson.Value -> Either RuntimeError Value
+decodeMcpResult mSchema resultJson = case mSchema of
+  Nothing -> first (HostErr . ("mcp.call: " <>)) (jsonToValue resultJson)
+  Just schema -> do
+    first (HostErr . ("mcp.call schema validation failed: " <>)) (validateAgainstSchema schema resultJson)
+    first (HostErr . ("mcp.call: " <>)) (jsonToValueWithSchema schema resultJson)
+
+parseMcpCallArgs ::
+  [(Maybe Ident, Value)] -> Either RuntimeError (Text, Text, Aeson.Value, Maybe Aeson.Value)
+parseMcpCallArgs args = do
+  server <- expectString (Ident "server") args
+  toolName <- expectString (Ident "name") args
+  argsJson <- case lookupNamed (Ident "arguments") args of
+    Just v -> first (HostErr . ("mcp.call arguments: " <>)) (valueToAeson v)
+    Nothing -> Right Aeson.Null
+  let mSchema = case lookupNamed (Ident "schema") args of
+        Just (VSchema s) -> Just s
+        _ -> Nothing
+  pure (server, toolName, argsJson, mSchema)
+
+-- | @tools/list@ → @List<ToolSpec>@ for @llm.agent@ (spec §13 §4.2). @bind@
+-- is merged into every call by the agent dispatch path ('startToolCall' in
+-- "Hwfl.Runtime.Eval") and stripped from the advertised schema here.
+doMcpTools :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
+doMcpTools env args = case parseMcpToolsArgs args of
+  Left e -> pure (Left e)
+  Right (server, mNames, bind) -> do
+    connE <- getMcpConnection env.heMcp server
+    case connE of
+      Left e -> pure (Left e)
+      Right conn -> do
+        env.heLog ("mcp.tools " <> server)
+        listed <- listMcpTools conn
+        pure $ case listed of
+          Left err -> Left (HostErr ("mcp.tools " <> server <> ": " <> err))
+          Right infos ->
+            let filtered = case mNames of
+                  Nothing -> infos
+                  Just names -> filter (\i -> i.mtiName `elem` names) infos
+                specs = map (toolInfoToSpec server bind) filtered
+             in Right
+                  ( HostResult
+                      (VList specs)
+                      (object ["server" .= server, "count" .= length specs])
+                  )
+
+toolInfoToSpec :: Text -> Aeson.Value -> McpToolInfo -> Value
+toolInfoToSpec server bind info =
+  VToolSpec
+    ToolSpecValue
+      { tvsName = sanitizeToolName (server <> "__" <> info.mtiName),
+        tvsDescription = info.mtiDescription,
+        tvsParameters = stripBindFromSchema bind info.mtiInputSchema,
+        tvsCallee = VMcpTool server info.mtiName bind
+      }
+
+parseMcpToolsArgs ::
+  [(Maybe Ident, Value)] -> Either RuntimeError (Text, Maybe [Text], Aeson.Value)
+parseMcpToolsArgs args = do
+  server <- expectString (Ident "server") args
+  names <- case lookupNamed (Ident "names") args of
+    Just (VList xs) -> Just <$> traverse expectStringVal xs
+    Just _ -> Left (HostErr "mcp.tools.names must be a List<String>")
+    Nothing -> Right Nothing
+  bind <- case lookupNamed (Ident "bind") args of
+    Just v -> first (HostErr . ("mcp.tools bind: " <>)) (valueToAeson v)
+    Nothing -> Right Aeson.Null
+  pure (server, names, bind)
+  where
+    expectStringVal = \case
+      VString s -> Right s
+      _ -> Left (HostErr "mcp.tools.names elements must be strings")
 
 doFsRead :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doFsRead env args = case fileRefArg args of

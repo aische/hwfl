@@ -213,7 +213,7 @@ spec = describe "evolve-agent lab" $ do
                   roEntry = modulePath,
                   roMode = StepRun,
                   roProjectHash = Nothing,
-                  roExec = Nothing,
+                  roExec = Nothing, roMcp = mempty, roProjectRoot = "",
                   roObserver = noopObserver,
                   roCost = False,
                   roModelCatalog = "model-catalog.json",

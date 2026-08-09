@@ -13,6 +13,7 @@ import Hwfl.DriverSpec
 import Hwfl.Eval.PureSpec
 import Hwfl.Llm.PricingSpec
 import Hwfl.Llm.ProviderSpec
+import Hwfl.Mcp.ClientSpec
 import Hwfl.Obs.SpanSpec
 import Hwfl.Obs.StreamSpec
 import Hwfl.Obs.ObserverSpec
@@ -35,6 +36,7 @@ import Hwfl.Runtime.ExecSpec
 import Hwfl.Runtime.ConcurrentSpec
 import Hwfl.Runtime.NestedSnapshotSpec
 import Hwfl.Runtime.HostOpsSpec
+import Hwfl.Runtime.McpSpec
 import Hwfl.Runtime.MetaInvokeSpec
 import Hwfl.Runtime.MetaReadSpec
 import Hwfl.Runtime.ObjectSpec
@@ -51,6 +53,8 @@ import Test.Hspec
 
 main :: IO ()
 main = hspec $ do
+  Hwfl.Mcp.ClientSpec.spec
+  Hwfl.Runtime.McpSpec.spec
   Hwfl.Parse.TypeSpec.spec
   Hwfl.Parse.ExprSpec.spec
   Hwfl.Parse.ModuleSpec.spec

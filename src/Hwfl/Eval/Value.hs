@@ -115,6 +115,8 @@ data HostOpId
   | HostMetaReadSnapshot
   | HostSkillDiscover
   | HostSkillLoad
+  | HostMcpCall
+  | HostMcpTools
   deriving stock (Eq, Ord, Show)
 
 -- | Runtime tool advertisement: schema + callable (host op / fun / closure).
@@ -155,6 +157,12 @@ data Value
     VSchema Aeson.Value
   | -- | Agent transcript turn (@TurnUser@ / @TurnAssistant@ / @TurnTool@).
     VTurn Turn
+  | -- | One MCP tool bound via @mcp.tools@: server id, tool name, and the
+    -- @bind@ record captured as JSON for merging into @tools/call@
+    -- arguments. Only meaningful as a 'ToolSpecValue' callee in an agent's
+    -- tool list — the agent loop dispatches it directly (spec §13 §6), it
+    -- is never applied like a 'VHostOp' / 'VClosure'.
+    VMcpTool Text Text Aeson.Value
   deriving stock (Eq, Show)
 
 -- | Text rendering for string interpolation (hwfi §3.2.1 / types §3.1 subset).
@@ -187,6 +195,7 @@ renderValue = \case
   VEntryMain q -> Left ("cannot render entry main as text: " <> T.intercalate "/" (map unIdent (qnParts q)))
   VSchema {} -> Left "cannot render a Schema as text"
   VTurn {} -> Left "cannot render a Turn as text"
+  VMcpTool server name _ -> Left ("cannot render mcp tool as text: " <> server <> "/" <> name)
 
 -- | Stable dotted name for spans / snapshots.
 hostOpName :: HostOpId -> Text
@@ -224,6 +233,8 @@ hostOpName = \case
   HostMetaReadSnapshot -> "meta.read_snapshot"
   HostSkillDiscover -> "skill.discover"
   HostSkillLoad -> "skill.load"
+  HostMcpCall -> "mcp.call"
+  HostMcpTools -> "mcp.tools"
 
 renderJsonish :: Value -> Either Text Text
 renderJsonish = \case

@@ -225,6 +225,8 @@ valueEq a b = case (a, b) of
   (_, VSchema {}) -> Left (Trap "cannot compare schemas")
   (VTurn {}, _) -> Left (Trap "cannot compare turns")
   (_, VTurn {}) -> Left (Trap "cannot compare turns")
+  (VMcpTool {}, _) -> Left (Trap "cannot compare mcp tools")
+  (_, VMcpTool {}) -> Left (Trap "cannot compare mcp tools")
   (VSecret {}, _) -> Left (Trap "cannot compare secrets")
   (_, VSecret {}) -> Left (Trap "cannot compare secrets")
   (VUnit, VUnit) -> Right True

@@ -3,6 +3,9 @@ module Hwfl.Project
   ( ProjectConfig (..),
     ExecPolicy (..),
     EffectsPolicy (..),
+    McpPolicy (..),
+    McpServerConfig (..),
+    McpCwd (..),
     ProjectIndex (..),
     LoadedProject (..),
     loadProjectConfig,
@@ -20,7 +23,7 @@ import Control.Exception (IOException, try)
 import Control.Monad (filterM)
 import Data.Aeson (FromJSON (..), withObject, (.:), (.:?))
 import Data.Aeson qualified as Aeson
-import Data.Aeson.Types ((.!=))
+import Data.Aeson.Types ((.!=), typeMismatch)
 import Data.Foldable (for_)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -62,6 +65,69 @@ data ExecPolicy = ExecPolicy
   }
   deriving stock (Eq, Show)
 
+-- | @mcp.servers.<id>.cwd@ (spec §13 §3): the child's working directory.
+-- @McpCwdAbsolute@ is only honoured under a project policy that allows it
+-- (same posture as an absolute @exec@ cwd would need); v1 treats it as
+-- request-only and resolves it verbatim (no extra sandboxing is claimed —
+-- see spec §13 §3 security note: MCP children are outside the @fs.*@ sandbox).
+data McpCwd
+  = McpCwdWorkspace
+  | McpCwdProject
+  | McpCwdAbsolute Text
+  deriving stock (Eq, Show)
+
+data McpServerConfig = McpServerConfig
+  { mcpCommand :: Text,
+    mcpArgs :: [Text],
+    -- | Allowlisted env var names forwarded to the child (mirrors 'execEnv').
+    mcpEnv :: [Text],
+    mcpCwd :: McpCwd,
+    -- | Per-request wall-clock timeout; falls back to a runtime default.
+    mcpTimeoutMs :: Maybe Int
+  }
+  deriving stock (Eq, Show)
+
+-- | Wraps @mcp.servers@ so project-wide MCP settings (e.g. a future global
+-- default timeout) have a natural home without another top-level key.
+newtype McpPolicy = McpPolicy
+  { mpServers :: Map Text McpServerConfig
+  }
+  deriving stock (Eq, Show)
+
+instance FromJSON McpCwd where
+  parseJSON = \case
+    Aeson.String "workspace" -> pure McpCwdWorkspace
+    Aeson.String "project" -> pure McpCwdProject
+    Aeson.String other -> pure (McpCwdAbsolute other)
+    other -> typeMismatch "mcp server cwd" other
+
+instance FromJSON McpServerConfig where
+  parseJSON = withObject "mcp server" $ \o -> do
+    command <- o .: "command"
+    args <- o .:? "args" .!= ([] :: [Text])
+    env <- o .:? "env" .!= ([] :: [Text])
+    cwd <- o .:? "cwd" .!= McpCwdWorkspace
+    timeout <- o .:? "timeout_ms"
+    for_ timeout validateMcpTimeoutMs
+    pure
+      McpServerConfig
+        { mcpCommand = command,
+          mcpArgs = args,
+          mcpEnv = env,
+          mcpCwd = cwd,
+          mcpTimeoutMs = timeout
+        }
+    where
+      validateMcpTimeoutMs n
+        | n <= 0 = fail "mcp server timeout_ms must be positive"
+        | n > maxBound `div` 1000 = fail "mcp server timeout_ms is too large"
+        | otherwise = pure ()
+
+instance FromJSON McpPolicy where
+  parseJSON = withObject "mcp" $ \o -> do
+    servers <- o .:? "servers" .!= Map.empty
+    pure McpPolicy {mpServers = servers}
+
 data ProjectConfig = ProjectConfig
   { pcRoot :: FilePath,
     pcName :: Text,
@@ -70,6 +136,7 @@ data ProjectConfig = ProjectConfig
     pcEnv :: [Text],
     pcEffects :: EffectsPolicy,
     pcExec :: Maybe ExecPolicy,
+    pcMcp :: Maybe McpPolicy,
     pcSkills :: SkillPolicy
   }
   deriving stock (Eq, Show)
@@ -137,6 +204,7 @@ instance FromJSON ProjectConfig where
     env <- o .:? "env" .!= ([] :: [Text])
     effects <- o .:? "effects" .!= EffectsPolicy [] []
     exec <- o .:? "exec"
+    mcp <- o .:? "mcp"
     skills <- o .:? "skills" .!= defaultSkillPolicy
     pure
       ProjectConfig
@@ -147,6 +215,7 @@ instance FromJSON ProjectConfig where
           pcEnv = env,
           pcEffects = effects,
           pcExec = exec,
+          pcMcp = mcp,
           pcSkills = skills
         }
 
