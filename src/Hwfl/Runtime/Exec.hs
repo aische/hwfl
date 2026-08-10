@@ -16,8 +16,9 @@ module Hwfl.Runtime.Exec
   )
 where
 
-import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
-import Control.Exception (IOException, try)
+import Control.Concurrent (MVar, forkFinally, newEmptyMVar, putMVar, takeMVar)
+import Control.Exception (IOException, SomeException, try)
+import Control.Monad (void)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.Map.Strict qualified as Map
@@ -156,8 +157,10 @@ runCapped ::
 runCapped micros cap cfg = withProcessTerm cfg $ \p -> do
   outVar <- newEmptyMVar
   errVar <- newEmptyMVar
-  _ <- forkIO $ putMVar outVar =<< readCapped cap (getStdout p)
-  _ <- forkIO $ putMVar errVar =<< readCapped cap (getStderr p)
+  -- M-21: always fill the MVar even if the reader throws (e.g. IO error
+  -- after process-group kill closes the pipe mid-read).
+  forkReader outVar (readCapped cap (getStdout p))
+  forkReader errVar (readCapped cap (getStderr p))
   mEc <- timeout micros (waitExitCode p)
   case mEc of
     Just ec -> do
@@ -179,8 +182,15 @@ runCapped micros cap cfg = withProcessTerm cfg $ \p -> do
       err <- takeMVar errVar
       pure (True, ExitFailure 124, out, err)
 
+-- | Spawn a reader that always @putMVar@s — empty bytes if the action throws.
+forkReader :: MVar BS.ByteString -> IO BS.ByteString -> IO ()
+forkReader var action =
+  void $ forkFinally action $ \result ->
+    putMVar var (either (const BS.empty) id (result :: Either SomeException BS.ByteString))
+
 -- | Read at most @cap@ bytes, then drain the remainder so the child is not
 -- blocked on a full pipe. Never retains more than @cap@ bytes.
+-- IO errors (broken pipe after kill, closed handle) yield bytes already read.
 readCapped :: Int -> Handle -> IO BS.ByteString
 readCapped cap h = do
   hSetBinaryMode h True
@@ -189,19 +199,21 @@ readCapped cap h = do
     else go 0 []
   where
     go n acc = do
-      chunk <- BS.hGetSome h 8192
-      if BS.null chunk
-        then pure (BS.concat (reverse acc))
-        else
-          let need = cap - n
-              (keep, _rest) = BS.splitAt need chunk
-              n' = n + BS.length keep
-              acc' = keep : acc
-           in if n' >= cap
-                then do
-                  drain h
-                  pure (BS.concat (reverse acc'))
-                else go n' acc'
+      r <- try (BS.hGetSome h 8192) :: IO (Either IOException BS.ByteString)
+      case r of
+        Left _ -> pure (BS.concat (reverse acc))
+        Right chunk
+          | BS.null chunk -> pure (BS.concat (reverse acc))
+          | otherwise ->
+              let need = cap - n
+                  (keep, _rest) = BS.splitAt need chunk
+                  n' = n + BS.length keep
+                  acc' = keep : acc
+               in if n' >= cap
+                    then do
+                      drain h
+                      pure (BS.concat (reverse acc'))
+                    else go n' acc'
 
     drain handle = do
       r <- try (BS.hGetSome handle 8192) :: IO (Either IOException BS.ByteString)

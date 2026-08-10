@@ -10,7 +10,7 @@
   `test/fixtures/mcp/echo_server.py`. `.env` present but gitignored and
   untracked — no keys committed.
 - **Status:** All Highs fixed or retracted (H-1; **H-8** fixed 2026-08-10).
-  Medium open: **M-3**, **M-16**, **M-18**, **M-21**. **M-20** fixed
+  Medium open: **M-3**, **M-16**, **M-18**. **M-20** / **M-21** fixed
   2026-08-10. Remaining Lows are hygiene — see table and
   [TASKS.md](TASKS.md).
   This report stays the durable source of truth for findings.
@@ -480,10 +480,10 @@ cannot make a non-idempotent tool safe).
   `getMcpConnection` reconnects lazily. Regression:
   timeout → catch → immediate fast call succeeds.
 
-### M-21 — `exec.run` stdout/stderr reader threads can deadlock the parent
+### M-21 — ~~`exec.run` stdout/stderr reader threads can deadlock the parent~~ **Fixed**
 
-- **Location:** `src/Hwfl/Runtime/Exec.hs` (`runCapped`)
-- **Verification:** `[Reported]` — code read (2026-08-10); not hang-reproduced
+- **Location:** `src/Hwfl/Runtime/Exec.hs` (`runCapped`, `readCapped`)
+- **Verification:** `[Reported]` → **Fixed** (2026-08-10); regression in `ExecSpec`
 
 ```haskell
 _ <- forkIO $ putMVar outVar =<< readCapped cap (getStdout p)
@@ -493,18 +493,19 @@ out <- takeMVar outVar
 err <- takeMVar errVar
 ```
 
-`readCapped`'s main loop does not catch `IOException` from `hGetSome`.
-If a reader thread dies before `putMVar` (broken pipe after
-`killProcessGroup`, unexpected IO error), the parent blocks forever on
-`takeMVar`. Drain path after the cap *does* catch IO errors; the primary
-read loop does not. Timeout path is the most likely trigger (group kill
+`readCapped`'s main loop did not catch `IOException` from `hGetSome`.
+If a reader thread died before `putMVar` (broken pipe after
+`killProcessGroup`, unexpected IO error), the parent blocked forever on
+`takeMVar`. Drain path after the cap *did* catch IO errors; the primary
+read loop did not. Timeout path was the most likely trigger (group kill
 closes pipes while readers run).
 
 - **Impact:** Rare hard hang of the hwfl process on `exec.run` timeout /
   spawn teardown — requires kill -9; run snapshot may be mid-transition.
-- **Suggested fix:** `forkFinally` / `try` around each reader and always
-  `putMVar` (empty bytes on failure); or `async` + `waitCatch`.
-
+- **Fix:** `forkFinally` readers always `putMVar` (empty bytes on failure);
+  `readCapped` main loop `try`s `hGetSome` like drain. Regressions:
+  throwing `forkFinally` reader contract, timeout under stdout flood
+  within a wall-clock bound.
 ---
 
 ## Low
@@ -568,17 +569,16 @@ L-13–16, L-19, L-22, L-24). See
 
 **Open after 2026-08-10 MCP follow-up (priority):**
 
-1. **M-21** — `exec.run` reader `forkFinally` (prevent rare hang).
-2. **M-16** — multi-process run-store locking (when parallel lab
+1. **M-16** — multi-process run-store locking (when parallel lab
    processes share a run dir).
-3. **M-3** — skill-body prompt trust (when third-party skills matter).
-4. **M-18** — project-hash / prose-edit resume UX.
-5. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17,
+2. **M-3** — skill-body prompt trust (when third-party skills matter).
+3. **M-18** — project-hash / prose-edit resume UX.
+4. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17,
    L-20–21, L-23, L-25–27 — fsync, CLI, ignore/glob, confirmOf,
    module splits, …).
 
 **Completed same day:** **H-8** MCP command/cwd allowlist; **M-20**
-MCP timeout reconnect.
+MCP timeout reconnect; **M-21** `exec.run` reader `forkFinally`.
 
 Agent context L1+L2 (heuristic) shipped. Active product work: agent
 substrate (MCP dogfood / git / terminals). See [STATUS.md](STATUS.md).

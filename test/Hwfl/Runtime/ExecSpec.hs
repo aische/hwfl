@@ -1,7 +1,11 @@
 -- | M-6: @exec.run@ stream caps, process-group timeout kill, and policy numerics.
+-- M-21: reader threads always fill their MVar (no parent hang on IO error).
 module Hwfl.Runtime.ExecSpec (spec) where
 
-import Control.Exception (IOException, try)
+import Control.Concurrent (forkFinally, newEmptyMVar, putMVar, takeMVar)
+import Control.Exception (IOException, SomeException, throwIO, try)
+import Control.Monad (void)
+import Data.ByteString qualified as BS
 import Data.Text qualified as T
 import Hwfl.Project (ExecPolicy (..), loadProjectConfig)
 import Hwfl.Runtime.Error (RuntimeError (..))
@@ -16,10 +20,11 @@ import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Posix.Signals (nullSignal, signalProcess)
 import System.Posix.Types (CPid (..))
+import System.Timeout (timeout)
 import Test.Hspec
 
 spec :: Spec
-spec = describe "Hwfl.Runtime.Exec (M-6)" $ do
+spec = describe "Hwfl.Runtime.Exec (M-6 / M-21)" $ do
   describe "stream cap" $ do
     it "never returns more than max_output_bytes of stdout" $
       withSystemTempDirectory "hwfl-exec-cap" $ \dir -> do
@@ -147,6 +152,43 @@ spec = describe "Hwfl.Runtime.Exec (M-6)" $ do
         result <- runExec ws policy args
         result
           `shouldBe` Left (ConfigErr "exec.timeout_ms must be positive")
+
+  describe "reader IO errors (M-21)" $ do
+    it "forkFinally reader always putMVars even when the action throws" $ do
+      -- Mirrors runCapped's forkReader: a throwing reader must not leave
+      -- the parent blocked forever on takeMVar.
+      var <- newEmptyMVar
+      void $
+        forkFinally
+          (throwIO (userError "simulated reader failure") >> pure BS.empty)
+          ( \result ->
+              putMVar var (either (const BS.empty) id (result :: Either SomeException BS.ByteString))
+          )
+      mBs <- timeout 2_000_000 (takeMVar var)
+      mBs `shouldBe` Just BS.empty
+
+    it "timeout path returns promptly under stdout flood" $
+      withSystemTempDirectory "hwfl-exec-m21-flood" $ \dir -> do
+        ws <- newWorkspace dir
+        let policy = allowSh (Just 200) (Just 64)
+            args =
+              ExecArgs
+                { eaProgram = "sh",
+                  eaArgs =
+                    [ "-c",
+                      -- Flood then sleep past the wall-clock timeout.
+                      "dd if=/dev/zero bs=1024 count=200 2>/dev/null; sleep 60"
+                    ],
+                  eaStdin = ""
+                }
+        -- Without M-21 a wedged reader can hang past any reasonable bound.
+        mResult <- timeout 5_000_000 (runExec ws policy args)
+        case mResult of
+          Nothing -> expectationFailure "runExec hung past 5s after timeout"
+          Just (Left err) -> expectationFailure (show err)
+          Just (Right out) -> do
+            out.eoTimedOut `shouldBe` True
+            out.eoStdoutBytes `shouldSatisfy` (<= 64)
 
 allowSh :: Maybe Int -> Maybe Int -> ExecPolicy
 allowSh timeoutMs maxOut =
