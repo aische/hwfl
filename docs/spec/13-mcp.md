@@ -41,6 +41,8 @@ runtime to host servers in-process.
 
 ```json
 "mcp": {
+  "allow": ["node", "npx", "bash"],
+  "allow_absolute_cwd": false,
   "servers": {
     "kb": {
       "command": "node",
@@ -58,11 +60,13 @@ runtime to host servers in-process.
 
 | Field | Notes |
 |-------|-------|
+| `mcp.allow` | Basename allowlist (same trust model as `exec.allow`). Every `servers.*.command` must be listed. Fail closed at `project.json` load |
+| `mcp.allow_absolute_cwd` | Default `false`. Absolute `cwd` values are rejected unless this is `true` |
 | `mcp.servers.<id>` | Logical server name used by `mcp.call` / `mcp.tools` |
-| `command` | Executable basename (same trust model as `exec.allow` — require allowlist or a dedicated MCP allow policy) |
+| `command` | Executable basename only (no `/`); must be ∈ `mcp.allow` |
 | `args` | Argv |
 | `env` | Allowlisted env var names forwarded to the child |
-| `cwd` | `"workspace"` (default) \| `"project"` \| absolute path (absolute only if policy allows) |
+| `cwd` | `"workspace"` (default) \| `"project"` \| absolute path (absolute only if `allow_absolute_cwd`) |
 
 Missing `mcp.servers` → MCP host ops fail closed at check or run with a
 clear error. Spawning an MCP server counts as **`Exec`** (and requires

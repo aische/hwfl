@@ -2,7 +2,7 @@
 -- per-run connection registry, config → 'Hwfl.Mcp.Client.McpSpawnSpec'
 -- resolution, and the @bind@ merge / schema-stripping used by @mcp.tools@.
 -- "Hwfl.Mcp.Client" stays protocol-only; this module is the only place that
--- knows about 'Hwfl.Project.McpServerConfig' and 'Hwfl.Runtime.Host.HostEnv'.
+-- knows about 'Hwfl.Project.McpPolicy' and 'Hwfl.Runtime.Host.HostEnv'.
 module Hwfl.Runtime.Mcp
   ( McpEnv,
     newMcpEnv,
@@ -30,7 +30,12 @@ import Hwfl.Mcp.Client
     closeMcpConnection,
     connectMcp,
   )
-import Hwfl.Project (McpCwd (..), McpServerConfig (..))
+import Hwfl.Project
+  ( McpCwd (..),
+    McpPolicy (..),
+    McpServerConfig (..),
+    isBareBasename,
+  )
 import Hwfl.Runtime.Error (RuntimeError (..))
 import System.Environment (getEnvironment)
 
@@ -39,7 +44,7 @@ import System.Environment (getEnvironment)
 -- us "reconnect lazily on resume" (spec §13 §5) for free — a fresh
 -- 'McpEnv' is built per driver invocation (see 'Hwfl.Runtime.Run.mkHostEnv').
 data McpEnv = McpEnv
-  { meServers :: Map Text McpServerConfig,
+  { mePolicy :: McpPolicy,
     meConnections :: MVar (Map Text McpConnection),
     meProjectRoot :: FilePath,
     meWorkspaceRoot :: FilePath,
@@ -50,12 +55,12 @@ data McpEnv = McpEnv
 defaultMcpTimeoutMs :: Int
 defaultMcpTimeoutMs = 30_000
 
-newMcpEnv :: Map Text McpServerConfig -> FilePath -> FilePath -> (Text -> IO ()) -> IO McpEnv
-newMcpEnv servers projectRoot workspaceRoot logFn = do
+newMcpEnv :: McpPolicy -> FilePath -> FilePath -> (Text -> IO ()) -> IO McpEnv
+newMcpEnv policy projectRoot workspaceRoot logFn = do
   conns <- newMVar Map.empty
   pure
     McpEnv
-      { meServers = servers,
+      { mePolicy = policy,
         meConnections = conns,
         meProjectRoot = projectRoot,
         meWorkspaceRoot = workspaceRoot,
@@ -64,7 +69,7 @@ newMcpEnv servers projectRoot workspaceRoot logFn = do
 
 -- | No configured servers; every @mcp.*@ call fails closed (spec §13 §3).
 emptyMcpEnv :: IO McpEnv
-emptyMcpEnv = newMcpEnv Map.empty "" "" (const (pure ()))
+emptyMcpEnv = newMcpEnv mempty "" "" (const (pure ()))
 
 -- | Kill every cached connection (spec §13 §5: "kill process group when the
 -- run completes or the runtime shuts down"). Safe to call more than once.
@@ -82,7 +87,7 @@ getMcpConnection :: McpEnv -> Text -> IO (Either RuntimeError McpConnection)
 getMcpConnection env serverId = modifyMVar env.meConnections $ \conns ->
   case Map.lookup serverId conns of
     Just conn -> pure (conns, Right conn)
-    Nothing -> case Map.lookup serverId env.meServers of
+    Nothing -> case Map.lookup serverId env.mePolicy.mpServers of
       Nothing ->
         pure
           ( conns,
@@ -95,25 +100,72 @@ getMcpConnection env serverId = modifyMVar env.meConnections $ \conns ->
               )
           )
       Just cfg -> do
-        spawnSpec <- resolveSpawnSpec env serverId cfg
-        r <- connectMcp spawnSpec
-        pure $ case r of
-          Left err -> (conns, Left (HostErr err))
-          Right conn -> (Map.insert serverId conn conns, Right conn)
+        spawnE <- resolveSpawnSpec env serverId cfg
+        case spawnE of
+          Left err -> pure (conns, Left err)
+          Right spawnSpec -> do
+            r <- connectMcp spawnSpec
+            pure $ case r of
+              Left err -> (conns, Left (HostErr err))
+              Right conn -> (Map.insert serverId conn conns, Right conn)
 
-resolveSpawnSpec :: McpEnv -> Text -> McpServerConfig -> IO McpSpawnSpec
-resolveSpawnSpec env serverId cfg = do
-  childEnv <- currentEnvFor cfg.mcpEnv
-  pure
-    McpSpawnSpec
-      { mssServerId = serverId,
-        mssCommand = cfg.mcpCommand,
-        mssArgs = cfg.mcpArgs,
-        mssEnv = childEnv,
-        mssCwd = resolveCwd env cfg.mcpCwd,
-        mssTimeoutMs = fromMaybe defaultMcpTimeoutMs cfg.mcpTimeoutMs,
-        mssLog = env.meLog
-      }
+-- | Basename allowlist + cwd policy (H-8 / spec §13 §3). Re-checked at spawn
+-- so programmatic 'RunOptions' cannot bypass @project.json@ load validation.
+resolveSpawnSpec :: McpEnv -> Text -> McpServerConfig -> IO (Either RuntimeError McpSpawnSpec)
+resolveSpawnSpec env serverId cfg
+  | not (isBareBasename cmd) =
+      pure
+        ( Left
+            ( SandboxErr
+                ( "mcp.servers."
+                    <> serverId
+                    <> ".command must be a bare basename, not a path: '"
+                    <> cmd
+                    <> "'"
+                )
+            )
+        )
+  | cmd `notElem` env.mePolicy.mpAllow =
+      pure
+        ( Left
+            ( SandboxErr
+                ( "mcp.servers."
+                    <> serverId
+                    <> ".command '"
+                    <> cmd
+                    <> "' is not allowed by project.json mcp.allow"
+                )
+            )
+        )
+  | absoluteCwdBlocked =
+      pure
+        ( Left
+            ( SandboxErr
+                ( "mcp.servers."
+                    <> serverId
+                    <> ".cwd is absolute, but mcp.allow_absolute_cwd is false"
+                )
+            )
+        )
+  | otherwise = do
+      childEnv <- currentEnvFor cfg.mcpEnv
+      pure
+        ( Right
+            McpSpawnSpec
+              { mssServerId = serverId,
+                mssCommand = cfg.mcpCommand,
+                mssArgs = cfg.mcpArgs,
+                mssEnv = childEnv,
+                mssCwd = resolveCwd env cfg.mcpCwd,
+                mssTimeoutMs = fromMaybe defaultMcpTimeoutMs cfg.mcpTimeoutMs,
+                mssLog = env.meLog
+              }
+        )
+  where
+    cmd = cfg.mcpCommand
+    absoluteCwdBlocked = case cfg.mcpCwd of
+      McpCwdAbsolute _ -> not env.mePolicy.mpAllowAbsoluteCwd
+      _ -> False
 
 resolveCwd :: McpEnv -> McpCwd -> FilePath
 resolveCwd env = \case

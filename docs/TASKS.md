@@ -36,8 +36,6 @@ Prefer MCP client / workflow modules over growing the host-op set.
 
 From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate unless noted.
 
-- [ ] **H-8** — MCP spawn allowlist / cwd policy (spec §3 vs implementation;
-      weaker than `exec.run`). Prefer before broader untrusted-project use
 - [ ] **M-20** — MCP timeout leaves wedged cached connection (reconnect on
       transport error)
 - [ ] **M-21** — `exec.run` reader-thread hang if `readCapped` throws
@@ -88,8 +86,8 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 ## Done
 
 Context L1+L2 (heuristic), bug-fix High + Medium (except deferred
-M-3 / M-16 / M-18), selected Lows through L-15 + L-18, and typed
-`--example` archived in
+M-3 / M-16 / M-18), **H-8** MCP allowlist, selected Lows through L-15 +
+L-18, and typed `--example` archived in
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 Earlier milestones in
 [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md).

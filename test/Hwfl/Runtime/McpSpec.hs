@@ -28,7 +28,7 @@ import Hwfl.Llm.Types
   )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
-import Hwfl.Project (McpCwd (..), McpServerConfig (..))
+import Hwfl.Project (McpCwd (..), McpPolicy (..), McpServerConfig (..), loadProjectConfig)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
@@ -54,6 +54,14 @@ echoServerConfig absScript =
       mcpEnv = ["PATH"],
       mcpCwd = McpCwdWorkspace,
       mcpTimeoutMs = Just 5_000
+    }
+
+echoMcpPolicy :: FilePath -> McpPolicy
+echoMcpPolicy absScript =
+  McpPolicy
+    { mpAllow = ["python3"],
+      mpAllowAbsoluteCwd = False,
+      mpServers = Map.fromList [("echo", echoServerConfig absScript)]
     }
 
 mcpCallSrc :: Text
@@ -155,7 +163,7 @@ mcpAgentSrc =
       "```"
     ]
 
-baseOpts :: FilePath -> Map.Map Text McpServerConfig -> String -> RunOptions
+baseOpts :: FilePath -> McpPolicy -> String -> RunOptions
 baseOpts dir mcp entry =
   RunOptions
     { roWorkspace = dir,
@@ -185,8 +193,7 @@ spec = describe "mcp.call / mcp.tools" $ do
         Left diags -> expectationFailure (show diags)
         Right loaded -> do
           checkLoadedModule loaded `shouldSatisfy` isRightC
-          let opts =
-                baseOpts dir (Map.fromList [("echo", echoServerConfig absScript)]) "mcp-call.md"
+          let opts = baseOpts dir (echoMcpPolicy absScript) "mcp-call.md"
           outcome <- runLoadedModule opts loaded
           case outcome of
             OutcomeCompleted (VRecord fs) _ _ ->
@@ -202,8 +209,7 @@ spec = describe "mcp.call / mcp.tools" $ do
         Left diags -> expectationFailure (show diags)
         Right loaded -> do
           checkLoadedModule loaded `shouldSatisfy` isRightC
-          let opts =
-                baseOpts dir (Map.fromList [("echo", echoServerConfig absScript)]) "mcp-call-schema.md"
+          let opts = baseOpts dir (echoMcpPolicy absScript) "mcp-call-schema.md"
           outcome <- runLoadedModule opts loaded
           case outcome of
             OutcomeCompleted (VRecord fs) _ _ ->
@@ -217,8 +223,23 @@ spec = describe "mcp.call / mcp.tools" $ do
         Left diags -> expectationFailure (show diags)
         Right loaded -> do
           checkLoadedModule loaded `shouldSatisfy` isRightC
-          let opts =
-                baseOpts dir (Map.fromList [("echo", echoServerConfig absScript)]) "mcp-call-unknown.md"
+          let opts = baseOpts dir (echoMcpPolicy absScript) "mcp-call-unknown.md"
+          outcome <- runLoadedModule opts loaded
+          outcome `shouldSatisfy` isFailedC
+
+  it "rejects a command not on mcp.allow at spawn (H-8)" $
+    withSystemTempDirectory "hwfl-mcp-allow" $ \dir -> do
+      absScript <- makeAbsolute fixtureServer
+      case loadModuleText "mcp-call.md" mcpCallSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          let denied =
+                McpPolicy
+                  { mpAllow = ["node"],
+                    mpAllowAbsoluteCwd = False,
+                    mpServers = Map.fromList [("echo", echoServerConfig absScript)]
+                  }
+              opts = baseOpts dir denied "mcp-call.md"
           outcome <- runLoadedModule opts loaded
           outcome `shouldSatisfy` isFailedC
 
@@ -230,7 +251,7 @@ spec = describe "mcp.call / mcp.tools" $ do
         Right loaded -> do
           checkLoadedModule loaded `shouldSatisfy` isRightC
           let opts =
-                (baseOpts dir (Map.fromList [("echo", echoServerConfig absScript)]) "mcp-agent.md")
+                (baseOpts dir (echoMcpPolicy absScript) "mcp-agent.md")
                   { roProvider = mcpAgentMock
                   }
           outcome <- runLoadedModule opts loaded
@@ -238,6 +259,84 @@ spec = describe "mcp.call / mcp.tools" $ do
             OutcomeCompleted (VRecord fs) _ _ ->
               lookup (Ident "text") fs `shouldBe` Just (VString "{\"sum\":15}")
             other -> expectationFailure ("expected completed, got: " <> show other)
+
+  describe "mcp.allow / cwd policy (H-8)" $ do
+    it "rejects a path-shaped command in project.json" $
+      withSystemTempDirectory "hwfl-mcp-path-cmd" $ \dir -> do
+        writeFile
+          (dir </> "project.json")
+          ( mcpProjectJson
+              [ "\"allow\": [\"/bin/bash\"]",
+                "\"servers\": { \"kb\": { \"command\": \"/bin/bash\", \"args\": [] } }"
+              ]
+          )
+        loadProjectConfig dir
+          >>= ( `shouldSatisfy`
+                  \case
+                    Left msg -> "bare basename" `T.isInfixOf` msg
+                    Right _ -> False
+              )
+
+    it "rejects a server command missing from mcp.allow" $
+      withSystemTempDirectory "hwfl-mcp-missing-allow" $ \dir -> do
+        writeFile
+          (dir </> "project.json")
+          ( mcpProjectJson
+              [ "\"allow\": [\"node\"]",
+                "\"servers\": { \"kb\": { \"command\": \"bash\", \"args\": [] } }"
+              ]
+          )
+        loadProjectConfig dir
+          >>= ( `shouldSatisfy`
+                  \case
+                    Left msg -> "mcp.allow" `T.isInfixOf` msg
+                    Right _ -> False
+              )
+
+    it "rejects absolute cwd unless allow_absolute_cwd is true" $
+      withSystemTempDirectory "hwfl-mcp-abs-cwd" $ \dir -> do
+        writeFile
+          (dir </> "project.json")
+          ( mcpProjectJson
+              [ "\"allow\": [\"bash\"]",
+                "\"servers\": { \"kb\": { \"command\": \"bash\", \"cwd\": \"/tmp\", \"args\": [] } }"
+              ]
+          )
+        loadProjectConfig dir
+          >>= ( `shouldSatisfy`
+                  \case
+                    Left msg -> "allow_absolute_cwd" `T.isInfixOf` msg
+                    Right _ -> False
+              )
+
+    it "accepts absolute cwd when allow_absolute_cwd is true" $
+      withSystemTempDirectory "hwfl-mcp-abs-cwd-ok" $ \dir -> do
+        writeFile
+          (dir </> "project.json")
+          ( mcpProjectJson
+              [ "\"allow\": [\"bash\"]",
+                "\"allow_absolute_cwd\": true",
+                "\"servers\": { \"kb\": { \"command\": \"bash\", \"cwd\": \"/tmp\", \"args\": [] } }"
+              ]
+          )
+        loadProjectConfig dir >>= (`shouldSatisfy` isRightC)
+
+mcpProjectJson :: [String] -> String
+mcpProjectJson mcpFields =
+  unlines
+    [ "{",
+      "  \"name\": \"mcp-h8\",",
+      "  \"version\": \"0.1.0\",",
+      "  \"entrypoint\": \"workflows/main\",",
+      "  \"mcp\": {",
+      "    " <> intercalateCsv mcpFields,
+      "  }",
+      "}"
+    ]
+  where
+    intercalateCsv [] = ""
+    intercalateCsv [x] = x
+    intercalateCsv (x : xs) = x <> ",\n    " <> intercalateCsv xs
 
 -- | First round: assert the advertised @echo__add@ schema has @bind@'s @a@
 -- stripped, then call it with only @b@. Second round: read back the tool

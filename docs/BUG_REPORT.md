@@ -9,9 +9,9 @@
   and an executed MCP timeout-reuse probe against
   `test/fixtures/mcp/echo_server.py`. `.env` present but gitignored and
   untracked — no keys committed.
-- **Status:** All original Highs fixed or retracted (H-1). **New High: H-8**
-  (MCP spawn policy). Medium open: **M-3**, **M-16**, **M-18**, **M-20**,
-  **M-21**. Remaining Lows are hygiene — see table and [TASKS.md](TASKS.md).
+- **Status:** All Highs fixed or retracted (H-1; **H-8** fixed 2026-08-10).
+  Medium open: **M-3**, **M-16**, **M-18**, **M-20**, **M-21**. Remaining
+  Lows are hygiene — see table and [TASKS.md](TASKS.md).
   This report stays the durable source of truth for findings.
 - **Repository:** `hwfl` — durable workflow runtime library. Markdown modules (L1) → typed ML kernel: checker + pure evaluator (L2) → CEK machine with snapshot/resume, FS sandbox, `exec.run` allowlist, `llm.*` provider, MCP stdio client, human gates (L3). Run state persists under `workspace/.hwfl/runs/<run-id>/{meta.json, snapshot.json, spans.jsonl, events.jsonl, transitions.jsonl}`.
 
@@ -189,48 +189,32 @@ Related: **explicit run-id reuse merges runs** (`Run.hs:373-375`, `Store.hs:284-
 
 - **Deviation:** reuse of an existing run id is rejected **unconditionally**, with no "explicitly intended" opt-in. Starting a run into a live run directory has no correct semantics — old snapshot / spans survive while meta is replaced and the sequence restarts, which is exactly the corruption above — so continuing an existing run stays the job of resume / step / approve.
 
-### H-8 — MCP spawn trust weaker than `exec.run` and than [spec/13-mcp.md](spec/13-mcp.md) §3
+### H-8 — ~~MCP spawn trust weaker than `exec.run` and than [spec/13-mcp.md](spec/13-mcp.md) §3~~ **Fixed**
 
-- **Location:** `src/Hwfl/Project.hs` (`McpServerConfig` / `FromJSON McpCwd`);
-  `src/Hwfl/Runtime/Mcp.hs` (`resolveSpawnSpec`, `resolveCwd`);
-  `src/Hwfl/Mcp/Client.hs` (`connectMcp` → `proc command args`)
-- **Verification:** `[Verified]` — code + dogfood configs. **Open** (2026-08-10)
+- **Location:** `src/Hwfl/Project.hs` (`McpPolicy` / `validateMcpPolicy`);
+  `src/Hwfl/Runtime/Mcp.hs` (`resolveSpawnSpec`)
+- **Verification:** `[Verified]` — code + dogfood configs. **Fixed** (2026-08-10)
 
 Spec §3 requires MCP `command` to be an executable **basename** with the
-same trust model as `exec.allow` (allowlist or a dedicated MCP allow
-policy), and absolute `cwd` “only if policy allows.” Implementation:
+same trust model as `exec.allow`, and absolute `cwd` “only if policy
+allows.” Implementation now matches:
 
-1. **No command allowlist** — any `mcp.servers.<id>.command` string is
-   spawned on first `mcp.call` / `mcp.tools` (including absolute paths
-   like `/bin/bash`). There is no basename check (contrast
-   `Runtime/Exec.hs` rejecting `/` in `program`).
-2. **Absolute `cwd` is always honoured** — any non-`workspace`/`project`
-   string becomes `McpCwdAbsolute` and is passed verbatim to
-   `setWorkingDir`. Comments in `Project.hs` claim a policy gate that
-   does not exist.
-3. **No human confirm** on first spawn (unlike default `exec.confirm`).
-4. MCP children are **outside** the `fs.*` workspace sandbox (spec
-   acknowledges this; the allowlist is the real boundary — and it is
-   missing).
+1. **`mcp.allow`** — every `mcp.servers.<id>.command` must be a bare
+   basename listed in `mcp.allow` (fail closed at `project.json` load and
+   again at spawn).
+2. **`mcp.allow_absolute_cwd`** — default `false`; absolute `cwd` rejected
+   unless opted in.
+3. Dogfood configs (`examples/story-writer`, `examples/real-story-writer`)
+   set `"allow": ["bash"]`.
 
-Dogfood configs (`examples/story-writer/project.json`,
-`examples/real-story-writer/project.json`) already use `"command":
-"bash"` with a large `-c` script. That is a deliberate operator choice
-today; the bug is that a **third-party / compromised `project.json`**
-gets the same unconstrained spawn surface without ever touching
-`exec.allow`. Presence of *any* `mcp.servers` entry also satisfies the
-project `Exec` effect ceiling (`Check/Project.hs` `execAllowed`), so a
-malicious server block unlocks `EffExec` for the whole project.
+Optional first-spawn confirm (mirroring `exec.confirm`) was not taken —
+operator consent is the allowlist at load time; MCP commands are not
+chosen by workflow code the way `exec.run` programs are.
 
-- **Impact:** Arbitrary process execution as the hwfl user when loading an
-  untrusted project tree — a security breach on plausible shared-project
-  input. Strictly weaker than the verified-solid `exec.run` policy for
-  the same threat model.
-- **Suggested fix:** Mirror `exec`: basename-only `command`; explicit
-  `mcp.allow` (or reuse `exec.allow`); reject absolute `cwd` unless an
-  opt-in policy flag exists; fail closed at `loadProjectConfig`. Update
-  dogfood configs once the allowlist lands (`bash` / `node` / `npx` as
-  needed). Optional: confirm gate on first connect per server id.
+- **Impact (pre-fix):** Arbitrary process execution as the hwfl user when
+  loading an untrusted project tree.
+- **Fix applied:** Dedicated MCP allow policy + basename / cwd gates in
+  `validateMcpPolicy` and `resolveSpawnSpec`.
 
 ---
 
@@ -557,7 +541,8 @@ closes pipes while readers run).
 ## Verified solid (do not re-report)
 
 - **Read-path sandbox** — `resolvePath` (lexical `..`/absolute rejection) + `resolveContainedPath` (canonicalize + root-prefix) correctly block `..`, absolute, and symlink escapes for read/list/remove/stat/read_slice/edit/patch; null bytes surface as caught `IOException` → `HostErr`, never an escape.
-- **`exec.run` policy** — bare-basename-only (no `/`), allowlist gates the binary, `setEnv` replaces the whole environment with only `exec.env` keys (no parent-env leakage), confirm default `True`, stdout/stderr captured via capped pipes (never leaks to terminal), process-group SIGTERM/SIGKILL on timeout with partial capture. Defaults are safe: `allow`/`env` default to `[]`. **Do not assume MCP inherits this** — see **H-8**.
+- **`exec.run` policy** — bare-basename-only (no `/`), allowlist gates the binary, `setEnv` replaces the whole environment with only `exec.env` keys (no parent-env leakage), confirm default `True`, stdout/stderr captured via capped pipes (never leaks to terminal), process-group SIGTERM/SIGKILL on timeout with partial capture. Defaults are safe: `allow`/`env` default to `[]`.
+- **`mcp.*` spawn policy (H-8)** — `mcp.allow` basename allowlist; absolute `cwd` only with `mcp.allow_absolute_cwd`; validated at load and spawn.
 - **MCP teardown on driver exit** — `startRun` / resume-family paths use `finally` + `closeMcpEnv` (process-group kill). Lifecycle is fine; timeout/reconnect policy is **M-20**.
 - **MCP `bind` merge** — `mergeMcpBindArgs` lets bind win over model args; `stripBindFromSchema` removes bound keys from advertised schemas.
 - **Corrupt-snapshot handling** — all parser `fail` sites (`Snapshot.hs:571-574`, `:821`, `:829-832`, …) are contained by `parseEither`; corrupt `snapshot.json`/`meta.json` → clean `ConfigErr "missing meta.json or snapshot.json"`, never a crash or state corruption. Project-hash check refuses stale-project resume.
@@ -580,17 +565,18 @@ L-13–16, L-19, L-22, L-24). See
 
 **Open after 2026-08-10 MCP follow-up (priority):**
 
-1. **H-8** — MCP command/cwd allowlist (match `exec.run` + spec §3).
-2. **M-20** — Invalidate / reconnect MCP connection on timeout or
+1. **M-20** — Invalidate / reconnect MCP connection on timeout or
    transport error; regression for spec §8.4.
-3. **M-21** — `exec.run` reader `forkFinally` (prevent rare hang).
-4. **M-16** — multi-process run-store locking (when parallel lab
+2. **M-21** — `exec.run` reader `forkFinally` (prevent rare hang).
+3. **M-16** — multi-process run-store locking (when parallel lab
    processes share a run dir).
-5. **M-3** — skill-body prompt trust (when third-party skills matter).
-6. **M-18** — project-hash / prose-edit resume UX.
-7. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17,
+4. **M-3** — skill-body prompt trust (when third-party skills matter).
+5. **M-18** — project-hash / prose-edit resume UX.
+6. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17,
    L-20–21, L-23, L-25–27 — fsync, CLI, ignore/glob, confirmOf,
    module splits, …).
+
+**Completed same day:** **H-8** MCP command/cwd allowlist.
 
 Agent context L1+L2 (heuristic) shipped. Active product work: agent
 substrate (MCP dogfood / git / terminals). See [STATUS.md](STATUS.md).
@@ -605,9 +591,9 @@ substrate (MCP dogfood / git / terminals). See [STATUS.md](STATUS.md).
 - **Pass 4 (2026-08-10):** architecture-mapped review of MCP stdio client,
   `Runtime/Mcp` registry, `Exec`/`ProcGroup`, store atomic rename, agent
   human-gate promotion. Executed MCP timeout→reuse probe (r2 timeout,
-  r3 ok after wait). Spec §3 allowlist claims checked against
-  `Project`/`Mcp`/`Client` (absent). Coverage extended to post-audit MCP
-  modules; prior High/Med status reconfirmed for M-3 / M-16 / M-18.
+  r3 ok after wait). Spec §3 allowlist gap filed as H-8 (fixed same day).
+  Coverage extended to post-audit MCP modules; prior High/Med status
+  reconfirmed for M-3 / M-16 / M-18.
 - **Coverage:** all `src/Hwfl/**` modules in initial pass; 2026-08-10
   focused on MCP / Exec / Store / Eval human-gate paths.
   `app/Main.hs`, `hwfl.cabal`, dogfood `project.json` included.

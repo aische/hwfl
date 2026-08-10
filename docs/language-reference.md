@@ -218,12 +218,29 @@ optional `project.json` `skills` stanza.
 | `mcp.call` | Exec | `{ server, name, arguments: Json, schema? } -> Json` (→ `T` when `schema = schema(T)`) |
 | `mcp.tools` | Exec | `{ server, names?, bind? } -> List<ToolSpec>` |
 
-Stdio MCP **client** (shipped). Configure servers under `project.json`
-`mcp.servers`. Use `mcp.call` for deterministic tool RPCs; use `mcp.tools`
-to build an agent toolbox (optional `names` filter, optional `bind` to
-inject hidden args such as `session_id`). Dogfood:
-`examples/story-writer`, `examples/real-story-writer`. See
-[spec/13-mcp.md](spec/13-mcp.md).
+Stdio MCP **client** (shipped). Configure under `project.json` `mcp`:
+
+```json
+"mcp": {
+  "allow": ["bash", "node", "npx"],
+  "allow_absolute_cwd": false,
+  "servers": {
+    "kb": {
+      "command": "bash",
+      "args": ["-c", "…"],
+      "cwd": "workspace",
+      "env": ["PATH", "HOME"]
+    }
+  }
+}
+```
+
+`command` must be a bare basename listed in `mcp.allow` (mirrors
+`exec.allow`). Absolute `cwd` requires `allow_absolute_cwd: true`.
+Use `mcp.call` for deterministic tool RPCs; use `mcp.tools` to build an
+agent toolbox (optional `names` filter, optional `bind` to inject hidden
+args such as `session_id`). Dogfood: `examples/story-writer`,
+`examples/real-story-writer`. See [spec/13-mcp.md](spec/13-mcp.md).
 
 ## Control sugar
 
@@ -249,5 +266,6 @@ supported.
 
 Module `effects:` is a ceiling. `Exec` also requires non-empty
 `project.json` `exec.allow` for `exec.run`; `mcp.*` requires
-`mcp.servers.<id>`. Same-project `qname(inputs)` unions callee
-effects into the caller; it does not require `Meta`.
+`mcp.servers.<id>` plus `mcp.allow` (basename). Same-project
+`qname(inputs)` unions callee effects into the caller; it does not
+require `Meta`.

@@ -88,7 +88,6 @@ import Hwfl.Project
   ( ExecPolicy (..),
     LoadedProject (..),
     McpPolicy (..),
-    McpServerConfig,
     ProjectConfig (..),
     isProjectDir,
     loadProject,
@@ -158,8 +157,9 @@ data RunOptions = RunOptions
     roProjectHash :: Maybe Text,
     -- | Exec policy from @project.json@; 'Nothing' disables @exec.run@.
     roExec :: Maybe ExecPolicy,
-    -- | @mcp.servers@ from @project.json@; empty disables @mcp.call@ / @mcp.tools@.
-    roMcp :: Map Text McpServerConfig,
+    -- | MCP spawn policy from @project.json@; empty @mpServers@ disables
+    -- @mcp.call@ / @mcp.tools@.
+    roMcp :: McpPolicy,
     -- | Resolves @mcp.servers.<id>.cwd: "project"@ (spec §13 §3).
     roProjectRoot :: FilePath,
     -- | Live span / pause observer (CLI @--debug@ installs stderr adapter).
@@ -382,7 +382,7 @@ mkTargetRunOptions req entry hash execPol mcpPol projectRoot catalog skillMods e
       roMode = req.rtrMode,
       roProjectHash = hash,
       roExec = execPol,
-      roMcp = maybe Map.empty mpServers mcpPol,
+      roMcp = fromMaybe mempty mcpPol,
       roProjectRoot = projectRoot,
       roObserver = req.rtrObserver,
       roCost = req.rtrCost,
@@ -766,13 +766,13 @@ mkCtx ::
   Map QName LoadedModule ->
   Map QName LoadedModule ->
   Maybe ExecPolicy ->
-  Map Text McpServerConfig ->
+  McpPolicy ->
   FilePath ->
   FilePath ->
   IO RunCtx
-mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods entryMods execPol mcpServers projectRoot modelCatalog = do
+mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods entryMods execPol mcpPol projectRoot modelCatalog = do
   ws <- newWorkspace wsRoot
-  mcpEnv <- newMcpEnv mcpServers projectRoot wsRoot (hPutStrLn stderr . T.unpack)
+  mcpEnv <- newMcpEnv mcpPol projectRoot wsRoot (hPutStrLn stderr . T.unpack)
   let typeEnv = loadTypeEnv loaded
       (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
@@ -786,7 +786,7 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
             roMode = StepRun,
             roProjectHash = Just hash,
             roExec = execPol,
-            roMcp = mcpServers,
+            roMcp = mcpPol,
             roProjectRoot = projectRoot,
             roObserver = spans.ssObserver,
             roCost = False,
@@ -1022,12 +1022,12 @@ buildEntryFunTables =
 
 -- | Load @exec@ / @mcp@ policy from workspace @project.json@ when present
 -- (lone-module resume fallback).
-loadWorkspacePolicies :: FilePath -> IO (Maybe ExecPolicy, Map Text McpServerConfig)
+loadWorkspacePolicies :: FilePath -> IO (Maybe ExecPolicy, McpPolicy)
 loadWorkspacePolicies root = do
   cfgE <- loadProjectConfig root
   pure $ case cfgE of
-    Right cfg -> (cfg.pcExec, maybe Map.empty mpServers cfg.pcMcp)
-    Left _ -> (Nothing, Map.empty)
+    Right cfg -> (cfg.pcExec, fromMaybe mempty cfg.pcMcp)
+    Left _ -> (Nothing, mempty)
 
 -- | Empty skill catalog / modules for single-module runs and tests.
 emptySkillRuntime :: (SkillCatalog, Map QName LoadedModule)
@@ -1129,7 +1129,7 @@ data ResumeProject = ResumeProject
     rpSkillModules :: Map QName LoadedModule,
     rpEntryModules :: Map QName LoadedModule,
     rpExec :: Maybe ExecPolicy,
-    rpMcp :: Map Text McpServerConfig,
+    rpMcp :: McpPolicy,
     -- | Resolves @mcp.servers.<id>.cwd: "project"@ on resume.
     rpProjectRoot :: FilePath
   }
@@ -1145,14 +1145,14 @@ resolveResumeProject entryPath loaded workspaceRoot = do
     Just projectRoot -> do
       lpE <- loadProject projectRoot
       (catalog, skillMods) <- loadSkillRuntime projectRoot
-      let (hash, entryMods, execPol, mcpServers) = case lpE of
+      let (hash, entryMods, execPol, mcpPol) = case lpE of
             Right lp ->
               ( projectHashForModules lp.lpModules,
                 lp.lpModules,
                 lp.lpConfig.pcExec,
-                maybe Map.empty mpServers lp.lpConfig.pcMcp
+                fromMaybe mempty lp.lpConfig.pcMcp
               )
-            Left _ -> (projectHashOf loaded, Map.empty, Nothing, Map.empty)
+            Left _ -> (projectHashOf loaded, Map.empty, Nothing, mempty)
       pure
         ResumeProject
           { rpHash = hash,
@@ -1160,13 +1160,13 @@ resolveResumeProject entryPath loaded workspaceRoot = do
             rpSkillModules = skillMods,
             rpEntryModules = entryMods,
             rpExec = execPol,
-            rpMcp = mcpServers,
+            rpMcp = mcpPol,
             rpProjectRoot = projectRoot
           }
     Nothing -> do
       (catalog, skillMods) <- loadSkillRuntime workspaceRoot
       -- Lone module: fall back to workspace project.json if present.
-      (execPol, mcpServers) <- loadWorkspacePolicies workspaceRoot
+      (execPol, mcpPol) <- loadWorkspacePolicies workspaceRoot
       pure
         ResumeProject
           { rpHash = projectHashOf loaded,
@@ -1174,7 +1174,7 @@ resolveResumeProject entryPath loaded workspaceRoot = do
             rpSkillModules = skillMods,
             rpEntryModules = Map.empty,
             rpExec = execPol,
-            rpMcp = mcpServers,
+            rpMcp = mcpPol,
             rpProjectRoot = workspaceRoot
           }
 

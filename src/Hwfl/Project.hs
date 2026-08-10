@@ -16,6 +16,8 @@ module Hwfl.Project
     moduleRelPath,
     projectHashForModules,
     isProjectDir,
+    validateMcpPolicy,
+    isBareBasename,
   )
 where
 
@@ -66,10 +68,9 @@ data ExecPolicy = ExecPolicy
   deriving stock (Eq, Show)
 
 -- | @mcp.servers.<id>.cwd@ (spec §13 §3): the child's working directory.
--- @McpCwdAbsolute@ is only honoured under a project policy that allows it
--- (same posture as an absolute @exec@ cwd would need); v1 treats it as
--- request-only and resolves it verbatim (no extra sandboxing is claimed —
--- see spec §13 §3 security note: MCP children are outside the @fs.*@ sandbox).
+-- @McpCwdAbsolute@ is only honoured when @mcp.allow_absolute_cwd@ is true
+-- (fail closed otherwise — see H-8 / spec §13 §3). MCP children remain
+-- outside the @fs.*@ sandbox; command allowlist + cwd policy are the boundary.
 data McpCwd
   = McpCwdWorkspace
   | McpCwdProject
@@ -87,12 +88,31 @@ data McpServerConfig = McpServerConfig
   }
   deriving stock (Eq, Show)
 
--- | Wraps @mcp.servers@ so project-wide MCP settings (e.g. a future global
--- default timeout) have a natural home without another top-level key.
-newtype McpPolicy = McpPolicy
-  { mpServers :: Map Text McpServerConfig
+-- | MCP spawn policy (spec §13 §3). @mpAllow@ is the command basename
+-- allowlist (same trust model as @exec.allow@). Absolute @cwd@ requires
+-- @mpAllowAbsoluteCwd@.
+data McpPolicy = McpPolicy
+  { mpAllow :: [Text],
+    mpAllowAbsoluteCwd :: Bool,
+    mpServers :: Map Text McpServerConfig
   }
   deriving stock (Eq, Show)
+
+instance Semigroup McpPolicy where
+  a <> b =
+    McpPolicy
+      { mpAllow = a.mpAllow <> b.mpAllow,
+        mpAllowAbsoluteCwd = a.mpAllowAbsoluteCwd || b.mpAllowAbsoluteCwd,
+        mpServers = Map.union a.mpServers b.mpServers
+      }
+
+instance Monoid McpPolicy where
+  mempty =
+    McpPolicy
+      { mpAllow = [],
+        mpAllowAbsoluteCwd = False,
+        mpServers = Map.empty
+      }
 
 instance FromJSON McpCwd where
   parseJSON = \case
@@ -125,8 +145,67 @@ instance FromJSON McpServerConfig where
 
 instance FromJSON McpPolicy where
   parseJSON = withObject "mcp" $ \o -> do
+    allow <- o .:? "allow" .!= ([] :: [Text])
+    allowAbsCwd <- o .:? "allow_absolute_cwd" .!= False
     servers <- o .:? "servers" .!= Map.empty
-    pure McpPolicy {mpServers = servers}
+    let pol =
+          McpPolicy
+            { mpAllow = allow,
+              mpAllowAbsoluteCwd = allowAbsCwd,
+              mpServers = servers
+            }
+    case validateMcpPolicy pol of
+      Left err -> fail (T.unpack err)
+      Right () -> pure pol
+
+-- | Fail-closed MCP spawn policy (basename-only command ∈ @mcp.allow@;
+-- absolute @cwd@ only when @mcp.allow_absolute_cwd@). Used at
+-- @project.json@ load and again at spawn.
+validateMcpPolicy :: McpPolicy -> Either Text ()
+validateMcpPolicy pol = do
+  for_ pol.mpAllow $ \prog ->
+    if isBareBasename prog
+      then Right ()
+      else
+        Left
+          ( "mcp.allow entry must be a bare basename, not a path: '"
+              <> prog
+              <> "'"
+          )
+  for_ (Map.toList pol.mpServers) $ \(sid, cfg) -> do
+    let cmd = cfg.mcpCommand
+    if not (isBareBasename cmd)
+      then
+        Left
+          ( "mcp.servers."
+              <> sid
+              <> ".command must be a bare basename, not a path: '"
+              <> cmd
+              <> "'"
+          )
+      else
+        if cmd `notElem` pol.mpAllow
+          then
+            Left
+              ( "mcp.servers."
+                  <> sid
+                  <> ".command '"
+                  <> cmd
+                  <> "' is not allowed by project.json mcp.allow"
+              )
+          else case cfg.mcpCwd of
+            McpCwdAbsolute _
+              | not pol.mpAllowAbsoluteCwd ->
+                  Left
+                    ( "mcp.servers."
+                        <> sid
+                        <> ".cwd is absolute, but mcp.allow_absolute_cwd is false"
+                    )
+            _ -> Right ()
+
+-- | Same rule as @exec.run@: no path separators (POSIX @/@ or Windows @\\@).
+isBareBasename :: Text -> Bool
+isBareBasename t = not (T.null t) && not (T.any (\c -> c == '/' || c == '\\') t)
 
 data ProjectConfig = ProjectConfig
   { pcRoot :: FilePath,
