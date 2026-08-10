@@ -34,15 +34,20 @@ Prefer MCP client / workflow modules over growing the host-op set.
 
 ## Deferred bugs (fix only if they bite)
 
-From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate.
+From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate unless noted.
 
+- [ ] **H-8** — MCP spawn allowlist / cwd policy (spec §3 vs implementation;
+      weaker than `exec.run`). Prefer before broader untrusted-project use
+- [ ] **M-20** — MCP timeout leaves wedged cached connection (reconnect on
+      transport error)
+- [ ] **M-21** — `exec.run` reader-thread hang if `readCapped` throws
 - [ ] **M-3** — Skill-body prompt trust boundary (when third-party skills)
 - [ ] **M-18** — Project-hash / resume UX (only if prose edits brick resume
       too often)
 - [ ] **M-16** — Multi-process run-store locking (when parallel lab processes
       share a run dir)
 - [ ] **Remaining Lows** — L-4, L-9–10, L-12, L-17, L-20–21, L-23,
-      L-25 (fsync, CLI, ignore/glob, …)
+      L-25–27 (fsync, CLI, ignore/glob, confirmOf, mega-modules, …)
 
 ## Low priority
 

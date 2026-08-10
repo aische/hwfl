@@ -1,13 +1,19 @@
 # hwfl Bug Report
 
-- **Date:** 2026-08-05
-- **Scope:** `src/Hwfl/**` (17,863 LOC across ~50 modules), `app/Main.hs`, `hwfl.cabal`, `model-catalog.json`
-- **Method:** six parallel read-only reviews over disjoint module slices (runtime core, host boundary, LLM/agent, CLI/driver, parser/AST, checker/eval kernel), plus manual first-hand verification of every High-severity claim against source. `cabal build` up to date (compiles clean). `.env` present but gitignored and untracked — no keys committed.
-- **Status:** bug-fix largely complete (2026-08-08). All High fixed (H-1
-  retracted). Medium open only: **M-3**, **M-16**, **M-18** (deferred).
-  Remaining Lows are hygiene — see table and [TASKS.md](TASKS.md). This
-  report stays the durable source of truth for findings.
-- **Repository:** `hwfl` — durable workflow runtime library. Markdown modules (L1) → typed ML kernel: checker + pure evaluator (L2) → CEK machine with snapshot/resume, FS sandbox, `exec.run` allowlist, `llm.*` provider, human gates (L3). Run state persists under `workspace/.hwfl/runs/<run-id>/{meta.json, snapshot.json, spans.jsonl, events.jsonl, transitions.jsonl}`.
+- **Date:** 2026-08-05 (initial); **amended 2026-08-10** (MCP / concurrency follow-up)
+- **Scope:** `src/Hwfl/**`, `app/Main.hs`, `hwfl.cabal`, `model-catalog.json`; 2026-08-10
+  pass focused on MCP client (`Mcp/Client`, `Runtime/Mcp`, `Host` mcp.*),
+  `Exec` / `ProcGroup`, run-store locking, and agent human-gate promotion.
+- **Method:** six parallel read-only reviews (2026-08-05) over disjoint module
+  slices, plus a 2026-08-10 architecture-mapped pass with targeted deep reads
+  and an executed MCP timeout-reuse probe against
+  `test/fixtures/mcp/echo_server.py`. `.env` present but gitignored and
+  untracked — no keys committed.
+- **Status:** All original Highs fixed or retracted (H-1). **New High: H-8**
+  (MCP spawn policy). Medium open: **M-3**, **M-16**, **M-18**, **M-20**,
+  **M-21**. Remaining Lows are hygiene — see table and [TASKS.md](TASKS.md).
+  This report stays the durable source of truth for findings.
+- **Repository:** `hwfl` — durable workflow runtime library. Markdown modules (L1) → typed ML kernel: checker + pure evaluator (L2) → CEK machine with snapshot/resume, FS sandbox, `exec.run` allowlist, `llm.*` provider, MCP stdio client, human gates (L3). Run state persists under `workspace/.hwfl/runs/<run-id>/{meta.json, snapshot.json, spans.jsonl, events.jsonl, transitions.jsonl}`.
 
 ## Severity legend
 
@@ -183,6 +189,49 @@ Related: **explicit run-id reuse merges runs** (`Run.hs:373-375`, `Store.hs:284-
 
 - **Deviation:** reuse of an existing run id is rejected **unconditionally**, with no "explicitly intended" opt-in. Starting a run into a live run directory has no correct semantics — old snapshot / spans survive while meta is replaced and the sequence restarts, which is exactly the corruption above — so continuing an existing run stays the job of resume / step / approve.
 
+### H-8 — MCP spawn trust weaker than `exec.run` and than [spec/13-mcp.md](spec/13-mcp.md) §3
+
+- **Location:** `src/Hwfl/Project.hs` (`McpServerConfig` / `FromJSON McpCwd`);
+  `src/Hwfl/Runtime/Mcp.hs` (`resolveSpawnSpec`, `resolveCwd`);
+  `src/Hwfl/Mcp/Client.hs` (`connectMcp` → `proc command args`)
+- **Verification:** `[Verified]` — code + dogfood configs. **Open** (2026-08-10)
+
+Spec §3 requires MCP `command` to be an executable **basename** with the
+same trust model as `exec.allow` (allowlist or a dedicated MCP allow
+policy), and absolute `cwd` “only if policy allows.” Implementation:
+
+1. **No command allowlist** — any `mcp.servers.<id>.command` string is
+   spawned on first `mcp.call` / `mcp.tools` (including absolute paths
+   like `/bin/bash`). There is no basename check (contrast
+   `Runtime/Exec.hs` rejecting `/` in `program`).
+2. **Absolute `cwd` is always honoured** — any non-`workspace`/`project`
+   string becomes `McpCwdAbsolute` and is passed verbatim to
+   `setWorkingDir`. Comments in `Project.hs` claim a policy gate that
+   does not exist.
+3. **No human confirm** on first spawn (unlike default `exec.confirm`).
+4. MCP children are **outside** the `fs.*` workspace sandbox (spec
+   acknowledges this; the allowlist is the real boundary — and it is
+   missing).
+
+Dogfood configs (`examples/story-writer/project.json`,
+`examples/real-story-writer/project.json`) already use `"command":
+"bash"` with a large `-c` script. That is a deliberate operator choice
+today; the bug is that a **third-party / compromised `project.json`**
+gets the same unconstrained spawn surface without ever touching
+`exec.allow`. Presence of *any* `mcp.servers` entry also satisfies the
+project `Exec` effect ceiling (`Check/Project.hs` `execAllowed`), so a
+malicious server block unlocks `EffExec` for the whole project.
+
+- **Impact:** Arbitrary process execution as the hwfl user when loading an
+  untrusted project tree — a security breach on plausible shared-project
+  input. Strictly weaker than the verified-solid `exec.run` policy for
+  the same threat model.
+- **Suggested fix:** Mirror `exec`: basename-only `command`; explicit
+  `mcp.allow` (or reuse `exec.allow`); reject absolute `cwd` unless an
+  opt-in policy flag exists; fail closed at `loadProjectConfig`. Update
+  dogfood configs once the allowlist lands (`bash` / `node` / `npx` as
+  needed). Optional: confirm gate on first connect per server id.
+
 ---
 
 ## Medium
@@ -215,7 +264,7 @@ taint can soundly protect arbitrary short plaintext.
 ### M-3 — Skill bodies injected verbatim into the system prompt (prompt injection with agent powers)
 
 - **Location:** `src/Hwfl/Runtime/Skills.hs` (`instructionInjectionText`)
-- **Verification:** `[Reported]`
+- **Verification:** `[Reported]` — confirmed still open (2026-08-10)
 
 Skill markdown bodies are concatenated into the system prompt each round, and skills are loaded **at the model's own request**. Content is project-authored today, but a third-party skill (e.g. cloned from a repo) can instruct the model with tool-calling authority. No trust boundary or instruction-delimiting.
 
@@ -359,9 +408,11 @@ optional for mock-provider runs.
 ### M-16 — Concurrent approve/choose/reply on one run: no lock, double execution, torn snapshot
 
 - **Location:** `src/Hwfl/Runtime/Store.hs` (shared `snapshot.json.tmp` + rename), `src/Hwfl/Runtime/Run.hs` (`approveRun`/`chooseRun`/`replyRun` run the full continuation)
-- **Verification:** `[Reported]`
+- **Verification:** `[Reported]` — confirmed still open (2026-08-10 code read)
 
-Two processes approving the same paused run both run the full continuation (double LLM spend, double `exec.run` side effects) and both write `snapshot.json.tmp` then rename — interleaved writes can tear `snapshot.json` and brick resume. Multi-process locking is explicitly deferred in `docs/TASKS.md`; this notes the concrete failure mode when it bites (parallel lab processes).
+Two processes approving the same paused run both run the full continuation (double LLM spend, double `exec.run` / MCP side effects) and both write `snapshot.json.tmp` then rename — interleaved writes can tear `snapshot.json` and brick resume. `atomicEncodeFile` uses a **fixed** sibling name (`path <> ".tmp"`), so two writers clobber the same temp file before rename. Multi-process locking is explicitly deferred in `docs/TASKS.md`; this notes the concrete failure mode when it bites (parallel lab processes).
+
+- **Suggested fix:** per-run exclusive lock (`flock` / lockfile) around open→step→persist; unique tmp names (`snapshot.json.<pid>.<nonce>.tmp`) as defence in depth.
 
 ### M-17 — Provider errors: finish-reason ignored; `--debug` string-sniffing for span status
 
@@ -376,9 +427,17 @@ Two processes approving the same paused run both run the full continuation (doub
 ### M-18 — Project hash includes full prose bodies → resume falsely reports "stale project"
 
 - **Location:** `src/Hwfl/Project.hs` (`projectHashForModules`)
-- **Verification:** `[Reported]`
+- **Verification:** `[Reported]` — confirmed still open (2026-08-10)
 
-Any whitespace/prose edit to a module changes the hash and blocks resume with `ConfigErr "stale project: hash mismatch"` — safe, but a comment edit bricks an otherwise valid resume.
+`projectHashForModules` folds `show m` over each `LoadedModule` (includes
+`lmProseBody`, `lmSections`, frontmatter, and body AST) into a weak `Int`
+polynomial hash. Any whitespace/prose edit changes the hash and blocks
+resume with `ConfigErr "stale project: hash mismatch"` — safe, but a
+comment edit bricks an otherwise valid resume. The `Int` fold is also a
+poor digest (wrap / collision risk for adversarial trees).
+
+- **Suggested fix:** hash structural AST + frontmatter (or normalized code
+  fences), not prose; use a real digest (SHA-256).
 
 ### M-19 — H-6 residuals: checker still accepts some runtime-failing call shapes
 
@@ -390,6 +449,74 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
   recursively (including local lambdas), and a sole bare parameter denotes a
   `Unit` thunk. Regression coverage executes positional/record host calls and
   aliased Unit/record calls through the machine.
+
+### M-20 — MCP request timeout leaves a wedged cached connection
+
+- **Location:** `src/Hwfl/Mcp/Client.hs` (`sendRequest` + `System.Timeout.timeout`
+  + `awaitResponse`); `src/Hwfl/Runtime/Mcp.hs` (`getMcpConnection` never
+  evicts; `closeMcpEnv` only at driver teardown)
+- **Verification:** `[Verified]` — executed probe (2026-08-10) against
+  `test/fixtures/mcp/echo_server.py`
+
+On per-request timeout the client returns `Left "… request timed out"` but
+**keeps** the `McpConnection` in `meConnections`. Timeout does **not**
+cancel server-side work: the stdio server remains busy inside the slow
+`tools/call`. Production will issue the next `mcp.*` on the same cached
+pipe.
+
+Measured:
+
+```
+timeout_ms = 200; tool sleep_ms = 1500
+r1 (slow)          -> Left "request timed out"
+r2 (fast, immediate) -> Left "request timed out"   -- server still on r1
+wait 2s
+r3 (fast)          -> Right McpCallOk …            -- recovers after drain
+```
+
+So an immediate retry (the normal next host op in a workflow/agent loop)
+fails even for a fast tool. Framing recovered after the slow call
+finished in this probe (mismatched-id skip path), but `timeout` still
+async-interrupts `hGetLine`, which remains a latent NDJSON framing risk
+on other platforms/loads. Dead/crashed connections are likewise never
+evicted mid-run (comment in `getMcpConnection` admits this).
+
+Additionally: the timed-out server call may still **complete side
+effects** after the client has reported failure — at-least-once /
+timeout ambiguity for non-idempotent MCP tools.
+
+- **Impact:** Mid-run MCP storms of timeouts after one slow tool; agent
+  loops soft-land or abort; possible duplicate external effects.
+- **Suggested fix:** On transport timeout/error, drop the connection from
+  the registry and `closeMcpConnection` (kill process group), then
+  reconnect lazily on the next call (spec §5). Add a regression:
+  timeout → immediate next call must reconnect cleanly (spec §8.4 still
+  unchecked).
+
+### M-21 — `exec.run` stdout/stderr reader threads can deadlock the parent
+
+- **Location:** `src/Hwfl/Runtime/Exec.hs` (`runCapped`)
+- **Verification:** `[Reported]` — code read (2026-08-10); not hang-reproduced
+
+```haskell
+_ <- forkIO $ putMVar outVar =<< readCapped cap (getStdout p)
+_ <- forkIO $ putMVar errVar =<< readCapped cap (getStderr p)
+…
+out <- takeMVar outVar
+err <- takeMVar errVar
+```
+
+`readCapped`'s main loop does not catch `IOException` from `hGetSome`.
+If a reader thread dies before `putMVar` (broken pipe after
+`killProcessGroup`, unexpected IO error), the parent blocks forever on
+`takeMVar`. Drain path after the cap *does* catch IO errors; the primary
+read loop does not. Timeout path is the most likely trigger (group kill
+closes pipes while readers run).
+
+- **Impact:** Rare hard hang of the hwfl process on `exec.run` timeout /
+  spawn teardown — requires kill -9; run snapshot may be mid-transition.
+- **Suggested fix:** `forkFinally` / `try` around each reader and always
+  `putMVar` (empty bytes on failure); or `async` + `waitCatch`.
 
 ---
 
@@ -422,13 +549,17 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 | L-23 | `Obs/Stream.hs:86-110`                                       | `appendText` read-modify-write not atomic; concurrent `onChunk` calls could drop text (single-threaded in practice).                                                                   |
 | L-24 | `Workspace.hs` write/copy/remove                             | **Fixed** with H-1a: `O_NOFOLLOW` writes / `rename` copies close the leaf TOCTOU; `removePath` unlinks leaf symlinks.                                                                  |
 | L-25 | `Parse/Section.hs:55-58,66-70`                               | `headings !! j` comprehension + fence rescan are O(n²) on large prose modules.                                                                                                         |
+| L-26 | `Eval.hs` agent tool promote (`confirmOf` / `choiceOf` / `askOf`) | Agent nested-tool pause promotion discards `PauseAwaitingConfirm c` (etc.) and re-derives via `confirmOf bm'`, which invents an empty request if `mCurrent` mismatches. `FrInvoke` correctly threads `c`. Fail closed instead of synthesizing defaults. |
+| L-27 | `Runtime/Eval.hs` (~3.2k), `Run.hs` (~1.5k), `Host.hs` (~1.3k) | Mega-modules concentrate interpreter / lifecycle / host dispatch — high review cost and regression risk. Split along Step / Agent / Par / HostApply and continue-paused helpers when touching the area. |
 
 ---
 
 ## Verified solid (do not re-report)
 
 - **Read-path sandbox** — `resolvePath` (lexical `..`/absolute rejection) + `resolveContainedPath` (canonicalize + root-prefix) correctly block `..`, absolute, and symlink escapes for read/list/remove/stat/read_slice/edit/patch; null bytes surface as caught `IOException` → `HostErr`, never an escape.
-- **`exec.run` policy** — bare-basename-only (no `/`), allowlist gates the binary, `setEnv` replaces the whole environment with only `exec.env` keys (no parent-env leakage), confirm default `True`, stdout/stderr captured via capped pipes (never leaks to terminal), process-group SIGTERM/SIGKILL on timeout with partial capture. Defaults are safe: `allow`/`env` default to `[]`.
+- **`exec.run` policy** — bare-basename-only (no `/`), allowlist gates the binary, `setEnv` replaces the whole environment with only `exec.env` keys (no parent-env leakage), confirm default `True`, stdout/stderr captured via capped pipes (never leaks to terminal), process-group SIGTERM/SIGKILL on timeout with partial capture. Defaults are safe: `allow`/`env` default to `[]`. **Do not assume MCP inherits this** — see **H-8**.
+- **MCP teardown on driver exit** — `startRun` / resume-family paths use `finally` + `closeMcpEnv` (process-group kill). Lifecycle is fine; timeout/reconnect policy is **M-20**.
+- **MCP `bind` merge** — `mergeMcpBindArgs` lets bind win over model args; `stripBindFromSchema` removes bound keys from advertised schemas.
 - **Corrupt-snapshot handling** — all parser `fail` sites (`Snapshot.hs:571-574`, `:821`, `:829-832`, …) are contained by `parseEither`; corrupt `snapshot.json`/`meta.json` → clean `ConfigErr "missing meta.json or snapshot.json"`, never a crash or state corruption. Project-hash check refuses stale-project resume.
 - **Division by zero** — `div2` (`Eval/Prelude.hs:173-177`) guards **both** `Int` and `Float` zero divisors with `Trap`. _One review claimed Int div-by-zero was unguarded; direct read shows it is guarded — corrected here to prevent re-reporting._ `/` routes `BDiv → div2`.
 - **Alias cycle detection** — `resolveAliasDef`/`resolveTypeFrom` stack-seeded, self-/mutual-/deep cycles all produce `AliasCycle`; `DuplicateType`/`DuplicateFun` cover redecls.
@@ -436,25 +567,33 @@ Any whitespace/prose edit to a module changes the hash and blocks resume with `C
 - **Run-id auto-generation** — wall-clock second + 64-bit hex nonce (`Run.hs:1237-1241`); collision-resistant; hazard was only explicit reuse (H-7, fixed).
 - **Lexer/parser core** — `tripleString` safe (megaparsec `tokens` restores state), `attachSourcePos errorOffset` correct, unterminated strings/comments give clean EOF diagnostics, position seeding consistent; no reachable unguarded `head`/`fromJust`/`read` on CLI input; `last xs` sites guarded.
 - **Torn-line tolerance** — spans/events/transitions readers use `mapMaybe decode`; torn trailing lines are skipped.
+- **Cooperative `par`** — host transitions are still single-threaded (concurrent host IO deferred in TASKS); no OS-level machine data race today. MCP `mcLock` anticipates future concurrent `par`.
 
 ---
 
 ## Recommended fix order
 
-**Completed (2026-08):** all High; Medium except M-3 / M-16 / M-18; selected
-Lows (L-1–3, L-5–8, L-11, L-13–16, L-19, L-22, L-24). See
+**Completed (2026-08):** all original Highs (H-1a–H-7; H-1 retracted);
+Medium except M-3 / M-16 / M-18; selected Lows (L-1–3, L-5–8, L-11,
+L-13–16, L-19, L-22, L-24). See
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 
-**Still open (deferred — fix only if they bite):**
+**Open after 2026-08-10 MCP follow-up (priority):**
 
-1. **M-3** — skill-body prompt trust (when third-party skills matter).
-2. **M-18** — project-hash / prose-edit resume UX (if comment edits brick resume often).
-3. **M-16** — multi-process run-store locking (when parallel lab processes share a run dir).
-4. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17–18,
-   L-20–21, L-23, L-25 — fsync, CLI, ignore/glob, …).
+1. **H-8** — MCP command/cwd allowlist (match `exec.run` + spec §3).
+2. **M-20** — Invalidate / reconnect MCP connection on timeout or
+   transport error; regression for spec §8.4.
+3. **M-21** — `exec.run` reader `forkFinally` (prevent rare hang).
+4. **M-16** — multi-process run-store locking (when parallel lab
+   processes share a run dir).
+5. **M-3** — skill-body prompt trust (when third-party skills matter).
+6. **M-18** — project-hash / prose-edit resume UX.
+7. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17,
+   L-20–21, L-23, L-25–27 — fsync, CLI, ignore/glob, confirmOf,
+   module splits, …).
 
 Agent context L1+L2 (heuristic) shipped. Active product work: agent
-substrate (MCP / git / terminals). See [STATUS.md](STATUS.md).
+substrate (MCP dogfood / git / terminals). See [STATUS.md](STATUS.md).
 
 ---
 
@@ -463,4 +602,12 @@ substrate (MCP / git / terminals). See [STATUS.md](STATUS.md).
 - **Pass 1 (map + sweep):** repo layout, `docs/STATUS.md`/`TASKS.md`/`architecture.md`; grep sweeps for `error`/`undefined`/`fromJust`, partial list functions, `unsafe*`/`trace`/`TODO`.
 - **Pass 2 (deep reads):** six parallel read-only scouts over disjoint slices — runtime core, host boundary, LLM+agent, CLI/driver, parser/AST, checker/eval — each returning `path:line`-cited findings with severity.
 - **Pass 3 (verification):** every High claim re-read directly; the one conflicting scout claim (Int div-by-zero) resolved against source (guarded); `cabal build` up to date; `.env` untracked (gitignored).
-- **Coverage:** all 50 `src/Hwfl/**` modules read in full across the six slices; `app/Main.hs`, `hwfl.cabal`, `model-catalog.json` included. Test suite and examples excluded except for cross-checks.
+- **Pass 4 (2026-08-10):** architecture-mapped review of MCP stdio client,
+  `Runtime/Mcp` registry, `Exec`/`ProcGroup`, store atomic rename, agent
+  human-gate promotion. Executed MCP timeout→reuse probe (r2 timeout,
+  r3 ok after wait). Spec §3 allowlist claims checked against
+  `Project`/`Mcp`/`Client` (absent). Coverage extended to post-audit MCP
+  modules; prior High/Med status reconfirmed for M-3 / M-16 / M-18.
+- **Coverage:** all `src/Hwfl/**` modules in initial pass; 2026-08-10
+  focused on MCP / Exec / Store / Eval human-gate paths.
+  `app/Main.hs`, `hwfl.cabal`, dogfood `project.json` included.
