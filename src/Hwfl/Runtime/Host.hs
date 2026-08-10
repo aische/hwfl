@@ -54,6 +54,7 @@ import Hwfl.Runtime.Exec (ExecArgs (..), ExecOutcome (..), runExec)
 import Hwfl.Runtime.Mcp
   ( McpEnv,
     getMcpConnection,
+    invalidateMcpConnection,
     stripBindFromSchema,
   )
 import Hwfl.Runtime.Skills (discoverSkillsResult, loadSkillScripted)
@@ -309,7 +310,8 @@ skillHitCount = \case
 
 -- | Deterministic @tools/call@ from workflow code (spec §13 §4.1). Tool-level
 -- @isError@ and transport failures both surface as a catchable 'HostErr' —
--- author code decides whether/how to recover with @try@.
+-- author code decides whether/how to recover with @try@. Transport failures
+-- also invalidate the cached connection (M-20) so a later call reconnects.
 doMcpCall :: HostEnv -> [(Maybe Ident, Value)] -> IO (Either RuntimeError HostResult)
 doMcpCall env args = case parseMcpCallArgs args of
   Left e -> pure (Left e)
@@ -320,16 +322,21 @@ doMcpCall env args = case parseMcpCallArgs args of
       Right conn -> do
         env.heLog ("mcp.call " <> server <> "/" <> toolName)
         callE <- callMcpTool conn toolName argsJson
-        pure $ case callE of
-          Left err -> Left (HostErr ("mcp.call " <> server <> "/" <> toolName <> ": " <> err))
+        case callE of
+          Left err -> do
+            invalidateMcpConnection env.heMcp server
+            pure (Left (HostErr ("mcp.call " <> server <> "/" <> toolName <> ": " <> err)))
           Right (McpToolFailed msg) ->
-            Left
-              ( HostErr
-                  ("mcp.call " <> server <> "/" <> toolName <> " reported an error: " <> msg)
+            pure
+              ( Left
+                  ( HostErr
+                      ("mcp.call " <> server <> "/" <> toolName <> " reported an error: " <> msg)
+                  )
               )
-          Right (McpCallOk resultJson) -> do
-            val <- decodeMcpResult mSchema resultJson
-            Right (HostResult val (object ["server" .= server, "tool" .= toolName]))
+          Right (McpCallOk resultJson) ->
+            pure $ do
+              val <- decodeMcpResult mSchema resultJson
+              Right (HostResult val (object ["server" .= server, "tool" .= toolName]))
 
 decodeMcpResult :: Maybe Aeson.Value -> Aeson.Value -> Either RuntimeError Value
 decodeMcpResult mSchema resultJson = case mSchema of
@@ -364,18 +371,21 @@ doMcpTools env args = case parseMcpToolsArgs args of
       Right conn -> do
         env.heLog ("mcp.tools " <> server)
         listed <- listMcpTools conn
-        pure $ case listed of
-          Left err -> Left (HostErr ("mcp.tools " <> server <> ": " <> err))
+        case listed of
+          Left err -> do
+            invalidateMcpConnection env.heMcp server
+            pure (Left (HostErr ("mcp.tools " <> server <> ": " <> err)))
           Right infos ->
             let filtered = case mNames of
                   Nothing -> infos
                   Just names -> filter (\i -> i.mtiName `elem` names) infos
                 specs = map (toolInfoToSpec server bind) filtered
-             in Right
-                  ( HostResult
-                      (VList specs)
-                      (object ["server" .= server, "count" .= length specs])
-                  )
+             in pure $
+                  Right
+                    ( HostResult
+                        (VList specs)
+                        (object ["server" .= server, "count" .= length specs])
+                    )
 
 toolInfoToSpec :: Text -> Aeson.Value -> McpToolInfo -> Value
 toolInfoToSpec server bind info =

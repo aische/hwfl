@@ -10,8 +10,9 @@
   `test/fixtures/mcp/echo_server.py`. `.env` present but gitignored and
   untracked — no keys committed.
 - **Status:** All Highs fixed or retracted (H-1; **H-8** fixed 2026-08-10).
-  Medium open: **M-3**, **M-16**, **M-18**, **M-20**, **M-21**. Remaining
-  Lows are hygiene — see table and [TASKS.md](TASKS.md).
+  Medium open: **M-3**, **M-16**, **M-18**, **M-21**. **M-20** fixed
+  2026-08-10. Remaining Lows are hygiene — see table and
+  [TASKS.md](TASKS.md).
   This report stays the durable source of truth for findings.
 - **Repository:** `hwfl` — durable workflow runtime library. Markdown modules (L1) → typed ML kernel: checker + pure evaluator (L2) → CEK machine with snapshot/resume, FS sandbox, `exec.run` allowlist, `llm.*` provider, MCP stdio client, human gates (L3). Run state persists under `workspace/.hwfl/runs/<run-id>/{meta.json, snapshot.json, spans.jsonl, events.jsonl, transitions.jsonl}`.
 
@@ -434,21 +435,22 @@ poor digest (wrap / collision risk for adversarial trees).
   `Unit` thunk. Regression coverage executes positional/record host calls and
   aliased Unit/record calls through the machine.
 
-### M-20 — MCP request timeout leaves a wedged cached connection
+### M-20 — ~~MCP request timeout leaves a wedged cached connection~~ **FIXED**
 
 - **Location:** `src/Hwfl/Mcp/Client.hs` (`sendRequest` + `System.Timeout.timeout`
-  + `awaitResponse`); `src/Hwfl/Runtime/Mcp.hs` (`getMcpConnection` never
-  evicts; `closeMcpEnv` only at driver teardown)
+  + `awaitResponse`); `src/Hwfl/Runtime/Mcp.hs` (`getMcpConnection` /
+  `invalidateMcpConnection`); `src/Hwfl/Runtime/Host.hs` (`doMcpCall` /
+  `doMcpTools`)
 - **Verification:** `[Verified]` — executed probe (2026-08-10) against
-  `test/fixtures/mcp/echo_server.py`
+  `test/fixtures/mcp/echo_server.py`; regression in `McpSpec` (2026-08-10)
 
-On per-request timeout the client returns `Left "… request timed out"` but
-**keeps** the `McpConnection` in `meConnections`. Timeout does **not**
+On per-request timeout the client returned `Left "… request timed out"` but
+**kept** the `McpConnection` in `meConnections`. Timeout does **not**
 cancel server-side work: the stdio server remains busy inside the slow
-`tools/call`. Production will issue the next `mcp.*` on the same cached
+`tools/call`. Production would issue the next `mcp.*` on the same cached
 pipe.
 
-Measured:
+Measured (before fix):
 
 ```
 timeout_ms = 200; tool sleep_ms = 1500
@@ -459,23 +461,24 @@ r3 (fast)          -> Right McpCallOk …            -- recovers after drain
 ```
 
 So an immediate retry (the normal next host op in a workflow/agent loop)
-fails even for a fast tool. Framing recovered after the slow call
+failed even for a fast tool. Framing recovered after the slow call
 finished in this probe (mismatched-id skip path), but `timeout` still
 async-interrupts `hGetLine`, which remains a latent NDJSON framing risk
-on other platforms/loads. Dead/crashed connections are likewise never
-evicted mid-run (comment in `getMcpConnection` admits this).
+on other platforms/loads. Dead/crashed connections were likewise never
+evicted mid-run.
 
 Additionally: the timed-out server call may still **complete side
 effects** after the client has reported failure — at-least-once /
-timeout ambiguity for non-idempotent MCP tools.
+timeout ambiguity for non-idempotent MCP tools (unchanged; reconnect
+cannot make a non-idempotent tool safe).
 
 - **Impact:** Mid-run MCP storms of timeouts after one slow tool; agent
   loops soft-land or abort; possible duplicate external effects.
-- **Suggested fix:** On transport timeout/error, drop the connection from
-  the registry and `closeMcpConnection` (kill process group), then
-  reconnect lazily on the next call (spec §5). Add a regression:
-  timeout → immediate next call must reconnect cleanly (spec §8.4 still
-  unchecked).
+- **Fix (2026-08-10):** On transport `Left` from `callMcpTool` /
+  `listMcpTools`, `invalidateMcpConnection` drops the server from the
+  registry and `closeMcpConnection` (process-group kill). The next
+  `getMcpConnection` reconnects lazily. Regression:
+  timeout → catch → immediate fast call succeeds.
 
 ### M-21 — `exec.run` stdout/stderr reader threads can deadlock the parent
 
@@ -543,7 +546,7 @@ closes pipes while readers run).
 - **Read-path sandbox** — `resolvePath` (lexical `..`/absolute rejection) + `resolveContainedPath` (canonicalize + root-prefix) correctly block `..`, absolute, and symlink escapes for read/list/remove/stat/read_slice/edit/patch; null bytes surface as caught `IOException` → `HostErr`, never an escape.
 - **`exec.run` policy** — bare-basename-only (no `/`), allowlist gates the binary, `setEnv` replaces the whole environment with only `exec.env` keys (no parent-env leakage), confirm default `True`, stdout/stderr captured via capped pipes (never leaks to terminal), process-group SIGTERM/SIGKILL on timeout with partial capture. Defaults are safe: `allow`/`env` default to `[]`.
 - **`mcp.*` spawn policy (H-8)** — `mcp.allow` basename allowlist; absolute `cwd` only with `mcp.allow_absolute_cwd`; validated at load and spawn.
-- **MCP teardown on driver exit** — `startRun` / resume-family paths use `finally` + `closeMcpEnv` (process-group kill). Lifecycle is fine; timeout/reconnect policy is **M-20**.
+- **MCP teardown on driver exit** — `startRun` / resume-family paths use `finally` + `closeMcpEnv` (process-group kill). Mid-run timeout/reconnect is **M-20** (fixed).
 - **MCP `bind` merge** — `mergeMcpBindArgs` lets bind win over model args; `stripBindFromSchema` removes bound keys from advertised schemas.
 - **Corrupt-snapshot handling** — all parser `fail` sites (`Snapshot.hs:571-574`, `:821`, `:829-832`, …) are contained by `parseEither`; corrupt `snapshot.json`/`meta.json` → clean `ConfigErr "missing meta.json or snapshot.json"`, never a crash or state corruption. Project-hash check refuses stale-project resume.
 - **Division by zero** — `div2` (`Eval/Prelude.hs:173-177`) guards **both** `Int` and `Float` zero divisors with `Trap`. _One review claimed Int div-by-zero was unguarded; direct read shows it is guarded — corrected here to prevent re-reporting._ `/` routes `BDiv → div2`.
@@ -565,18 +568,17 @@ L-13–16, L-19, L-22, L-24). See
 
 **Open after 2026-08-10 MCP follow-up (priority):**
 
-1. **M-20** — Invalidate / reconnect MCP connection on timeout or
-   transport error; regression for spec §8.4.
-2. **M-21** — `exec.run` reader `forkFinally` (prevent rare hang).
-3. **M-16** — multi-process run-store locking (when parallel lab
+1. **M-21** — `exec.run` reader `forkFinally` (prevent rare hang).
+2. **M-16** — multi-process run-store locking (when parallel lab
    processes share a run dir).
-4. **M-3** — skill-body prompt trust (when third-party skills matter).
-5. **M-18** — project-hash / prose-edit resume UX.
-6. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17,
+3. **M-3** — skill-body prompt trust (when third-party skills matter).
+4. **M-18** — project-hash / prose-edit resume UX.
+5. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17,
    L-20–21, L-23, L-25–27 — fsync, CLI, ignore/glob, confirmOf,
    module splits, …).
 
-**Completed same day:** **H-8** MCP command/cwd allowlist.
+**Completed same day:** **H-8** MCP command/cwd allowlist; **M-20**
+MCP timeout reconnect.
 
 Agent context L1+L2 (heuristic) shipped. Active product work: agent
 substrate (MCP dogfood / git / terminals). See [STATUS.md](STATUS.md).

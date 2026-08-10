@@ -56,12 +56,26 @@ echoServerConfig absScript =
       mcpTimeoutMs = Just 5_000
     }
 
+-- | Short per-request deadline so a fixture @sleep_ms@ can trip the timeout
+-- without making the suite slow (M-20).
+echoServerConfigTimeout :: FilePath -> Int -> McpServerConfig
+echoServerConfigTimeout absScript timeoutMs =
+  (echoServerConfig absScript) {mcpTimeoutMs = Just timeoutMs}
+
 echoMcpPolicy :: FilePath -> McpPolicy
 echoMcpPolicy absScript =
   McpPolicy
     { mpAllow = ["python3"],
       mpAllowAbsoluteCwd = False,
       mpServers = Map.fromList [("echo", echoServerConfig absScript)]
+    }
+
+echoMcpPolicyTimeout :: FilePath -> Int -> McpPolicy
+echoMcpPolicyTimeout absScript timeoutMs =
+  McpPolicy
+    { mpAllow = ["python3"],
+      mpAllowAbsoluteCwd = False,
+      mpServers = Map.fromList [("echo", echoServerConfigTimeout absScript timeoutMs)]
     }
 
 mcpCallSrc :: Text
@@ -135,6 +149,43 @@ mcpCallUnknownServerSrc =
       "    arguments = { text = \"hi\" }",
       "  )",
       "  { out = json.encode(result) }",
+      "```"
+    ]
+
+-- | Catch a timed-out slow call, then immediately issue a fast call on the
+-- same server id. Without M-20 reconnect the second call wedged on the
+-- still-busy cached pipe; with invalidate+reconnect it must succeed.
+mcpTimeoutReconnectSrc :: Text
+mcpTimeoutReconnectSrc =
+  T.unlines
+    [ "---",
+      "name: workflows/mcp-timeout-reconnect",
+      "inputs: {}",
+      "outputs:",
+      "  out: String",
+      "effects: [Exec]",
+      "---",
+      "",
+      "## body",
+      "",
+      "```hwfl",
+      "type EchoOut = { echoed: String }",
+      "fun main(_): { out: String } =",
+      "  let _ : EchoOut =",
+      "    try mcp.call(",
+      "      server = \"echo\",",
+      "      name = \"echo\",",
+      "      arguments = { text = \"slow\", sleep_ms = 1500 },",
+      "      schema = schema(EchoOut)",
+      "    )",
+      "    catch (err) => { echoed = \"ignored\" }",
+      "  let result: EchoOut = mcp.call(",
+      "    server = \"echo\",",
+      "    name = \"echo\",",
+      "    arguments = { text = \"hi\" },",
+      "    schema = schema(EchoOut)",
+      "  )",
+      "  { out = result.echoed }",
       "```"
     ]
 
@@ -226,6 +277,20 @@ spec = describe "mcp.call / mcp.tools" $ do
           let opts = baseOpts dir (echoMcpPolicy absScript) "mcp-call-unknown.md"
           outcome <- runLoadedModule opts loaded
           outcome `shouldSatisfy` isFailedC
+
+  it "reconnects after a timed-out mcp.call so the next call succeeds (M-20)" $
+    withSystemTempDirectory "hwfl-mcp-timeout-reconnect" $ \dir -> do
+      absScript <- makeAbsolute fixtureServer
+      case loadModuleText "mcp-timeout-reconnect.md" mcpTimeoutReconnectSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRightC
+          let opts = baseOpts dir (echoMcpPolicyTimeout absScript 200) "mcp-timeout-reconnect.md"
+          outcome <- runLoadedModule opts loaded
+          case outcome of
+            OutcomeCompleted (VRecord fs) _ _ ->
+              lookup (Ident "out") fs `shouldBe` Just (VString "hi")
+            other -> expectationFailure ("expected completed, got: " <> show other)
 
   it "rejects a command not on mcp.allow at spawn (H-8)" $
     withSystemTempDirectory "hwfl-mcp-allow" $ \dir -> do

@@ -9,12 +9,14 @@ module Hwfl.Runtime.Mcp
     emptyMcpEnv,
     closeMcpEnv,
     getMcpConnection,
+    invalidateMcpConnection,
     mergeMcpBindArgs,
     stripBindFromSchema,
   )
 where
 
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
+import Data.Foldable (for_)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
@@ -79,10 +81,9 @@ closeMcpEnv env = do
   mapM_ closeMcpConnection (Map.elems conns)
 
 -- | Return the cached connection for @serverId@, spawning + handshaking one
--- on first use. A dead cached connection is not currently detected here —
--- the next @tools/call@ surfaces the transport error and the caller can
--- retry, at which point a fresh driver invocation reconnects (spec §13 §5:
--- "next MCP call fails clearly if reconnect fails").
+-- on first use. Callers must 'invalidateMcpConnection' after a transport
+-- timeout/error so the next call reconnects instead of reusing a wedged
+-- pipe (M-20 / spec §13 §5).
 getMcpConnection :: McpEnv -> Text -> IO (Either RuntimeError McpConnection)
 getMcpConnection env serverId = modifyMVar env.meConnections $ \conns ->
   case Map.lookup serverId conns of
@@ -108,6 +109,15 @@ getMcpConnection env serverId = modifyMVar env.meConnections $ \conns ->
             pure $ case r of
               Left err -> (conns, Left (HostErr err))
               Right conn -> (Map.insert serverId conn conns, Right conn)
+
+-- | Drop @serverId@ from the registry and kill its process group. Safe if the
+-- server was never connected or already closed. The next 'getMcpConnection'
+-- will spawn + handshake lazily.
+invalidateMcpConnection :: McpEnv -> Text -> IO ()
+invalidateMcpConnection env serverId = do
+  mConn <- modifyMVar env.meConnections $ \conns ->
+    pure (Map.delete serverId conns, Map.lookup serverId conns)
+  for_ mConn closeMcpConnection
 
 -- | Basename allowlist + cwd policy (H-8 / spec §13 §3). Re-checked at spawn
 -- so programmatic 'RunOptions' cannot bypass @project.json@ load validation.

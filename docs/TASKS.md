@@ -36,8 +36,6 @@ Prefer MCP client / workflow modules over growing the host-op set.
 
 From [BUG_REPORT.md](BUG_REPORT.md); not blocking agent substrate unless noted.
 
-- [ ] **M-20** — MCP timeout leaves wedged cached connection (reconnect on
-      transport error)
 - [ ] **M-21** — `exec.run` reader-thread hang if `readCapped` throws
 - [ ] **M-3** — Skill-body prompt trust boundary (when third-party skills)
 - [ ] **M-18** — Project-hash / resume UX (only if prose edits brick resume
@@ -86,7 +84,7 @@ Postgres live in **hwfl-server**, not here. See [idea.md](idea.md).
 ## Done
 
 Context L1+L2 (heuristic), bug-fix High + Medium (except deferred
-M-3 / M-16 / M-18), **H-8** MCP allowlist, selected Lows through L-15 +
+M-3 / M-16 / M-18), **H-8** MCP allowlist, **M-20** MCP timeout reconnect, selected Lows through L-15 +
 L-18, and typed `--example` archived in
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 Earlier milestones in
