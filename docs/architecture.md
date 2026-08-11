@@ -10,7 +10,7 @@
                              │ load + elaborate
 ┌────────────────────────────▼────────────────────────────────┐
 │  L2 Kernel — small typed ML                                 │
-│  AST · type check · effect check · stdlib (in-language)     │
+│  AST · type check · effect check · stdlib (hwfl/* markdown) │
 └────────────────────────────┬────────────────────────────────┘
                              │ evaluate
 ┌────────────────────────────▼────────────────────────────────┐
@@ -140,8 +140,11 @@ workflows/*.md
 tools/*.md              # libraries / callable modules
 skills/*.md             # agent skills (callable / instruction)
 types/*.md              # shared type aliases (or in-language types)
-lib/*.md                # pure/effectful libraries
+lib/*.md                # project-local libraries
 ```
+
+Shipped stdlib (`hwfl/…`) is **not** under the project tree; the loader
+reads it from `HWFL_STDLIB` or a default pack root ([stdlib.md](stdlib.md)).
 
 ## Check vs run
 
@@ -193,8 +196,10 @@ the task truly is “edit the project in place.”
 
 ## Stdlib policy
 
-- Prefer **hwfl modules** under `lib/` for list/string/json helpers
-  ([stdlib.md](stdlib.md)).
+- **Polymorphism first**, then shipped markdown stdlib (`hwfl/…`) plus
+  project `lib/` — see [stdlib.md](stdlib.md).
+- Pack root: `HWFL_STDLIB` if set, else a sensible install/repo default
+  (not configured per `project.json`).
 - Prefer **MCP client** ([13-mcp.md](spec/13-mcp.md)) for external tool
   ecosystems (KB, search, …) over one-off domain host ops.
 - Host ops only when the implementation _must_ be in Haskell (LLM, FS sandbox,

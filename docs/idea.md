@@ -57,9 +57,10 @@ We want language-level ergonomics **and** document-shaped authoring.
 8. **Callable as a library** — one driver façade (check / run / step /
    resume / approve / show + run-store queries) shared by the CLI and any
    external frontend; FS run-store today.
-9. **Stdlib in-language** — prefer `lib/` modules and MCP clients over
-   growing the Haskell host-op set. New host ops only when the language
-   cannot express the need.
+9. **Stdlib in-language** — prefer shipped `hwfl/…` modules, project
+   `lib/`, and MCP clients over growing the Haskell host-op set. Value
+   polymorphism unblocks a real stdlib; new host ops only when the
+   language cannot express the need ([stdlib.md](stdlib.md)).
 10. **Teachable surface** — a short path from install → tiny program →
     check / run / resume / show.
 
@@ -82,8 +83,9 @@ We want language-level ergonomics **and** document-shaped authoring.
   behind an internal `LlmProvider` interface so production backends can
   replace it without rewriting workflows
 - Security defaults: workspace sandbox, opt-in `exec`, secret redaction
-- Prefer MCP **client** / in-language modules over growing the host-op
-  set (stdio servers: KB, web search, … — [spec/13-mcp.md](spec/13-mcp.md))
+- Prefer MCP **client** / in-language modules (`hwfl/…`, project `lib/`)
+  over growing the host-op set (stdio servers: KB, web search, … —
+  [spec/13-mcp.md](spec/13-mcp.md))
 - **Project** (modules) ≠ **workspace** (sandbox data + `.hwfl/runs`)
 
 ## Relationship to hwfi

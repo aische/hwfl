@@ -250,7 +250,7 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | Doc / example | When |
 | ------------- | ---- |
 | [language-reference.md](language-reference.md) | Keywords, types, prelude, host ops |
-| [stdlib.md](stdlib.md) | What belongs in `lib/` vs host |
+| [stdlib.md](stdlib.md) | `hwfl/*` stdlib + `HWFL_STDLIB` vs host |
 | `examples/coding-agent` | Chat → coding session → serial task/verify |
 | `examples/simple-coding-agent` | Flat `llm.agent_object` + stack skills |
 | `examples/skills` | Minimal `skill.discover` / `skill.load` |

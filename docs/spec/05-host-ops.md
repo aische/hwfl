@@ -300,7 +300,8 @@ Consume external MCP servers (stdio v1). Full design:
 ## 7. Pure prelude (not host ops)
 
 Shipped in v0 as prelude record projections — **no snapshot boundary**.
-Prefer migrating to `lib/*` modules once the import graph exists.
+Prefer migrating to `hwfl/*` / project `lib/*` once the import graph and
+stdlib pack exist.
 
 | Module | Op | Signature (sketch) |
 |--------|-----|-------------------|
@@ -321,7 +322,7 @@ Prefer migrating to `lib/*` modules once the import graph exists.
 
 ## 8. JSON / data
 
-**Not host ops.** Implement in `lib/json` etc. Exception: if performance
+**Not host ops.** Implement in `hwfl/json` etc. Exception: if performance
 forces a host `json.parse`, document it — still prefer in-language.
 
 ## 9. Prelude stability

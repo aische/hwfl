@@ -91,8 +91,9 @@ This is **not** `meta.invoke` (separate child run).
   when catchable); do not invent a parallel `{ ok, status }` envelope.
 
 **Deferred for first cut:** aliased imports; calling non-`main` exports on
-entry modules; concurrent FrInvoke inside `par` (serial nest first);
-`lib/` qname elaboration (separate track).
+entry modules; concurrent FrInvoke inside `par` (serial nest first).
+Stdlib pack injection (`hwfl/…` via `HWFL_STDLIB` / default) follows
+value polymorphism — [stdlib.md](../stdlib.md).
 
 ## 4. Snapshots
 

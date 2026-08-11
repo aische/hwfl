@@ -126,3 +126,25 @@ Interop with JSON `null`:
 
 Do not silently treat missing record fields as null unless declared
 `Option`.
+
+## 7. Polymorphism (next)
+
+**Value / let-polymorphism** for user and stdlib `fun`s is the next
+language milestone. It unblocks a single `hwfl/list.map` (and friends)
+instead of monomorphic clones. Sketch:
+
+```text
+fun map(xs: List<a>, f: (a) -> b): List<b> = …
+```
+
+Scope for the first cut:
+
+- Type variables in annotations and inferred schemes for top-level /
+  let-bound functions.
+- Instantiation at use sites (HM-style or bidirectional equivalent).
+- Enough for stdlib list / option / result combinators
+  ([stdlib.md](../stdlib.md)).
+
+Still deferred: effect polymorphism (`forall e. …`), higher-kinded user
+types beyond existing `List` / `Option` / `Result`, first-class
+`ModuleRef` / `FunRef`.

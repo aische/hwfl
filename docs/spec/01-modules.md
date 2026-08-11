@@ -77,7 +77,7 @@ Common fields:
 | `inputs`  | for entry | Record of `name: Type`                    |
 | `outputs` | for entry | Record of `name: Type`                    |
 | `effects` | no        | Allowed effect set (subset of lattice)    |
-| `imports` | no        | List of qnames or `hwfl/...` stdlib paths |
+| `imports` | no        | List of qnames (`lib/…`, `workflows/…`, or `hwfl/…` stdlib) |
 | `examples`| no        | Documented sample run inputs (tooling / UI; not a runtime binding) |
 
 Under `skills/`, missing `skill:` defaults to **callable**. Nested fields:
@@ -120,7 +120,7 @@ outputs:
     summary: String
 effects: [Read, Net]
 imports:
-    - lib/text
+    - hwfl/string
 examples:
   - name: readme
     inputs:
@@ -177,8 +177,25 @@ Two different mechanisms — do not conflate them:
   `fun`s (runtime linking / qname elaboration — separate from entry call).
 - **Entry modules** (`workflows/*` and other modules with frontmatter
   `inputs` / `outputs` + `main`): import + call **`main` only** via the
-  sugar below. Cross-module helpers belong in `lib/`, not on workflow
-  entries.
+  sugar below. Cross-module helpers belong in `lib/` or the shipped
+  stdlib (`hwfl/…`), not on workflow entries.
+
+### 3.1.1 Shipped stdlib (`hwfl/…`)
+
+Imports whose qname starts with `hwfl/` resolve from the **stdlib pack**,
+not from the project tree:
+
+1. Pack root = `HWFL_STDLIB` when set; otherwise a sensible default
+   (install data-files / directory next to the binary; repo checkout may
+   default to `<repo>/stdlib`). See [stdlib.md](../stdlib.md).
+2. Loader merges those modules into the project module map before check
+   and eval (same library linking as project `lib/`).
+3. Project files must not use frontmatter `name: hwfl/…` (reserved).
+4. There is no automatic rewrite of `lib/x` → `hwfl/x`; project `lib/`
+   and stdlib stay distinct.
+
+Value / let-polymorphism is a prerequisite for a useful polymorphic
+stdlib (`hwfl/list.map`, …) — [03-types.md](03-types.md) §7.
 
 ### 3.2 Same-project entry call (locked)
 

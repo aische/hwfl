@@ -34,7 +34,10 @@ multi-tenant runtime, package registry, embedding JS/Python/Lua VMs.
    ops require them.
 4. **Resume at effects.** Pure reduction is ephemeral; host ops are
    transitions.
-5. **Stdlib in-language.** Host ops stay rare and privileged.
+5. **Stdlib in-language.** Shipped `hwfl/…` modules and project `lib/`;
+   host ops stay rare and privileged. Pack root from `HWFL_STDLIB` or a
+   default ([stdlib.md](../stdlib.md)). Value polymorphism is a
+   prerequisite for a useful polymorphic stdlib.
 6. **Providers are adapters.** Workflows never depend on a vendor SDK.
 7. **Check before bill.** Static failure beats runtime surprise.
 

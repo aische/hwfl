@@ -7,19 +7,25 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 ## Now — language + interpreter
 
-Prefer MCP clients and in-language `lib/` modules over growing the host-op
-set.
+Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
+`lib/`) over growing the host-op set. **Polymorphism before shipping the
+stdlib** — monomorphic `list.map_string` clones are not the goal.
 
-- [ ] **Ship `lib/`** — modules per [stdlib.md](stdlib.md) (`list`,
-      `string`, `option`/`result`, …); use them from examples
+- [ ] **Polymorphism** — value / let-polymorphism for user and stdlib
+      `fun`s (`List<a>`, `(a) -> b`, …) in check (and eval/snapshots as
+      needed). Effect polymorphism stays deferred
+      ([spec/03-types.md](spec/03-types.md), [stdlib.md](stdlib.md))
+- [ ] **Ship stdlib** — pack under repo `stdlib/` (qnames `hwfl/list`,
+      `hwfl/string`, `hwfl/option`, …); loader resolves pack root from
+      `HWFL_STDLIB` or a sensible default; use from examples
 - [ ] **Factor large examples** — split oversized mains
-      (`real-story-writer`, `semantic-check`, …) into multi-module
-      projects once `lib/` exists
+      (`real-story-writer`, `semantic-check`, …) into project `lib/` /
+      multi-module once stdlib exists
 - [ ] **Short hello path** — `hwfl init` scaffold; keep
       [tutorial.md](tutorial.md) focused on check → run (mock) → resume →
       show (shell completions optional)
 - [ ] **Host ops** — add new host categories only when the language cannot
-      express the need; otherwise MCP or `lib/`
+      express the need; otherwise MCP or stdlib / `lib/`
 
 ## Next — examples and polish
 

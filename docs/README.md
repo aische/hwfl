@@ -24,7 +24,7 @@ Start sessions from [STATUS.md](STATUS.md) and [TASKS.md](TASKS.md).
 | [log/](log/)                           | Decision / milestone log         |
 | [spec/](spec/)                         | Normative specification          |
 | [examples/](examples/)                 | Design examples (contracts)      |
-| [stdlib.md](stdlib.md)                 | What belongs in-language vs host |
+| [stdlib.md](stdlib.md)                 | Stdlib pack (`hwfl/…`), `HWFL_STDLIB`, vs host |
 | [language-reference.md](language-reference.md) | Keywords, types, prelude + host ops |
 | [tutorial.md](tutorial.md)             | Lifecycle: check → run → resume → show |
 

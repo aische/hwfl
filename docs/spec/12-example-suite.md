@@ -154,7 +154,8 @@ stale).
 
 ## E19 — Lib-only list helpers **P**
 
-`lib/list.unique_by` written in hwfl replaces hwfi `builtin/list-unique-by`.
+`lib/list.unique_by` written in hwfl (stdlib: `hwfl/list.unique_by`)
+replaces hwfi `builtin/list-unique-by`.
 
 ## E20 — Mini semantic gate **H**
 

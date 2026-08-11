@@ -186,6 +186,6 @@ More: [examples/simple-coding-agent/README.md](examples/simple-coding-agent/READ
 - [docs/idea.md](docs/idea.md) — vision and goals
 - [docs/tutorial.md](docs/tutorial.md) — check → run → approve → resume → show
 - [docs/language-reference.md](docs/language-reference.md) — surface language
-- [docs/stdlib.md](docs/stdlib.md) — in-language `lib/` vs host ops
+- [docs/stdlib.md](docs/stdlib.md) — `hwfl/*` stdlib (`HWFL_STDLIB`) vs host ops
 - [docs/architecture.md](docs/architecture.md) — layers and boundaries
 - [examples/](examples/) — example programs (agents, story, compare, …)
