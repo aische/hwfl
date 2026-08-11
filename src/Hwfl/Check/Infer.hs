@@ -16,13 +16,20 @@ import Hwfl.Ast.Pat (Literal (..), Pattern (..))
 import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Check.Env
 import Hwfl.Check.Error (CheckError (..), attachPos)
-import Hwfl.Check.Overload
-  ( classifyOp,
-    inferOverloadedApp,
-    typesCompatible,
-  )
+import Hwfl.Check.Overload (classifyOp, inferOverloadedApp)
 import Hwfl.Check.Prelude (preludeTypeEnv)
+import Hwfl.Check.Scheme (quantify)
 import Hwfl.Check.Schema (schemaType, typeToSchema)
+import Hwfl.Check.Unify
+  ( Tc,
+    runTc,
+    tcError,
+    tcEither,
+    zonk,
+    unifyTypes,
+    instantiate,
+    generalize,
+  )
 
 -- | Collect aliases + function types from decls (bodies checked separately).
 inferModuleEnv :: ModuleBody -> Either CheckError TypeEnv
@@ -35,7 +42,7 @@ inferModuleEnv (ModuleBody decls _) = do
     addAlias env (n, ty) = insertAlias n ty env
     addFun env (n, ps, mt) = do
       funTy <- synthFunType env ps mt
-      pure (extendVar n funTy env)
+      pure (extendScheme n (quantify funTy) env)
 
 -- | Expand an alias RHS with the alias name already on the cycle stack.
 resolveAliasDef :: TypeEnv -> TypeName -> TypeExpr -> Either CheckError TypeExpr
@@ -73,302 +80,335 @@ paramsDomain env = \case
       Nothing -> Left (CannotInfer ("parameter " <> unIdent n))
 
 infer :: TypeEnv -> Expr -> Either CheckError TypeExpr
-infer env e = first (attachPos (exprPos e)) (infer' env e)
+infer env e =
+  first (attachPos (exprPos e)) $
+    runTc $ do
+      t <- inferTc env e
+      zonk t
 
-infer' :: TypeEnv -> Expr -> Either CheckError TypeExpr
-infer' env = \case
-  ELit lit -> Right (literalType lit)
+inferTc :: TypeEnv -> Expr -> Tc TypeExpr
+inferTc env = \case
+  ELit lit -> pure (literalType lit)
   EVar n@(Ident name)
     | Just _ <- classifyOp name ->
-        Left (CannotInfer ("overloaded operator " <> name <> " must be applied"))
-    | otherwise ->
-        maybe (Left (UnboundVar n)) (resolveType env) (lookupVar n env)
+        tcError (CannotInfer ("overloaded operator " <> name <> " must be applied"))
+    | otherwise -> case lookupScheme n env of
+        Nothing -> tcError (UnboundVar n)
+        Just sch -> do
+          ty <- instantiate sch
+          tcEither (resolveType env ty)
   -- An imported entry module is callable as @qname(inputs)@; bare reference
   -- resolves to the callable type @TFun inputs outputs@.  Non-entry imports
   -- resolve to their record of exported values (library / type-module access).
   EQName q -> case lookupImport (qnameToText q) env of
-    Nothing -> Left (UnboundModule (qnameToText q))
+    Nothing -> tcError (UnboundModule (qnameToText q))
     Just ex -> case ex.meEntryIO of
-      Just (inputsTy, outputsTy) -> resolveType env (TFun inputsTy outputsTy)
-      Nothing -> resolveType env (moduleExportRecord ex)
-  ESection _ -> Right tString
-  EList [] -> Left (CannotInfer "empty list; add a type annotation")
+      Just (inputsTy, outputsTy) -> tcEither (resolveType env (TFun inputsTy outputsTy))
+      Nothing -> tcEither (resolveType env (moduleExportRecord ex))
+  ESection _ -> pure tString
+  EList [] -> tcError (CannotInfer "empty list; add a type annotation")
   EList (e : es) -> do
-    te <- infer env e
-    mapM_ (\x -> check env x te) es
+    te <- inferTc env e
+    mapM_ (\x -> checkTc env x te) es
     pure (TList te)
   ERecord fs -> do
-    checkUniqueRecordFields (map fieldName fs)
+    tcEither (checkUniqueRecordFields (map fieldName fs))
     typed <- traverse (inferField env) fs
     pure (TRecord typed)
   EInterp parts -> do
     mapM_ (checkInterpPart env) parts
     pure tString
   EApp f args
-    | isToolBuiltin f -> inferToolApp env args
-    | isListLength f -> inferListLengthApp env args
-    | isListConcat f -> inferListConcatApp env args
-    | isJsonEncode f -> inferJsonEncodeApp env args
-    | isLlmObject f -> inferLlmObjectApp env args
-    | isLlmAgent f -> inferLlmAgentApp env args
-    | isLlmAgentObject f -> inferLlmAgentObjectApp env args
-    | isObsSpan f -> inferObsSpanApp env args
-    | isObsSpanPartial f -> inferObsSpanThunkApp env args
-    | isObsLog f -> inferObsLogApp env args
-    | isMetaInvoke f -> inferMetaInvokeApp env args
-    | isMetaReadSpans f -> inferMetaReadSpansApp env args
-    | isFsCopy f -> inferFsCopyApp env args
-    | isMcpCall f -> inferMcpCallApp env args
-    | isMcpTools f -> inferMcpToolsApp env args
-    | isHumanConfirm f -> inferHumanConfirmApp env args
-    | isHumanChoice f -> inferHumanChoiceApp env args
-    | isHumanAsk f -> inferHumanAskApp env args
+    | isToolBuiltin f -> tcEither (inferToolApp env args)
+    | isListLength f -> tcEither (inferListLengthApp env args)
+    | isListConcat f -> tcEither (inferListConcatApp env args)
+    | isJsonEncode f -> tcEither (inferJsonEncodeApp env args)
+    | isLlmObject f -> tcEither (inferLlmObjectApp env args)
+    | isLlmAgent f -> tcEither (inferLlmAgentApp env args)
+    | isLlmAgentObject f -> tcEither (inferLlmAgentObjectApp env args)
+    | isObsSpan f -> tcEither (inferObsSpanApp env args)
+    | isObsSpanPartial f -> tcEither (inferObsSpanThunkApp env args)
+    | isObsLog f -> tcEither (inferObsLogApp env args)
+    | isMetaInvoke f -> tcEither (inferMetaInvokeApp env args)
+    | isMetaReadSpans f -> tcEither (inferMetaReadSpansApp env args)
+    | isFsCopy f -> tcEither (inferFsCopyApp env args)
+    | isMcpCall f -> tcEither (inferMcpCallApp env args)
+    | isMcpTools f -> tcEither (inferMcpToolsApp env args)
+    | isHumanConfirm f -> tcEither (inferHumanConfirmApp env args)
+    | isHumanChoice f -> tcEither (inferHumanChoiceApp env args)
+    | isHumanAsk f -> tcEither (inferHumanAskApp env args)
     | EVar (Ident n) <- f,
       Just cls <- classifyOp n ->
-        inferOverloadedApp env cls infer args
+        tcEither (inferOverloadedApp env cls infer args)
     | otherwise -> do
-        ft <- infer env f
+        ft <- inferTc env f
         applyType env ft args
   EProj e f -> do
-    te <- infer env e
-    te' <- resolveType env te
+    te <- inferTc env e
+    te' <- tcEither (resolveType env te)
     case te' of
       TRecord fs ->
-        maybe (Left (MissingField f te')) Right (lookup f fs)
-      _ -> Left (ExpectedRecord te')
+        case lookup f fs of
+          Nothing -> tcError (MissingField f te')
+          Just ty -> instantiate (quantify ty) >>= \t -> tcEither (resolveType env t)
+      _ -> tcError (ExpectedRecord te')
   EIndex e ix -> do
-    te <- infer env e
-    check env ix tInt
-    te' <- resolveType env te
+    te <- inferTc env e
+    checkTc env ix tInt
+    te' <- tcEither (resolveType env te)
     case te' of
-      TList el -> Right el
-      _ -> Left (ExpectedList te')
+      TList el -> pure el
+      _ -> tcError (ExpectedList te')
   ELet n mt e1 e2 -> do
-    t1 <- case mt of
-      Just ann -> do
-        want <- resolveType env ann
-        check env e1 want
-        pure want
-      Nothing -> infer env e1
-    infer (extendVar n t1 env) e2
+    case (mt, e1) of
+      (_, EVar v) | Nothing <- mt ->
+        case lookupScheme v env of
+          Just sch -> inferTc (extendScheme n sch env) e2
+          Nothing -> tcError (UnboundVar v)
+      (Just ann, _) -> do
+        want <- tcEither (resolveType env ann)
+        checkTc env e1 want
+        let sch = quantify want
+        inferTc (extendScheme n sch env) e2
+      (Nothing, EFun _ _ _) -> do
+        t1 <- inferTc env e1
+        sch <- generalize env t1
+        inferTc (extendScheme n sch env) e2
+      (Nothing, _) -> do
+        t1 <- inferTc env e1
+        t1' <- zonk t1
+        inferTc (extendVar n t1' env) e2
   EFun ps mt body -> do
-    domain <- paramsDomain env ps
+    domain <- tcEither (paramsDomain env ps)
     binds <- paramBindings env ps domain
     ret <- case mt of
       Just ann -> do
-        want <- resolveType env ann
-        check (extendVars binds env) body want
+        want <- tcEither (resolveType env ann)
+        checkTc (extendVars binds env) body want
         pure want
-      Nothing -> infer (extendVars binds env) body
+      Nothing -> inferTc (extendVars binds env) body
     pure (TFun domain ret)
   EIf c t e -> do
-    check env c tBool
-    tt <- infer env t
-    check env e tt
+    checkTc env c tBool
+    tt <- inferTc env t
+    checkTc env e tt
     pure tt
   EMatch scrut arms -> inferMatch env scrut arms
   EPar _opts n xs body -> do
-    te <- infer env xs
-    te' <- resolveType env te
+    te <- inferTc env xs
+    te' <- tcEither (resolveType env te)
     case te' of
       TList el -> do
-        bt <- infer (extendVar n el env) body
+        bt <- inferTc (extendVar n el env) body
         pure (TList bt)
-      _ -> Left (ExpectedList te')
+      _ -> tcError (ExpectedList te')
   EJoin es -> case es of
-    [] -> Left (CannotInfer "empty join")
+    [] -> tcError (CannotInfer "empty join")
     (e : rest) -> do
-      t0 <- infer env e
-      mapM_ (\x -> check env x t0) rest
+      t0 <- inferTc env e
+      mapM_ (\x -> checkTc env x t0) rest
       pure (TList t0)
   EConfirm e -> do
-    checkConfirmArg env e
+    tcEither (checkConfirmArg env e)
     pure tBool
   EChoice e -> do
-    checkChoiceArg env e
+    tcEither (checkChoiceArg env e)
     pure tString
   ETry body errVar handler -> do
-    tBody <- infer env body
-    check (extendVar errVar tString env) handler tBody
+    tBody <- inferTc env body
+    checkTc (extendVar errVar tString env) handler tBody
     pure tBody
   ESchema te -> do
-    _ <- typeToSchema env te
+    _ <- tcEither (typeToSchema env te)
     pure schemaType
   ETag (TypeName "None") Nothing ->
-    Left (CannotInfer "None (annotate as Option<_>)")
+    tcError (CannotInfer "None (annotate as Option<_>)")
   ETag (TypeName "None") (Just _) ->
-    Left (TypeMismatchMsg "None takes no payload" (TOption tUnit) tUnit)
+    tcError (TypeMismatchMsg "None takes no payload" (TOption tUnit) tUnit)
   ETag (TypeName "Some") (Just payload) ->
-    TOption <$> infer env payload
+    TOption <$> inferTc env payload
   ETag (TypeName "Some") Nothing ->
-    Left (CannotInfer "Some requires a payload")
+    tcError (CannotInfer "Some requires a payload")
   ETag (TypeName n) _ ->
-    Left (CannotInfer ("unknown tag constructor: " <> n))
+    tcError (CannotInfer ("unknown tag constructor: " <> n))
 
 check :: TypeEnv -> Expr -> TypeExpr -> Either CheckError ()
-check env e want = first (attachPos (exprPos e)) (check' env e want)
+check env e want = first (attachPos (exprPos e)) (runTc (checkTc env e want))
 
-check' :: TypeEnv -> Expr -> TypeExpr -> Either CheckError ()
-check' env e want = do
-  want' <- resolveType env want
+checkTc :: TypeEnv -> Expr -> TypeExpr -> Tc ()
+checkTc env e want = do
+  want' <- tcEither (resolveType env want)
   case e of
     EList [] -> case want' of
       TList _ -> pure ()
-      _ -> Left (TypeMismatch want' (TList tUnit))
+      _ -> tcError (TypeMismatch want' (TList tUnit))
     EList es -> case want' of
-      TList el -> mapM_ (\x -> check env x el) es
+      TList el -> mapM_ (\x -> checkTc env x el) es
       _ -> do
-        got <- infer env e
-        unify want' got
+        got <- inferTc env e
+        unifyTypes want' got
     ETag (TypeName "None") Nothing -> case want' of
       TOption _ -> pure ()
-      _ -> Left (TypeMismatch want' (TOption tUnit))
+      _ -> tcError (TypeMismatch want' (TOption tUnit))
     ETag (TypeName "None") (Just _) ->
-      Left (TypeMismatchMsg "None takes no payload" want' tUnit)
+      tcError (TypeMismatchMsg "None takes no payload" want' tUnit)
     ETag (TypeName "Some") (Just payload) -> case want' of
-      TOption inner -> check env payload inner
-      _ -> Left (TypeMismatch want' (TOption tUnit))
+      TOption inner -> checkTc env payload inner
+      _ -> tcError (TypeMismatch want' (TOption tUnit))
     ETag (TypeName "Some") Nothing ->
-      Left (TypeMismatchMsg "Some requires a payload" want' tUnit)
+      tcError (TypeMismatchMsg "Some requires a payload" want' tUnit)
     ETag (TypeName n) _ ->
-      Left (CannotInfer ("unknown tag constructor: " <> n))
+      tcError (CannotInfer ("unknown tag constructor: " <> n))
     EFun ps mt body -> case want' of
       TFun domain ret -> do
         binds <- paramBindings env ps domain
         case mt of
-          Just ann -> do
-            ann' <- resolveType env ann
-            unify ret ann'
+          Just ann -> unifyAnn env ret ann
           Nothing -> pure ()
-        check (extendVars binds env) body ret
+        checkTc (extendVars binds env) body ret
       _ -> do
-        got <- infer env e
-        unify want' got
+        got <- inferTc env e
+        unifyTypes want' got
     EIf c t f -> do
-      check env c tBool
-      check env t want'
-      check env f want'
+      checkTc env c tBool
+      checkTc env t want'
+      checkTc env f want'
     ELet n mt e1 e2 -> do
-      t1 <- case mt of
-        Just ann -> do
-          a <- resolveType env ann
-          check env e1 a
-          pure a
-        Nothing -> infer env e1
-      check (extendVar n t1 env) e2 want'
+      env' <- case (mt, e1) of
+        (_, EVar v) | Nothing <- mt ->
+          case lookupScheme v env of
+            Just sch -> pure (extendScheme n sch env)
+            Nothing -> tcError (UnboundVar v)
+        (Just ann, _) -> do
+          a <- tcEither (resolveType env ann)
+          checkTc env e1 a
+          pure (extendScheme n (quantify a) env)
+        (Nothing, EFun _ _ _) -> do
+          t1 <- inferTc env e1
+          sch <- generalize env t1
+          pure (extendScheme n sch env)
+        (Nothing, _) -> do
+          t1 <- inferTc env e1
+          t1' <- zonk t1
+          pure (extendVar n t1' env)
+      checkTc env' e2 want'
     EMatch scrut arms -> checkMatch env scrut arms want'
     EPar _opts n xs body -> case want' of
       TList el -> do
-        te <- infer env xs
-        te' <- resolveType env te
+        te <- inferTc env xs
+        te' <- tcEither (resolveType env te)
         case te' of
-          TList elemTy -> do
-            check (extendVar n elemTy env) body el
-          _ -> Left (ExpectedList te')
+          TList elemTy -> checkTc (extendVar n elemTy env) body el
+          _ -> tcError (ExpectedList te')
       _ -> do
-        got <- infer env e
-        unify want' got
+        got <- inferTc env e
+        unifyTypes want' got
     EConfirm arg -> do
-      unify want' tBool
-      checkConfirmArg env arg
+      unifyTypes want' tBool
+      tcEither (checkConfirmArg env arg)
     EChoice arg -> do
-      unify want' tString
-      checkChoiceArg env arg
+      unifyTypes want' tString
+      tcEither (checkChoiceArg env arg)
     EJoin es -> case want' of
-      TList el -> mapM_ (\x -> check env x el) es
+      TList el -> mapM_ (\x -> checkTc env x el) es
       _ -> do
-        got <- infer env e
-        unify want' got
+        got <- inferTc env e
+        unifyTypes want' got
     ETry body errVar handler -> do
-      tBody <- infer env body
-      check (extendVar errVar tString env) handler tBody
-      unify want' tBody
+      tBody <- inferTc env body
+      checkTc (extendVar errVar tString env) handler tBody
+      unifyTypes want' tBody
     _ -> do
-      got <- infer env e
-      unify want' got
+      got <- inferTc env e
+      unifyTypes want' got
 
-inferMatch :: TypeEnv -> Expr -> [MatchArm] -> Either CheckError TypeExpr
+inferMatch :: TypeEnv -> Expr -> [MatchArm] -> Tc TypeExpr
 inferMatch env scrut arms = case arms of
-  [] -> Left (CannotInfer "empty match")
+  [] -> tcError (CannotInfer "empty match")
   MatchArm p body : rest -> do
-    st <- infer env scrut
+    st <- inferTc env scrut
     binds <- patternBindings env p st
-    t0 <- infer (extendVars binds env) body
+    t0 <- inferTc (extendVars binds env) body
     mapM_
       ( \(MatchArm p' b') -> do
           bs <- patternBindings env p' st
-          check (extendVars bs env) b' t0
+          checkTc (extendVars bs env) b' t0
       )
       rest
     pure t0
 
-checkMatch :: TypeEnv -> Expr -> [MatchArm] -> TypeExpr -> Either CheckError ()
+checkMatch :: TypeEnv -> Expr -> [MatchArm] -> TypeExpr -> Tc ()
 checkMatch env scrut arms want = case arms of
-  [] -> Left (CannotInfer "empty match")
+  [] -> tcError (CannotInfer "empty match")
   _ -> do
-    st <- infer env scrut
+    st <- inferTc env scrut
     mapM_
       ( \(MatchArm p body) -> do
           binds <- patternBindings env p st
-          check (extendVars binds env) body want
+          checkTc (extendVars binds env) body want
       )
       arms
 
-patternBindings :: TypeEnv -> Pattern -> TypeExpr -> Either CheckError [(Ident, TypeExpr)]
+patternBindings :: TypeEnv -> Pattern -> TypeExpr -> Tc [(Ident, TypeExpr)]
 patternBindings env p ty = do
-  ty' <- resolveType env ty
+  ty' <- tcEither (resolveType env ty)
   go p ty'
   where
     go pat expected = case pat of
-      PWild -> Right []
-      PVar n -> Right [(n, expected)]
+      PWild -> pure []
+      PVar n -> pure [(n, expected)]
       PLit lit -> do
-        unify expected (literalType lit)
+        unifyTypes expected (literalType lit)
         pure []
       PList ps -> case expected of
         TList el -> concat <$> traverse (`go` el) ps
-        _ -> Left (ExpectedList expected)
+        _ -> tcError (ExpectedList expected)
       PRecord pfs -> do
-        checkUniqueRecordFields (map fst pfs)
+        tcEither (checkUniqueRecordFields (map fst pfs))
         case expected of
           TRecord fs -> concat <$> traverse (fieldBind fs) pfs
-          _ -> Left (ExpectedRecord expected)
+          _ -> tcError (ExpectedRecord expected)
       PTag (TypeName "None") Nothing -> case expected of
-        TOption _ -> Right []
-        _ -> Left (TypeMismatchMsg "None pattern" (TOption tUnit) expected)
+        TOption _ -> pure []
+        _ -> tcError (TypeMismatchMsg "None pattern" (TOption tUnit) expected)
       PTag (TypeName "None") (Just _) ->
-        Left (TypeMismatchMsg "None pattern takes no payload" (TOption tUnit) expected)
+        tcError (TypeMismatchMsg "None pattern takes no payload" (TOption tUnit) expected)
       PTag (TypeName "Some") (Just p') -> case expected of
         TOption inner -> go p' inner
-        _ -> Left (TypeMismatchMsg "Some pattern" (TOption tUnit) expected)
+        _ -> tcError (TypeMismatchMsg "Some pattern" (TOption tUnit) expected)
       PTag (TypeName "Some") Nothing -> case expected of
-        TOption _ -> Right []
-        _ -> Left (TypeMismatchMsg "Some pattern" (TOption tUnit) expected)
+        TOption _ -> pure []
+        _ -> tcError (TypeMismatchMsg "Some pattern" (TOption tUnit) expected)
       PTag _ mp -> case mp of
-        Nothing -> Right []
+        Nothing -> pure []
         Just p' -> go p' expected
     fieldBind fs (n, p') = case lookup n fs of
-      Nothing -> Left (MissingField n (TRecord fs))
+      Nothing -> tcError (MissingField n (TRecord fs))
       Just ft -> go p' ft
 
-inferField :: TypeEnv -> Field -> Either CheckError (Ident, TypeExpr)
+inferField :: TypeEnv -> Field -> Tc (Ident, TypeExpr)
 inferField env = \case
-  Field n e -> (n,) <$> infer env e
+  Field n e -> (n,) <$> inferTc env e
   FieldShorthand n ->
-    maybe (Left (UnboundVar n)) (\ty -> Right (n, ty)) (lookupVar n env)
+    case lookupScheme n env of
+      Nothing -> tcError (UnboundVar n)
+      Just sch -> do
+        ty <- instantiate sch
+        t <- tcEither (resolveType env ty)
+        pure (n, t)
 
 fieldName :: Field -> Ident
 fieldName = \case
   Field n _ -> n
   FieldShorthand n -> n
 
-checkInterpPart :: TypeEnv -> StringPart -> Either CheckError ()
+checkInterpPart :: TypeEnv -> StringPart -> Tc ()
 checkInterpPart env = \case
   SLit _ -> pure ()
   SInterp e -> do
-    ty <- infer env e
-    ty' <- resolveType env ty
-    unless (isRenderable ty') $ Left (NotRenderable ty')
+    ty <- inferTc env e
+    ty' <- tcEither (resolveType env ty)
+    unless (isRenderable ty') $ tcError (NotRenderable ty')
 
 isRenderable :: TypeExpr -> Bool
 isRenderable = \case
@@ -381,12 +421,14 @@ isRenderable = \case
   TSecret {} -> False
   TFun {} -> False
   TEffFun {} -> False
+  TVar {} -> False
+  TMeta {} -> False
 
-applyType :: TypeEnv -> TypeExpr -> [Arg] -> Either CheckError TypeExpr
+applyType :: TypeEnv -> TypeExpr -> [Arg] -> Tc TypeExpr
 applyType env fty args = do
-  fty' <- resolveType env fty
+  fty' <- tcEither (resolveType env fty)
   case classifyArgs args of
-    Left err -> Left err
+    Left err -> tcError err
     Right (Positional es) -> applyPositional env fty' es
     Right (Named nes) -> applyNamed env fty' nes
 
@@ -408,50 +450,49 @@ classifyArgs args
       ArgNamed _ _ -> True
       _ -> False
 
-applyPositional :: TypeEnv -> TypeExpr -> [Expr] -> Either CheckError TypeExpr
+applyPositional :: TypeEnv -> TypeExpr -> [Expr] -> Tc TypeExpr
 applyPositional env initialTy [] = case funArrow initialTy of
   -- @f()@ on @Unit -> T@ is a full call (empty arg list means unit).
   Just (domain, ret) -> do
-    domain' <- resolveType env domain
-    if typesCompatible domain' tUnit
-      then Right ret
-      else Left (ArityMismatch 1 0)
-  Nothing -> Left (ExpectedFunction initialTy)
+    domain' <- tcEither (resolveType env domain)
+    unifyTypes domain' tUnit
+    pure ret
+  Nothing -> tcError (ExpectedFunction initialTy)
 applyPositional env initialTy providedArgs = go initialTy providedArgs
   where
     go currentTy remainingArgs = case funArrow currentTy of
       Just (TRecord fields, ret)
         | length remainingArgs == length fields && not (null remainingArgs) -> do
             mapM_
-              ( \(arg, (_, domain)) -> check env arg domain
+              ( \(arg, (_, domain)) -> checkTc env arg domain
               )
               (zip remainingArgs fields)
             pure ret
       Just (domain, ret)
         | (arg : rest) <- remainingArgs -> do
-            check env arg domain
+            checkTc env arg domain
             case rest of
               [] -> pure ret
               _ -> go ret rest
-      _ -> Left (ExpectedFunction currentTy)
+      _ -> tcError (ExpectedFunction currentTy)
 
-applyNamed :: TypeEnv -> TypeExpr -> [(Ident, Expr)] -> Either CheckError TypeExpr
+applyNamed :: TypeEnv -> TypeExpr -> [(Ident, Expr)] -> Tc TypeExpr
 applyNamed env fty nes = case funArrow fty of
   Just (TRecord fields, ret) -> do
     mapM_ (checkNamed fields) nes
     let given = map fst nes
         expected = map fst fields
     when (length given /= length expected) $
-      Left (ArityMismatch (length expected) (length given))
-    mapM_ (\n -> unless (n `elem` given) $ Left (MissingNamedArg n)) expected
+      tcError (ArityMismatch (length expected) (length given))
+    mapM_ (\n -> unless (n `elem` given) $ tcError (MissingNamedArg n)) expected
     pure ret
   Just (domain, _) ->
-    Left (TypeMismatchMsg "named arguments require a record parameter" (TRecord []) domain)
-  Nothing -> Left (ExpectedFunction fty)
+    tcError (TypeMismatchMsg "named arguments require a record parameter" (TRecord []) domain)
+  Nothing -> tcError (ExpectedFunction fty)
   where
     checkNamed fields (n, e) = case lookup n fields of
-      Nothing -> Left (UnknownField n (TRecord fields))
-      Just ty -> check env e ty
+      Nothing -> tcError (UnknownField n (TRecord fields))
+      Just ty -> checkTc env e ty
 
 -- | View @TFun@ / @TEffFun@ as a single arrow (effects ignored for typing).
 funArrow :: TypeExpr -> Maybe (TypeExpr, TypeExpr)
@@ -460,49 +501,52 @@ funArrow = \case
   TEffFun a _ b -> Just (a, b)
   _ -> Nothing
 
-paramBindings :: TypeEnv -> [Param] -> TypeExpr -> Either CheckError [(Ident, TypeExpr)]
+paramBindings :: TypeEnv -> [Param] -> TypeExpr -> Tc [(Ident, TypeExpr)]
 paramBindings env ps domain = do
-  domain' <- resolveType env domain
+  domain' <- tcEither (resolveType env domain)
   case ps of
     [] -> do
-      unify domain' tUnit
+      unifyTypes domain' tUnit
       pure []
     [Param n mty] -> do
       case mty of
-        Just ann -> do
-          ann' <- resolveType env ann
-          unify domain' ann'
+        Just ann -> unifyAnn env domain' ann
         Nothing -> pure ()
-      pure [(n, domain')]
+      domainZ <- zonk domain'
+      pure [(n, domainZ)]
     _ -> case domain' of
       TRecord fs ->
         if length ps /= length fs
-          then Left (ArityMismatch (length fs) (length ps))
-          else case traverse (bindNamed fs) ps of
-            Right bs -> Right bs
-            Left _ ->
-              Right $
-                zipWith
-                  (\(Param n _) (_, ty) -> (n, ty))
-                  ps
-                  fs
-      _ -> Left (ExpectedRecord domain')
+          then tcError (ArityMismatch (length fs) (length ps))
+          else do
+            let positional =
+                  zipWith
+                    (\(Param n _) (_, ty) -> (n, ty))
+                    ps
+                    fs
+            namedResults <- traverse (bindNamedOptional fs) ps
+            case sequence namedResults of
+              Just bs -> traverse zonkBind bs
+              Nothing -> traverse zonkBind positional
+      _ -> tcError (ExpectedRecord domain')
   where
-    bindNamed fs (Param n mty) = case lookup n fs of
+    zonkBind (n, ty) = (n,) <$> zonk ty
+    bindNamedOptional fs (Param n mty) = case lookup n fs of
       Just ty -> do
         case mty of
-          Just ann -> do
-            ann' <- resolveType env ann
-            unify ty ann'
+          Just ann -> unifyAnn env ty ann
           Nothing -> pure ()
-        pure (n, ty)
-      Nothing -> Left (MissingField n (TRecord fs))
+        pure (Just (n, ty))
+      Nothing -> pure Nothing
 
-unify :: TypeExpr -> TypeExpr -> Either CheckError ()
-unify want got =
-  if typesCompatible want got
-    then Right ()
-    else Left (TypeMismatch want got)
+-- | Match a parameter/return annotation against an expected type. Free type
+-- variables in the annotation are instantiated so @fun (x: a): a => x@ can
+-- check against @Int -> Int@.
+unifyAnn :: TypeEnv -> TypeExpr -> TypeExpr -> Tc ()
+unifyAnn env expected ann = do
+  ann' <- tcEither (resolveType env ann)
+  annFlex <- instantiate (quantify ann')
+  unifyTypes expected annFlex
 
 literalType :: Literal -> TypeExpr
 literalType = \case
@@ -598,7 +642,7 @@ isLlmObject = \case
 inferLlmObjectApp :: TypeEnv -> [Arg] -> Either CheckError TypeExpr
 inferLlmObjectApp env args = do
   ft <- infer env (EProj (EVar (Ident "llm")) (Ident "object"))
-  ret <- applyType env ft args
+  ret <- runTc (applyType env ft args)
   case schemaArgExpr args of
     Just (ESchema te) -> resolveType env te
     _ -> pure ret
@@ -779,7 +823,7 @@ inferObsSpanApp env args = case classifyArgs args of
     -- Partial application keeps the prelude stub until the thunk is applied.
     check env nameE tString
     ft <- infer env (EProj (EVar (Ident "obs")) (Ident "span"))
-    applyType env ft [ArgPos nameE]
+    runTc (applyType env ft [ArgPos nameE])
   Right (Named nes) -> do
     nameE <- maybe (Left (MissingNamedArg (Ident "name"))) pure (lookup (Ident "name") nes)
     bodyE <- maybe (Left (MissingNamedArg (Ident "body"))) pure (lookup (Ident "body") nes)
@@ -800,7 +844,7 @@ inferObsSpanThunk env bodyE = do
   te' <- resolveType env te
   case funArrow te' of
     Just (domain, ret) -> do
-      unify domain tUnit
+      runTc (unifyTypes domain tUnit)
       pure ret
     Nothing -> Left (ExpectedFunction te')
 
@@ -1097,8 +1141,8 @@ checkConfirmFieldTypes :: [(Ident, TypeExpr)] -> Either CheckError TypeExpr
 checkConfirmFieldTypes fields = do
   titleTy <-
     maybe (Left (MissingField (Ident "title") (TRecord fields))) pure (lookup (Ident "title") fields)
-  unify tString titleTy
-  for_ (lookup (Ident "detail") fields) (unify tString)
+  runTc (unifyTypes tString titleTy)
+  for_ (lookup (Ident "detail") fields) (runTc . unifyTypes tString)
   rejectUnknownConfirm (map fst fields)
   pure tBool
 
@@ -1152,9 +1196,9 @@ checkChoiceFieldTypes fields = do
     maybe (Left (MissingField (Ident "title") (TRecord fields))) pure (lookup (Ident "title") fields)
   optionsTy <-
     maybe (Left (MissingField (Ident "options") (TRecord fields))) pure (lookup (Ident "options") fields)
-  unify tString titleTy
-  unify (TList tString) optionsTy
-  for_ (lookup (Ident "detail") fields) (unify tString)
+  runTc (unifyTypes tString titleTy)
+  runTc (unifyTypes (TList tString) optionsTy)
+  for_ (lookup (Ident "detail") fields) (runTc . unifyTypes tString)
   rejectUnknownChoice (map fst fields)
   pure tString
 
@@ -1194,8 +1238,8 @@ inferHumanAskApp env args = case classifyArgs args of
 
     checkAskFieldTypes fields = do
       promptTy <- maybe (Left (MissingField (Ident "prompt") (TRecord fields))) pure (lookup (Ident "prompt") fields)
-      unify tString promptTy
-      for_ (lookup (Ident "detail") fields) (unify tString)
+      runTc (unifyTypes tString promptTy)
+      for_ (lookup (Ident "detail") fields) (runTc . unifyTypes tString)
       rejectUnknown (map fst fields)
       pure tString
 

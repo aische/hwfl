@@ -2,7 +2,7 @@ module Hwfl.Check.LocateSpec (spec) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Ast.Name (TypeName (..))
 import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Check.Error (CheckError (..), errorPos, errorRoot, renderLocatedCheckError)
 import Hwfl.Check.Module (checkLoadedModule)
@@ -43,9 +43,7 @@ spec = describe "type error locations" $ do
         Right _ -> expectationFailure "expected type error"
         Left err -> do
           errorRoot err
-            `shouldBe` TypeMismatch
-              (TRecord [(Ident "n", tInt)])
-              (TRecord [(Ident "n", tBool)])
+            `shouldBe` TypeMismatch tInt tBool
           case errorPos err of
             Nothing -> expectationFailure "expected a source position"
             Just p -> do

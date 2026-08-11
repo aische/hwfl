@@ -45,6 +45,8 @@ prettyAnn = maybe "" (\t -> ": " <> prettyType t)
 prettyType :: TypeExpr -> Text
 prettyType = \case
   TName n -> unTypeName n
+  TVar n -> unIdent n
+  TMeta i -> "?" <> T.pack (show i)
   TList t -> "List<" <> prettyType t <> ">"
   TOption t -> "Option<" <> prettyType t <> ">"
   TResult a b -> "Result<" <> prettyType a <> ", " <> prettyType b <> ">"

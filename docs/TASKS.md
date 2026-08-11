@@ -8,10 +8,9 @@ here and in the report when fixed; do not re-litigate severity in this file.
 ## Now — language + interpreter
 
 Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
-`lib/`) over growing the host-op set. **Polymorphism before shipping the
-stdlib** — monomorphic `list.map_string` clones are not the goal.
+`lib/`) over growing the host-op set.
 
-- [ ] **Polymorphism** — value / let-polymorphism for user and stdlib
+- [x] **Polymorphism** — value / let-polymorphism for user and stdlib
       `fun`s (`List<a>`, `(a) -> b`, …) in check (and eval/snapshots as
       needed). Effect polymorphism stays deferred
       ([spec/03-types.md](spec/03-types.md), [stdlib.md](stdlib.md))
@@ -87,7 +86,7 @@ and interpreter. See [idea.md](idea.md).
 MCP client (stdio) + story-writer / real-story-writer examples, Context
 L1+L2 (heuristic), bug-fix High + Medium (except deferred M-3 / M-16 /
 M-18), **H-8** / **M-20** / **M-21**, selected Lows through L-15 + L-18,
-and typed `--example` archived in
+**value / let polymorphism**, and typed `--example` archived in
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 Earlier milestones in
 [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md).

@@ -45,6 +45,18 @@ spec = describe "type parser" $ do
             (TName (TypeName "String"))
         )
 
+  it "parses type variables" $ do
+    parseT "a" `shouldBe` Right (TVar (Ident "a"))
+    parseT "List<a>" `shouldBe` Right (TList (TVar (Ident "a")))
+    parseT "(a) -> b"
+      `shouldBe` Right (TFun (TVar (Ident "a")) (TVar (Ident "b")))
+    parseT "List<a> -> List<b>"
+      `shouldBe` Right
+        ( TFun
+            (TList (TVar (Ident "a")))
+            (TList (TVar (Ident "b")))
+        )
+
   describe "resource limits (M-8)" $ do
     it "rejects deeply nested List types" $ do
       let src = T.replicate 300 "List<" <> "Int" <> T.replicate 300 ">"

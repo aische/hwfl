@@ -47,6 +47,8 @@ typeAtom =
   choice
     [ specialized,
       TName <$> pTypeName,
+      -- Lowercase names are type variables (@a@ in @List<a>@).
+      TVar <$> pIdent,
       TRecord <$> recordType,
       between (symbol "(") (symbol ")") (nest typeExpr)
     ]

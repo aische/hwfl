@@ -3,9 +3,12 @@ module Hwfl.Check.Env
   ( TypeEnv (..),
     ModuleExport (..),
     emptyTypeEnv,
+    lookupScheme,
     lookupVar,
+    extendScheme,
     extendVar,
     extendVars,
+    extendSchemes,
     lookupAlias,
     insertAlias,
     lookupImport,
@@ -16,6 +19,7 @@ module Hwfl.Check.Env
     checkUniqueRecordFields,
     stripEffects,
     typeEq,
+    freeEnvTVars,
     primitiveNames,
     isPrimitive,
   )
@@ -29,9 +33,10 @@ import Data.Text (Text)
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Type (Effect, TypeExpr (..))
 import Hwfl.Check.Error (CheckError (..))
+import Hwfl.Check.Scheme (Scheme (..), freeTVarsInScheme, mono, schemeType)
 
 data TypeEnv = TypeEnv
-  { teVars :: Map Ident TypeExpr,
+  { teVars :: Map Ident Scheme,
     teAliases :: Map TypeName TypeExpr,
     teImports :: Map Text ModuleExport
   }
@@ -39,7 +44,7 @@ data TypeEnv = TypeEnv
 
 -- | Exported bindings from an imported module (qname key is slash text).
 data ModuleExport = ModuleExport
-  { meValues :: Map Ident TypeExpr,
+  { meValues :: Map Ident Scheme,
     meEffects :: Map Ident (Set Effect),
     -- | When the module is an entry module (has @inputs@/@outputs@), the
     -- resolved @(inputs, outputs)@ types enabling @qname(inputs)@ call syntax.
@@ -50,14 +55,25 @@ data ModuleExport = ModuleExport
 emptyTypeEnv :: TypeEnv
 emptyTypeEnv = TypeEnv Map.empty Map.empty Map.empty
 
+lookupScheme :: Ident -> TypeEnv -> Maybe Scheme
+lookupScheme n env = Map.lookup n env.teVars
+
+-- | Binding type without instantiation (rigid / alias use). Prefer
+-- 'Hwfl.Check.Unify.instantiate' at expression use sites.
 lookupVar :: Ident -> TypeEnv -> Maybe TypeExpr
-lookupVar n env = Map.lookup n env.teVars
+lookupVar n env = schemeType <$> lookupScheme n env
+
+extendScheme :: Ident -> Scheme -> TypeEnv -> TypeEnv
+extendScheme n sch env = env {teVars = Map.insert n sch env.teVars}
 
 extendVar :: Ident -> TypeExpr -> TypeEnv -> TypeEnv
-extendVar n t env = env {teVars = Map.insert n t env.teVars}
+extendVar n t = extendScheme n (mono t)
 
 extendVars :: [(Ident, TypeExpr)] -> TypeEnv -> TypeEnv
 extendVars bs env = foldr (uncurry extendVar) env bs
+
+extendSchemes :: [(Ident, Scheme)] -> TypeEnv -> TypeEnv
+extendSchemes bs env = foldr (uncurry extendScheme) env bs
 
 lookupAlias :: TypeName -> TypeEnv -> Maybe TypeExpr
 lookupAlias n env = Map.lookup n env.teAliases
@@ -70,7 +86,13 @@ setImports im env = env {teImports = im}
 
 moduleExportRecord :: ModuleExport -> TypeExpr
 moduleExportRecord ex =
-  TRecord [(n, t) | (n, t) <- Map.toList ex.meValues]
+  TRecord [(n, schemeType s) | (n, s) <- Map.toList ex.meValues]
+
+-- | Free type variables in the monomorphic / skolem parts of the env
+-- (excluding quantified vars of schemes).
+freeEnvTVars :: TypeEnv -> Set Ident
+freeEnvTVars env =
+  foldMap freeTVarsInScheme (Map.elems env.teVars)
 
 insertAlias :: TypeName -> TypeExpr -> TypeEnv -> Either CheckError TypeEnv
 insertAlias n t env =
@@ -126,6 +148,8 @@ resolveTypeFrom env stack0 ty0 = fst <$> go stack0 Map.empty ty0
             Just body -> do
               (resolved, memo') <- go (n : stack) memo body
               Right (resolved, Map.insert n resolved memo')
+      TVar n -> Right (TVar n, memo)
+      TMeta i -> Right (TMeta i, memo)
       TList t -> do
         (t', memo') <- go stack memo t
         Right (TList t', memo')
@@ -201,4 +225,6 @@ typeEq a b = eq (stripEffects a) (stripEffects b)
     eq (TEffFun x1 _ y1) (TEffFun x2 _ y2) = eq x1 x2 && eq y1 y2
     eq (TEffFun x1 _ y1) (TFun x2 y2) = eq x1 x2 && eq y1 y2
     eq (TFun x1 y1) (TEffFun x2 _ y2) = eq x1 x2 && eq y1 y2
+    eq (TVar x) (TVar y) = x == y
+    eq (TMeta x) (TMeta y) = x == y
     eq x y = x == y

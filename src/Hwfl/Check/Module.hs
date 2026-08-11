@@ -35,6 +35,7 @@ import Hwfl.Check.Env
   ( ModuleExport (..),
     TypeEnv,
     extendVars,
+    lookupScheme,
     lookupVar,
     resolveType,
     setImports,
@@ -42,6 +43,7 @@ import Hwfl.Check.Env
   )
 import Hwfl.Check.Error (CheckError (..))
 import Hwfl.Check.Infer (check, infer, inferModuleEnv)
+import Hwfl.Check.Scheme (Scheme (..))
 import Hwfl.Check.Schema (typeToSchema)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Json.Encode (jsonToValueWithSchema)
@@ -82,15 +84,16 @@ checkModuleBodyInContext ctx body@(ModuleBody decls mexpr) = do
 checkDecl :: TypeEnv -> Decl -> Either CheckError ()
 checkDecl env = \case
   DType {} -> pure ()
-  DFun _ n ps _mt body -> case lookupVar n env of
+  DFun _ n ps _mt body -> case lookupScheme n env of
     Nothing -> Left (UnboundVar n)
-    Just (TFun domain ret) -> do
-      binds <- bindParams ps domain
-      check (extendVars binds env) body ret
-    Just (TEffFun domain _ ret) -> do
-      binds <- bindParams ps domain
-      check (extendVars binds env) body ret
-    Just ty -> Left (ExpectedFunction ty)
+    Just (Scheme _ ty) -> case ty of
+      TFun domain ret -> do
+        binds <- bindParams ps domain
+        check (extendVars binds env) body ret
+      TEffFun domain _ ret -> do
+        binds <- bindParams ps domain
+        check (extendVars binds env) body ret
+      _ -> Left (ExpectedFunction ty)
 
 bindParams :: [Param] -> TypeExpr -> Either CheckError [(Ident, TypeExpr)]
 bindParams ps domain = case ps of

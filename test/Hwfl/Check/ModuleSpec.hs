@@ -543,6 +543,62 @@ spec = describe "type checker" $ do
       inferE "human.choice({ title = \"Pick\", options = [\"a\"] })"
         `shouldBe` Right (TName (TypeName "String"))
 
+  describe "value / let polymorphism" $ do
+    it "accepts polymorphic identity at Int and String" $
+      checkBody
+        "fun id(x: a): a = x\n\
+        \fun main(_: Unit): { n: Int, s: String } =\n\
+        \  { n = id(1), s = id(\"hi\") }"
+        `shouldSatisfy` isRight
+
+    it "rejects body that does not respect a type variable" $
+      checkBody "fun id(x: a): a = 1"
+        `shouldSatisfy` isLeft
+
+    it "accepts multi-param poly app" $
+      checkBody
+        "fun app(f: (a) -> b, x: a): b = f(x)\n\
+        \fun main(_: Unit): Int =\n\
+        \  app(fun (n: Int): Int => n + 1, 3)"
+        `shouldSatisfy` isRight
+
+    it "accepts map via par over a polymorphic element type" $
+      checkBody
+        "fun map(xs: List<a>, f: (a) -> b): List<b> =\n\
+        \  par for x in xs { f(x) }\n\
+        \fun main(_: Unit): List<String> =\n\
+        \  map([1, 2], fun (x: Int): String => \"n\")"
+        `shouldSatisfy` isRight
+
+    it "instantiates independently at each use site" $
+      checkBody
+        "fun id(x: a): a = x\n\
+        \fun main(_: Unit): Int =\n\
+        \  id(1) + id(2)"
+        `shouldSatisfy` isRight
+
+    it "rejects mixing Instantiations that break the result type" $
+      checkBody
+        "fun id(x: a): a = x\n\
+        \fun main(_: Unit): Int =\n\
+        \  id(1) + id(\"x\")"
+        `shouldSatisfy` isLeft
+
+    it "generalizes let-bound fun and allows multiple instantiations" $
+      checkBody
+        "fun main(_: Unit): { n: Int, s: String } =\n\
+        \  let identity = fun (x: a): a => x in\n\
+        \  { n = identity(1), s = identity(\"z\") }"
+        `shouldSatisfy` isRight
+
+    it "copies schemes through let-alias" $
+      checkBody
+        "fun id(x: a): a = x\n\
+        \fun main(_: Unit): Int =\n\
+        \  let f = id in\n\
+        \  f(7)"
+        `shouldSatisfy` isRight
+
 isRight :: Either a b -> Bool
 isRight = \case
   Right _ -> True

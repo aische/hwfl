@@ -17,10 +17,10 @@ import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Expr
 import Hwfl.Ast.Name (Ident (..), qnameToText)
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
-import Hwfl.Check.Env (ModuleExport (..), TypeEnv, extendVar, lookupImport, lookupVar, resolveType)
+import Hwfl.Check.Env (ModuleExport (..), TypeEnv, extendScheme, extendVar, lookupImport, lookupScheme, resolveType)
 import Hwfl.Check.Error (CheckError (..))
-import Hwfl.Check.Infer (infer)
 import Hwfl.Check.Overload (classifyOp)
+import Hwfl.Check.Scheme (schemeType)
 
 type EffSet = Set Effect
 
@@ -155,21 +155,25 @@ extendAliasType env n mt e1 = case mt of
   Just ann -> do
     t1 <- resolveType env ann
     pure (extendVar n t1 env)
-  Nothing -> case aliasType env e1 of
-    Just t -> pure (extendVar n t env)
-    Nothing -> pure env
+  Nothing -> case e1 of
+    EVar v -> case lookupScheme v env of
+      Just sch -> pure (extendScheme n sch env)
+      Nothing -> pure env
+    _ -> case aliasType env e1 of
+      Just t -> pure (extendVar n t env)
+      Nothing -> pure env
 
 aliasType :: TypeEnv -> Expr -> Maybe TypeExpr
 aliasType env = \case
-  EVar v -> lookupVar v env
+  EVar v -> schemeType <$> lookupScheme v env
   EQName q -> do
     ex <- lookupImport (qnameToText q) env
     case ex.meEntryIO of
       Just (ins, outs) -> Just (TFun ins outs)
-      Nothing -> Map.lookup (Ident "main") ex.meValues
+      Nothing -> schemeType <$> Map.lookup (Ident "main") ex.meValues
   EProj (EQName q) field -> do
     ex <- lookupImport (qnameToText q) env
-    Map.lookup field ex.meValues
+    schemeType <$> Map.lookup field ex.meValues
   EProj e field -> do
     t <- aliasType env e
     case t of
@@ -187,10 +191,13 @@ effectsReleasedByApp :: TypeEnv -> Expr -> [Arg] -> Either CheckError EffSet
 effectsReleasedByApp env f args = case f of
   EVar (Ident n)
     | Just _ <- classifyOp n -> pure emptyEffs
-  _ -> do
-    ft <- infer env f
-    ft' <- resolveType env ft
-    pure (peelEffects ft' (appCount args))
+  _ -> case aliasType env f of
+    -- Module / let-bound callees: peel effectful arrows. Parameters and other
+    -- locals are absent from the module env — they cannot carry host effects.
+    Just ft -> do
+      ft' <- resolveType env ft
+      pure (peelEffects ft' (appCount args))
+    Nothing -> pure emptyEffs
 
 appCount :: [Arg] -> Int
 appCount args

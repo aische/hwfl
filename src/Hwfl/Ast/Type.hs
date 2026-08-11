@@ -41,8 +41,14 @@ parseEffectName = \case
   "Meta" -> Just EffMeta
   _ -> Nothing
 
+-- | Type expressions.
+--
+-- * 'TVar' — surface / skolem type variable (@a@ in @List\<a\>@).
+-- * 'TMeta' — checker unification variable (not written in source).
 data TypeExpr
   = TName TypeName
+  | TVar Ident
+  | TMeta Int
   | TList TypeExpr
   | TOption TypeExpr
   | TResult TypeExpr TypeExpr

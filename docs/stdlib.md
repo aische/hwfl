@@ -11,10 +11,9 @@ only when the language cannot express the need. See [TASKS.md](TASKS.md).
 ## Polymorphism first
 
 A useful `hwfl/list.map` needs **value / let-polymorphism** (`List<a>`,
-`(a) -> b`, …). Shipping monomorphic clones (`map_string`, …) is not the
-goal. Implement polymorphism in check (and eval/snapshots as needed)
-**before** treating the stdlib pack as done. Effect polymorphism
-(`forall e. …`) stays deferred ([spec/04-effects.md](spec/04-effects.md)).
+`(a) -> b`, …). That is now in check — do **not** ship monomorphic clones
+(`map_string`, …). Effect polymorphism (`forall e. …`) stays deferred
+([spec/04-effects.md](spec/04-effects.md)).
 
 ## Three layers (do not conflate)
 

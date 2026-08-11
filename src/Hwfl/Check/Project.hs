@@ -278,9 +278,9 @@ moduleExportFrom fm (ModuleBody decls _) result =
   ModuleExport
     { meValues =
         Map.fromList
-          [ (n, ty)
+          [ (n, sch)
             | DFun _ n _ _ _ <- decls,
-              Just ty <- [Map.lookup n result.crEnv.teVars]
+              Just sch <- [Map.lookup n result.crEnv.teVars]
           ],
       meEffects = result.crEffects,
       meEntryIO = entryIO

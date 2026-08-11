@@ -9,32 +9,34 @@ import Data.Text (Text)
 import Hwfl.Ast.Name (Ident (..), TypeName (..))
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
 import Hwfl.Check.Env (TypeEnv (..))
+import Hwfl.Check.Scheme (mono)
 
 preludeTypeEnv :: TypeEnv
 preludeTypeEnv =
   TypeEnv
     { teVars =
         Map.fromList $
-          binOps
-            ++ [ (Ident "not", TFun (t "Bool") (t "Bool")),
-                 -- Domain is a placeholder; Infer special-cases @tool(f)@ for any function.
-                 ( Ident "tool",
-                   TFun (TFun (t "Json") (t "Json")) (t "ToolSpec")
-                 ),
-                 (Ident "fs", fsType),
-                 (Ident "llm", llmType),
-                 (Ident "human", humanType),
-                 (Ident "obs", obsType),
-                 (Ident "exec", execType),
-                 (Ident "meta", metaType),
-                 (Ident "skill", skillType),
-                 (Ident "mcp", mcpType),
-                 (Ident "list", listType),
-                 (Ident "text", textType),
-                 (Ident "md", mdType),
-                 (Ident "json", jsonType),
-                 (Ident "ctx", ctxType)
-               ],
+          map (fmap mono) $
+            binOps
+              ++ [ (Ident "not", TFun (t "Bool") (t "Bool")),
+                   -- Domain is a placeholder; Infer special-cases @tool(f)@ for any function.
+                   ( Ident "tool",
+                     TFun (TFun (t "Json") (t "Json")) (t "ToolSpec")
+                   ),
+                   (Ident "fs", fsType),
+                   (Ident "llm", llmType),
+                   (Ident "human", humanType),
+                   (Ident "obs", obsType),
+                   (Ident "exec", execType),
+                   (Ident "meta", metaType),
+                   (Ident "skill", skillType),
+                   (Ident "mcp", mcpType),
+                   (Ident "list", listType),
+                   (Ident "text", textType),
+                   (Ident "md", mdType),
+                   (Ident "json", jsonType),
+                   (Ident "ctx", ctxType)
+                 ],
       teAliases = Map.empty,
       teImports = Map.empty
     }

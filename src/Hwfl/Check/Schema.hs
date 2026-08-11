@@ -105,6 +105,8 @@ typeToSchemaWithDocs env docs te = go [] te
             ]
       TFun {} -> Left (SchemaUnsupported te)
       TEffFun {} -> Left (SchemaUnsupported te)
+      TVar {} -> Left (SchemaUnsupported te)
+      TMeta {} -> Left (SchemaUnsupported te)
 
     annotateFields tyName schema = case Map.lookup tyName fieldDocMap of
       Just docsForType -> applyFieldDocs docsForType schema

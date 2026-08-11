@@ -52,6 +52,8 @@ library
         Hwfl.Check.Overload
         Hwfl.Check.Prelude
         Hwfl.Check.Project
+        Hwfl.Check.Scheme
+        Hwfl.Check.Unify
         Hwfl.Cli.Args
         Hwfl.Cli.Json
         Hwfl.Driver

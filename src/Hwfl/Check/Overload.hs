@@ -131,6 +131,8 @@ isComparable = \case
   TSecret {} -> False
   TFun {} -> False
   TEffFun {} -> False
+  TVar {} -> False
+  TMeta {} -> False
   _ -> False
 
 isOrdered :: TypeExpr -> Bool
