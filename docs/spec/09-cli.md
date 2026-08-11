@@ -6,6 +6,7 @@ Executable name provisional: **`hwfl`**.
 
 | Command                                                 | Purpose                                          |
 | ------------------------------------------------------- | ------------------------------------------------ |
+| `hwfl init [dir]`                                       | Scaffold `project.json` + hello `workflows/main.md` |
 | `hwfl check <project> [--json]`                                  | Load + type + effects + graph; exit ≠0 on error  |
 | `hwfl run <project> [--workspace <dir>] [--input k=v…] [--example <name>] [--debug] [--cost] [--dump] [--json] [--interactive]` | Check (unless `--no-check`) + execute entrypoint |
 | `hwfl step <workspace> <run-id>`                        | One transition, then pause                       |
@@ -85,5 +86,8 @@ Exact codes may adjust in M4; stay stable after first release tag.
 
 Nice-to-have **[defer]**:
 
-- Shell completions, `hwfl init` scaffold
+- Shell completions
 - Optional omit / `latest` run-id for continue commands
+
+`hwfl init` ships a minimal hello project (LLM + confirm) for the
+check → run (mock) → approve → show path; see [tutorial.md](../tutorial.md).

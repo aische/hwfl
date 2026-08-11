@@ -2,13 +2,15 @@
 Last updated: 2026-08-11
 
 ## Current focus
-**Language + interpreter** — short hello path (`hwfl init` + tutorial);
-prefer MCP / stdlib / project `lib/` over new host ops.
+**Language + interpreter** — prefer MCP / stdlib / project `lib/` over new
+host ops; opportunistic Lows.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
+- **Short hello path** — `hwfl init` scaffolds LLM + confirm project;
+  [tutorial.md](tutorial.md) is init → check → run (mock) → approve → show
 - **Factored large examples** — `semantic-check` / `real-story-writer` into
   `lib/*` + `types/main`; import brings type aliases; `VLibFun` for library
   exports (snapshot-safe); module-path run/check loads enclosing project
@@ -20,9 +22,9 @@ Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 None.
 
 ## Next up
-1. `hwfl init` and a short check → run (mock) → resume → show tutorial
-2. Prefer MCP / stdlib for domain tools (git, terminals, …)
-3. Opportunistic Lows; M-3 / M-16 / M-18 only if they bite
+1. Prefer MCP / stdlib for domain tools (git, terminals, …)
+2. Opportunistic Lows; M-3 / M-16 / M-18 only if they bite
+3. Optional: shell completions; omit / `latest` run-id
 
 ## Deferred
 - Git / persistent terminals (MCP first)

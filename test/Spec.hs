@@ -5,6 +5,7 @@ import Hwfl.Check.LocateSpec
 import Hwfl.Check.ModuleSpec
 import Hwfl.Check.ProjectSpec
 import Hwfl.Cli.ArgsSpec
+import Hwfl.Cli.InitSpec
 import Hwfl.Cli.JsonSpec
 import Hwfl.Check.SchemaSpec
 import Hwfl.Json.EncodeSpec
@@ -69,6 +70,7 @@ main = hspec $ do
   Hwfl.Check.ProjectSpec.spec
   Hwfl.StdlibSpec.spec
   Hwfl.Cli.ArgsSpec.spec
+  Hwfl.Cli.InitSpec.spec
   Hwfl.Cli.JsonSpec.spec
   Hwfl.Check.SchemaSpec.spec
   Hwfl.Json.EncodeSpec.spec

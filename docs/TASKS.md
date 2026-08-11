@@ -20,7 +20,7 @@ Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
 - [x] **Factor large examples** — split oversized mains
       (`real-story-writer`, `semantic-check`) into project `lib/` /
       `types/main` (+ `VLibFun`, imported type aliases)
-- [ ] **Short hello path** — `hwfl init` scaffold; keep
+- [x] **Short hello path** — `hwfl init` scaffold; keep
       [tutorial.md](tutorial.md) focused on check → run (mock) → resume →
       show (shell completions optional)
 - [ ] **Host ops** — add new host categories only when the language cannot
@@ -83,12 +83,13 @@ and interpreter. See [idea.md](idea.md).
 
 ## Done
 
-Factored `semantic-check` / `real-story-writer` into `lib/` + `types/main`,
-shipped `hwfl/*` stdlib pack + loader, MCP client (stdio) + story-writer /
-real-story-writer examples, Context L1+L2 (heuristic), bug-fix High +
-Medium (except deferred M-3 / M-16 / M-18), **H-8** / **M-20** / **M-21**,
-selected Lows through L-15 + L-18, **value / let polymorphism**, and typed
-`--example` archived in
+Short hello path (`hwfl init` + tutorial), factored `semantic-check` /
+`real-story-writer` into `lib/` + `types/main`, shipped `hwfl/*` stdlib
+pack + loader, MCP client (stdio) + story-writer / real-story-writer
+examples, Context L1+L2 (heuristic), bug-fix High + Medium (except
+deferred M-3 / M-16 / M-18), **H-8** / **M-20** / **M-21**, selected Lows
+through L-15 + L-18, **value / let polymorphism**, and typed `--example`
+archived in
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 Earlier milestones in
 [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md).

@@ -15,12 +15,14 @@ import Hwfl.Cli.Args
     parseCheckFlags,
     parseChoose,
     parseExtend,
+    parseInitFlags,
     parseReply,
     parseRunFlags,
     parseShow,
     parseWsRun,
     wantsJson,
   )
+import Hwfl.Cli.Init (InitResult (..), renderInitError, scaffoldProject)
 import Hwfl.Cli.Json
   ( jsonDriverError,
     jsonPlainError,
@@ -98,6 +100,7 @@ dispatch :: [String] -> IO ()
 dispatch = \case
   ["parse", path] -> cmdParse path
   ("check" : rest) -> cmdCheck rest
+  ("init" : rest) -> cmdInit rest
   ["version"] -> putStrLn "hwfl 0.1.0.0"
   ("run" : rest) -> cmdRun rest
   ("step" : rest) -> cmdStep rest
@@ -113,7 +116,7 @@ usage :: IO ()
 usage = do
   hPutStrLn
     stderr
-    "usage: hwfl parse|check <project|module.md> | hwfl run <project|module.md> [options]"
+    "usage: hwfl init [dir] | hwfl parse|check <project|module.md> | hwfl run <project|module.md> [options]"
   hPutStrLn
     stderr
     "       hwfl step|resume <workspace> <run-id> [--llm-provider mock|simple] [--dump]"
@@ -153,6 +156,28 @@ cmdParse path = do
       TIO.hPutStrLn stderr (renderDiagnostics diags)
       exitWith (ExitFailure 1)
     Right loaded -> TIO.putStrLn (prettyModuleBody (lmBody loaded))
+
+cmdInit :: [String] -> IO ()
+cmdInit rest = case parseInitFlags rest of
+  Left msg -> do
+    hPutStrLn stderr msg
+    exitWith (ExitFailure 2)
+  Right dir -> do
+    result <- scaffoldProject dir
+    case result of
+      Left err -> do
+        TIO.hPutStrLn stderr (renderInitError err)
+        exitWith (ExitFailure 1)
+      Right ok -> do
+        mapM_ (\p -> hPutStrLn stderr ("created " <> p)) ok.irCreated
+        hPutStrLn stderr ("hwfl init: project " <> T.unpack ok.irProjectName)
+        hPutStrLn stderr "next:"
+        hPutStrLn stderr ("  hwfl check " <> ok.irRoot)
+        hPutStrLn
+          stderr
+          ("  hwfl run " <> ok.irRoot <> " --workspace " <> ok.irRoot <> " --llm-provider mock")
+        hPutStrLn stderr ("  hwfl approve " <> ok.irRoot <> " <run-id> --yes")
+        hPutStrLn stderr ("  hwfl show " <> ok.irRoot <> " <run-id>")
 
 cmdCheck :: [String] -> IO ()
 cmdCheck rest = case parseCheckFlags rest of

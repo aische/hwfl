@@ -1,12 +1,9 @@
 # Tutorial: run lifecycle
 
-Walk through the durable CLI loop: **module → check → run → (approve) →
-resume → show**. Language surface:
+Walk through the durable CLI loop: **init → check → run (mock) →
+approve → show**. Language surface:
 [language-reference.md](language-reference.md). More programs live under
 `examples/`.
-
-**Planned:** `hwfl init` (see [TASKS.md](TASKS.md)). Until then, start from
-`examples/obs-span.md` below.
 
 ## Prerequisites
 
@@ -17,11 +14,9 @@ cabal build hwfl
 ```
 
 Commands below use `cabal run hwfl -- …`. After install, `hwfl` alone is
-equivalent.
-
-You need no API keys for the first sections (`obs-span`, confirm, and
-`--llm-provider mock`). Real LLM calls need a configured
-`model-catalog.json` and provider credentials (see `.env`).
+equivalent. No API keys are required for this tutorial (`--llm-provider
+mock`). Real LLM calls need a configured `model-catalog.json` and provider
+credentials (see `.env`).
 
 ## 1. Mental model
 
@@ -40,97 +35,73 @@ Runs persist snapshots and spans so you can pause for human confirm,
 step one transition, crash, and continue without redoing finished host
 ops.
 
-## 2. A tiny module
+## 2. Init
 
-`examples/obs-span.md` is pure (no LLM, no filesystem):
+Scaffold a tiny project (LLM call + confirm gate):
 
-```yaml
----
-name: workflows/obs-span
-inputs: {}
-outputs:
-    n: Int
-    label: String
-effects: []
----
+```bash
+mkdir -p /tmp/hwfl-hello
+cabal run hwfl -- init /tmp/hwfl-hello
 ```
 
-```hwfl
-fun main(_): { n: Int, label: String } =
-  let clustered = obs.span("cluster")(fun () =>
-    { n = 3, label = "ok" }
-  )
-  clustered
-```
-
-Frontmatter declares the qname (`name` must match the path without
-`.md`), typed `inputs` / `outputs`, and an **effects** ceiling. The kernel
-block defines `main`.
+That writes `project.json` and `workflows/main.md`. The entrypoint calls
+`llm.chat`, then `confirm`, and returns `{ greeting, ok }`.
 
 ## 3. Check
 
 Static load: parse, types, effects. No host side effects.
 
 ```bash
-cabal run hwfl -- check examples/obs-span.md
+cabal run hwfl -- check /tmp/hwfl-hello
 ```
 
 Exit `0` on success; diagnostics on stderr and exit `1` on failure.
 
-For a project directory (`project.json` present):
+## 4. Run (mock)
+
+Use the project directory as the workspace so run state lands next to the
+code (project ≠ workspace in general; here they coincide on purpose):
 
 ```bash
-cabal run hwfl -- check examples/coding-agent
+cabal run hwfl -- run /tmp/hwfl-hello \
+  --workspace /tmp/hwfl-hello \
+  --llm-provider mock
 ```
 
-That checks the whole import graph, not only the entrypoint file.
+Stderr includes `hwfl run: run_id=<id>` and a pause line such as
+`awaiting confirm: Accept this greeting?`. Exit code is `3` (paused).
+Note the run id for the next commands.
 
-## 4. Run
-
-```bash
-mkdir -p /tmp/hwfl-tut
-cabal run hwfl -- run examples/obs-span.md --workspace /tmp/hwfl-tut
-```
-
-Stderr includes `hwfl run: run_id=<id>`. Stdout is the result value, e.g.
-`{label:"ok",n:3}`.
-
-`run` checks first unless you pass `--no-check`. Persistence lands in:
+The mock provider needs no network or catalog. Persistence lands in:
 
 ```text
-/tmp/hwfl-tut/.hwfl/runs/<run-id>/
+/tmp/hwfl-hello/.hwfl/runs/<run-id>/
   meta.json
   snapshot.json
   spans.jsonl
   …
 ```
 
-### Inputs and LLM (optional)
+`run` checks first unless you pass `--no-check`.
 
-`examples/summarise.md` reads a workspace file and calls `llm.chat`. Put a
-file in the workspace and pass inputs as `k=v`:
+## 5. Approve and show
 
-```bash
-echo 'hwfl is a typed markdown workflow language.' > /tmp/hwfl-tut/note.md
-cabal run hwfl -- run examples/summarise.md \
-  --workspace /tmp/hwfl-tut \
-  --input path=note.md \
-  --llm-provider mock
-```
-
-Use `--llm-provider simple` (default) for a real catalog-backed call.
-`--input` values are coerced from strings to the declared input types
-(`FileRef`, `String`, `Int`, `Bool`, …).
-
-## 5. Show
-
-Inspect status and the span tree for any run id:
+Approve the confirm gate (injects `true` and resumes). Approve / show /
+resume take the **workspace** (here the same directory):
 
 ```bash
-cabal run hwfl -- show /tmp/hwfl-tut <run-id>
+cabal run hwfl -- approve /tmp/hwfl-hello <run-id> --yes
+# stdout: {greeting:"SUMMARY: Say hello…",ok:true}
 ```
 
-Useful flags:
+Use `--no` to inject `false`. Inspect status and the span tree:
+
+```bash
+cabal run hwfl -- show /tmp/hwfl-hello <run-id>
+```
+
+You should see a module span, an `llm.chat` span, and the confirm pause
+resolved. Useful flags:
 
 | Flag | Meaning |
 | ---- | ------- |
@@ -139,98 +110,57 @@ Useful flags:
 | `--spans --filter PREFIX` | Filter by name prefix (e.g. `llm`, `fs`) |
 | `--snapshot` | Redacted machine snapshot (debug) |
 
-After a successful `obs-span` run you should see a module span and a
-`cluster` region. Host ops (`fs.read`, `llm.chat`, …) each get their own
-span; agent tool calls appear as `tool:<name>` under agent rounds.
-
 Live tracing while running:
 
 ```bash
-cabal run hwfl -- run examples/obs-span.md \
-  --workspace /tmp/hwfl-tut \
+cabal run hwfl -- run /tmp/hwfl-hello \
+  --workspace /tmp/hwfl-hello \
+  --llm-provider mock \
   --debug
 ```
 
 `--debug` streams span open/close on stderr and prints the tree at the
 end (`-v` / `--verbose` only prints the end tree).
 
-`--cost` prefixes the usual host progress lines with running LLM spend
-(`$0.12 │ fs.read …`) without enabling the debug span stream.
+## 6. Resume without approve
 
-## 6. Pause, approve, resume
-
-Host ops that need a human gate leave the machine **paused** (CLI exit
-code `3`). The usual gate is `confirm` / `human.confirm` (and
-`exec.run` when `project.json` has `"exec": { "confirm": true }`).
-
-Save this as `/tmp/hwfl-tut/confirm.md`:
-
-````markdown
----
-name: workflows/confirm
-inputs: {}
-outputs:
-  ok: Bool
-effects: [Human]
----
-
-## body
-
-```hwfl
-fun main(_): { ok: Bool } =
-  let ok = confirm { title = "Proceed?", detail = "tutorial gate" }
-  { ok }
-```
-````
-
-Run it:
+If a run is paused and you only want to continue after an external fix
+(or after resolving a gate another way):
 
 ```bash
-cabal run hwfl -- run /tmp/hwfl-tut/confirm.md --workspace /tmp/hwfl-tut
-# stderr: awaiting confirm: Proceed?
-# exit 3 — note the run_id
-```
-
-Approve and continue (approve injects the boolean and resumes):
-
-```bash
-cabal run hwfl -- approve /tmp/hwfl-tut <run-id> --yes
-# stdout: {ok:true}
-```
-
-Use `--no` to inject `false`. If a run is paused for other reasons (or
-you only want to continue after an external fix):
-
-```bash
-cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
+cabal run hwfl -- resume /tmp/hwfl-hello <run-id>
 ```
 
 `show` while paused reports `status: awaiting_confirm` (or `paused`) and
-a cursor hint so you can see where the machine stopped.
+a cursor hint.
 
 Related gates (same exit-`3` pause model):
 
 | Gate | Resolve |
 | ---- | ------- |
+| `confirm` / `human.confirm` | `hwfl approve <ws> <run-id> --yes\|--no` |
 | `choice` / `human.choice` | `hwfl choose <ws> <run-id> --select <option>` |
 | `human.ask` | `hwfl reply <ws> <run-id> --text "…"` |
 
-Workflow-owned chat (history + `/quit`): [examples/chat](../examples/chat).
-The previous assistant reply is placed in the next `human.ask` `detail`,
-so any client (CLI or control plane) can show it from the pause payload
-without a library print path. With `--interactive` on a TTY, `run`
-prompts on stdin and resolves gates in-process (no exit-`3` between turns):
+With `--interactive` on a TTY, `run` prompts on stdin and resolves gates
+in-process (no exit-`3` between turns):
 
 ```bash
-cabal run hwfl -- run examples/chat --workspace /tmp/hwfl-tut --interactive
+cabal run hwfl -- run /tmp/hwfl-hello \
+  --workspace /tmp/hwfl-hello \
+  --llm-provider mock \
+  --interactive
 ```
 
 ### One transition at a time
 
 ```bash
-cabal run hwfl -- run examples/obs-span.md --workspace /tmp/hwfl-tut --step
-cabal run hwfl -- step /tmp/hwfl-tut <run-id>
-cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
+cabal run hwfl -- run /tmp/hwfl-hello \
+  --workspace /tmp/hwfl-hello \
+  --llm-provider mock \
+  --step
+cabal run hwfl -- step /tmp/hwfl-hello <run-id>
+cabal run hwfl -- resume /tmp/hwfl-hello <run-id>
 ```
 
 `--step` / `step` advance one durable transition, then pause (exit `3`).
@@ -245,7 +175,25 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | 3 | Paused (confirm, `--step`, …) |
 | 4 | Stale project hash — resume refused after code change |
 
-## 8. Where to go next
+## 8. Optional next steps
+
+**File + real LLM** — `examples/summarise.md` reads a workspace file and
+calls `llm.chat` with the default (`simple`) provider:
+
+```bash
+mkdir -p /tmp/hwfl-tut
+echo 'hwfl is a typed markdown workflow language.' > /tmp/hwfl-tut/note.md
+cabal run hwfl -- run examples/summarise.md \
+  --workspace /tmp/hwfl-tut \
+  --input path=note.md \
+  --example note
+```
+
+**Pure spans** — `examples/obs-span.md` is a no-LLM module that only uses
+`obs.span`.
+
+**Workflow chat** — [examples/chat](../examples/chat) (`human.ask` +
+`/quit`).
 
 | Doc / example | When |
 | ------------- | ---- |

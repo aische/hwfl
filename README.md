@@ -14,6 +14,22 @@ step DSL that falls over when real computation shows up. hwfl keeps
 document-shaped authoring and a small general-purpose language in one
 module, then runs it durably and observably.
 
+## Quick start
+
+```bash
+cabal build exe:hwfl
+cabal run exe:hwfl -- init /tmp/hwfl-hello
+cabal run exe:hwfl -- check /tmp/hwfl-hello
+cabal run exe:hwfl -- run /tmp/hwfl-hello \
+  --workspace /tmp/hwfl-hello \
+  --llm-provider mock
+# exit 3 — note run_id, then:
+cabal run exe:hwfl -- approve /tmp/hwfl-hello <run-id> --yes
+cabal run exe:hwfl -- show /tmp/hwfl-hello <run-id>
+```
+
+Full walkthrough: [docs/tutorial.md](docs/tutorial.md).
+
 ## Example
 
 ### One-shot coding agent
@@ -184,7 +200,7 @@ More: [examples/simple-coding-agent/README.md](examples/simple-coding-agent/READ
 ## Docs
 
 - [docs/idea.md](docs/idea.md) — vision and goals
-- [docs/tutorial.md](docs/tutorial.md) — check → run → approve → resume → show
+- [docs/tutorial.md](docs/tutorial.md) — `hwfl init` → check → run → approve → show
 - [docs/language-reference.md](docs/language-reference.md) — surface language
 - [docs/stdlib.md](docs/stdlib.md) — `hwfl/*` stdlib (`HWFL_STDLIB`) vs host ops
 - [docs/architecture.md](docs/architecture.md) — layers and boundaries

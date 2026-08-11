@@ -4,6 +4,7 @@ module Hwfl.Cli.Args
     wantsJson,
     flagProviderSet,
     parseCheckFlags,
+    parseInitFlags,
     parseRunFlags,
     parseWsRun,
     parseApprove,
@@ -14,6 +15,7 @@ module Hwfl.Cli.Args
   )
 where
 
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..))
@@ -103,6 +105,20 @@ parseCheckFlags = go False Nothing False
         | not endOpts && looksLikeFlag x -> Left ("unknown flag: " <> x)
         | otherwise -> case mPath of
             Nothing -> go json (Just x) endOpts rest
+            Just _ -> Left ("unexpected argument: " <> x)
+
+-- | @hwfl init [DIR]@ — optional directory (default @.@).
+parseInitFlags :: [String] -> Either String FilePath
+parseInitFlags = go Nothing False
+  where
+    go mPath endOpts = \case
+      [] -> Right (fromMaybe "." mPath)
+      ("--" : rest)
+        | not endOpts -> go mPath True rest
+      (x : rest)
+        | not endOpts && looksLikeFlag x -> Left ("unknown flag: " <> x)
+        | otherwise -> case mPath of
+            Nothing -> go (Just x) endOpts rest
             Just _ -> Left ("unexpected argument: " <> x)
 
 parseRunFlags :: [String] -> Either String RunFlags

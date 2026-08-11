@@ -4,6 +4,7 @@ import Hwfl.Cli.Args
   ( RunFlags (..),
     flagProviderSet,
     parseCheckFlags,
+    parseInitFlags,
     parseRunFlags,
     parseWsRun,
     wantsJson,
@@ -36,6 +37,18 @@ spec = do
       parseCheckFlags ["--", "-odd.md"] `shouldBe` Right ("-odd.md", False)
     it "rejects dash-prefixed path without --" $
       parseCheckFlags ["-odd.md"] `shouldBe` Left "unknown flag: -odd.md"
+
+  describe "parseInitFlags" $ do
+    it "defaults to ." $
+      parseInitFlags [] `shouldBe` Right "."
+    it "accepts a directory" $
+      parseInitFlags ["my-app"] `shouldBe` Right "my-app"
+    it "accepts dash-prefixed path after --" $
+      parseInitFlags ["--", "-app"] `shouldBe` Right "-app"
+    it "rejects unknown flags" $
+      parseInitFlags ["--json"] `shouldBe` Left "unknown flag: --json"
+    it "rejects a second path" $
+      parseInitFlags ["a", "b"] `shouldBe` Left "unexpected argument: b"
 
   describe "parseRunFlags" $ do
     it "accepts dash-prefixed module after --" $

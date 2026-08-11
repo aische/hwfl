@@ -57,6 +57,7 @@ library
         Hwfl.Check.Scheme
         Hwfl.Check.Unify
         Hwfl.Cli.Args
+        Hwfl.Cli.Init
         Hwfl.Cli.Json
         Hwfl.Driver
         Hwfl.Check.Schema
@@ -178,6 +179,7 @@ test-suite hwfl-test
         Hwfl.Check.ModuleSpec
         Hwfl.Check.ProjectSpec
         Hwfl.Cli.ArgsSpec
+        Hwfl.Cli.InitSpec
         Hwfl.Cli.JsonSpec
         Hwfl.Check.SchemaSpec
         Hwfl.Json.EncodeSpec
