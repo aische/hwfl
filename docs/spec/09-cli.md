@@ -91,3 +91,8 @@ Nice-to-have **[defer]**:
 
 `hwfl init` ships a minimal hello project (LLM + confirm) for the
 check → run (mock) → approve → show path; see [tutorial.md](../tutorial.md).
+
+**Workspace default:** without `--workspace`, `run` uses cwd. When the
+target is a project directory, prefer defaulting the workspace to that
+project root (explicit `--workspace` still wins) — tracked in
+[TASKS.md](../TASKS.md).

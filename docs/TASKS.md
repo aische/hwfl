@@ -28,6 +28,9 @@ Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
 
 ## Next — examples and polish
 
+- [ ] Default `--workspace` to the project root when `run`’s target is a
+      project directory (today defaults to cwd; `hwfl init` / tutorial must
+      pass `--workspace` explicitly — see [tutorial.md](tutorial.md) §4)
 - [ ] Git (read-heavy) via MCP (or host if MCP is inadequate)
 - [ ] Persistent terminals via MCP vs one-shot `exec.run`
 - [ ] Optional: real-story-writer `world_*` via `mcp.tools` (bind /

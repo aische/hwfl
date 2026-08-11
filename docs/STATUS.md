@@ -23,8 +23,10 @@ None.
 
 ## Next up
 1. Prefer MCP / stdlib for domain tools (git, terminals, …)
-2. Opportunistic Lows; M-3 / M-16 / M-18 only if they bite
-3. Optional: shell completions; omit / `latest` run-id
+2. When `run` target is a project directory, default `--workspace` to that
+   project root (today: cwd; hello path must pass `--workspace` explicitly)
+3. Opportunistic Lows; M-3 / M-16 / M-18 only if they bite
+4. Optional: shell completions; omit / `latest` run-id
 
 ## Deferred
 - Git / persistent terminals (MCP first)

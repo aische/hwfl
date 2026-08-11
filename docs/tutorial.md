@@ -60,7 +60,12 @@ Exit `0` on success; diagnostics on stderr and exit `1` on failure.
 ## 4. Run (mock)
 
 Use the project directory as the workspace so run state lands next to the
-code (project ≠ workspace in general; here they coincide on purpose):
+code (project ≠ workspace in general; here they coincide on purpose).
+Today `run` defaults `--workspace` to **cwd**, so when the project path
+is not the current directory you must pass `--workspace` or runs land
+elsewhere — a known footgun; follow-up is to default workspace to the
+project root when the run target is a project directory
+([TASKS.md](TASKS.md)).
 
 ```bash
 cabal run hwfl -- run /tmp/hwfl-hello \
