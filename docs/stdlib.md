@@ -29,8 +29,9 @@ prelude/host — except stdlib modules are ordinary checked markdown.
 
 ## Stdlib pack location
 
-**Source of truth in this repo:** `stdlib/` at the repository root (files
-whose frontmatter `name` is `hwfl/list`, `hwfl/string`, …).
+**Source of truth in this repo:** `stdlib/` at the repository root.
+**Flat pack layout:** `<pack>/list.md` → qname `hwfl/list` (frontmatter
+`name` must match). Non-recursive; one file per module.
 
 **At check/run time**, resolve the pack root as:
 
@@ -76,7 +77,7 @@ lib/story_claims.dedupe(rows)
 | ------ | -------- |
 | `hwfl/list` | map, filter, fold, flat_map, unique_by, take, drop, … (build on prelude `list.length` / `list.concat`) |
 | `hwfl/record` | merge, pick, map_fields |
-| `hwfl/string` | split, replace, join, … (avoid duplicating prelude `text.*` without cause) |
+| `hwfl/string` | split, replace, `join_with`, … (avoid duplicating prelude `text.*` without cause; `join` is a kernel keyword) |
 | `hwfl/json` | helpers over `Json` / `json.encode` |
 | `hwfl/option` / `hwfl/result` | combinators |
 | `hwfl/text` | only if migrating metrics/similarity out of the Pure prelude |

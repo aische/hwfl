@@ -132,6 +132,9 @@ data RunCtx = RunCtx
     rcSkillModules :: Map QName LoadedModule,
     -- | Prebuilt runtime for callable entry modules (same-project; E11).
     rcEntryModules :: Map QName EntryModuleRuntime,
+    -- | Library modules (@lib/*@, @hwfl/*@, …) as records of closures for
+    -- @qname.fun@ projection (stdlib / project libs).
+    rcLibraries :: Map QName Value,
     -- | Nest depth while stepping a 'BranchMachine' (agent tool / FrInvoke / par).
     -- Snapshot writes are suppressed when > 0 so a bare branch never overwrites
     -- root @snapshot.json@; the outer wrapper persists the full machine.
@@ -2726,8 +2729,10 @@ crunchEval ctx m e env = case e of
   EVar n -> case lookupEnv n env of
     Nothing -> Left (EvalErr (Trap ("unbound variable: " <> unIdent n)))
     Just v -> ret m v
-  -- Resolved at check time; elaborate to a callable entry-main value.
-  EQName q -> ret m (VEntryMain q)
+  -- Library import → record of closures; entry module → callable main.
+  EQName q -> case Map.lookup q ctx.rcLibraries of
+    Just v -> ret m v
+    Nothing -> ret m (VEntryMain q)
   ESection s -> case Map.lookup s ctx.rcSections of
     Just t -> ret m (VString t)
     Nothing -> Left (EvalErr (Trap ("unknown section: @" <> slugToText s)))

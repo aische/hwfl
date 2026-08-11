@@ -48,6 +48,7 @@ import Hwfl.Runtime.SkillSpec
 import Hwfl.Runtime.SemanticCheckSpec
 import Hwfl.Runtime.WorkspaceSpec
 import Hwfl.SkillCatalogSpec
+import Hwfl.StdlibSpec
 import Hwfl.Text.CorpusSpec
 import Test.Hspec
 
@@ -66,6 +67,7 @@ main = hspec $ do
   Hwfl.Check.ModuleSpec.spec
   Hwfl.Check.LocateSpec.spec
   Hwfl.Check.ProjectSpec.spec
+  Hwfl.StdlibSpec.spec
   Hwfl.Cli.ArgsSpec.spec
   Hwfl.Cli.JsonSpec.spec
   Hwfl.Check.SchemaSpec.spec

@@ -43,6 +43,7 @@ import Hwfl.SkillCatalog
     skillMetaForModule,
   )
 import Hwfl.Source (Diagnostic (..), renderDiagnostics)
+import Hwfl.Stdlib (isHwflQName)
 import System.FilePath (makeRelative, normalise)
 
 data CheckProjectResult = CheckProjectResult
@@ -142,21 +143,32 @@ validateInstructionSkill m
   | otherwise = Right ()
 
 validateQname :: LoadedProject -> (QName, LoadedModule) -> Either ProjectCheckError ()
-validateQname lp (q, m) = do
-  let rel = makeRelative lp.lpIndex.piRoot (normalise m.lmPath)
-  case qnameFromRelPath rel of
-    Nothing -> Left (PceLoad ("invalid module path: " <> T.pack m.lmPath))
-    Just pathQ
-      | pathQ == q && q == m.lmFrontmatter.fmName -> pure ()
-      | pathQ /= q ->
-          Left (PceQNameMismatch m.lmPath (qnameToText m.lmFrontmatter.fmName) (qnameToText pathQ))
-      | otherwise ->
+validateQname lp (q, m)
+  | isHwflQName q =
+      if q == m.lmFrontmatter.fmName
+        then Right ()
+        else
           Left
             ( PceQNameMismatch
                 m.lmPath
                 (qnameToText m.lmFrontmatter.fmName)
                 (qnameToText q)
             )
+  | otherwise = do
+      let rel = makeRelative lp.lpIndex.piRoot (normalise m.lmPath)
+      case qnameFromRelPath rel of
+        Nothing -> Left (PceLoad ("invalid module path: " <> T.pack m.lmPath))
+        Just pathQ
+          | pathQ == q && q == m.lmFrontmatter.fmName -> pure ()
+          | pathQ /= q ->
+              Left (PceQNameMismatch m.lmPath (qnameToText m.lmFrontmatter.fmName) (qnameToText pathQ))
+          | otherwise ->
+              Left
+                ( PceQNameMismatch
+                    m.lmPath
+                    (qnameToText m.lmFrontmatter.fmName)
+                    (qnameToText q)
+                )
 
 -- | @Exec@ ceiling is satisfied by either @exec.allow@ (spawn allowlisted
 -- programs) or a configured @mcp.servers@ entry (spawn MCP stdio servers) —

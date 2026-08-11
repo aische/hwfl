@@ -599,6 +599,21 @@ spec = describe "type checker" $ do
         \  f(7)"
         `shouldSatisfy` isRight
 
+  describe "Result Ok/Err" $ do
+    it "accepts Ok/Err construction and match" $
+      checkBody
+        "fun map_ok(r: Result<a, e>, f: (a) -> b): Result<b, e> =\n\
+        \  match r with\n\
+        \  | Ok(x) => Ok(f(x))\n\
+        \  | Err(e) => Err(e)\n\
+        \fun main(_: Unit): Result<Int, String> =\n\
+        \  map_ok(Ok(1), fun (x: Int): Int => x + 1)"
+        `shouldSatisfy` isRight
+
+    it "rejects Ok without a payload" $
+      checkBody "fun main(_: Unit): Result<Int, String> = Ok"
+        `shouldSatisfy` isLeft
+
 isRight :: Either a b -> Bool
 isRight = \case
   Right _ -> True

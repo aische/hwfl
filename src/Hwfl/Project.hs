@@ -10,6 +10,7 @@ module Hwfl.Project
     LoadedProject (..),
     loadProjectConfig,
     loadProject,
+    loadProjectWithStdlib,
     discoverModules,
     qnameFromRelPath,
     modulePathForQname,
@@ -38,6 +39,7 @@ import Hwfl.Parse.Load (loadModule)
 import Hwfl.SafeIO (ReadError (..), listDirectorySafe, readBytesFile, renderReadError)
 import Hwfl.SkillCatalog (SkillPolicy (..), defaultSkillPolicy)
 import Hwfl.Source (Diagnostic (..), renderDiagnostics)
+import Hwfl.Stdlib (isHwflQName, loadStdlibAt, loadStdlibModules)
 import System.Directory
   ( doesDirectoryExist,
     doesFileExist,
@@ -398,7 +400,12 @@ safeDoesDirectoryExist path = do
   pure (either (const False) id result)
 
 loadProject :: FilePath -> IO (Either Text LoadedProject)
-loadProject root = do
+loadProject root = loadProjectWithStdlib root Nothing
+
+-- | Like 'loadProject', but @Just packRoot@ forces that stdlib pack
+-- (bypassing @HWFL_STDLIB@ / defaults). @Nothing@ uses normal resolution.
+loadProjectWithStdlib :: FilePath -> Maybe FilePath -> IO (Either Text LoadedProject)
+loadProjectWithStdlib root mPack = do
   cfgE <- loadProjectConfig root
   case cfgE of
     Left err -> pure (Left err)
@@ -415,22 +422,50 @@ loadProject root = do
                         <> qnameToText cfg.pcEntrypoint
                     )
                 )
-            _ -> loadAll idx cfg
+            _ -> do
+              stdlibE <- case mPack of
+                Just pack -> loadStdlibAt pack
+                Nothing -> loadStdlibModules
+              case stdlibE of
+                Left err -> pure (Left err)
+                Right stdlib -> loadAll idx cfg stdlib
   where
-    loadAll idx cfg = do
-      results <- traverse (loadModule . snd) (Map.toList idx.piModules)
-      case partitionResults results (Map.elems idx.piModules) of
-        Left err -> pure (Left err)
-        Right loadedList -> do
-          let loaded = Map.fromList (zip (Map.keys idx.piModules) loadedList)
+    loadAll idx cfg stdlib = do
+      let reserved =
+            [ q
+              | q <- Map.keys idx.piModules,
+                isHwflQName q
+            ]
+      if not (null reserved)
+        then
           pure
-            ( Right
-                LoadedProject
-                  { lpConfig = cfg,
-                    lpIndex = idx,
-                    lpModules = loaded
-                  }
+            ( Left
+                ( "project modules must not claim hwfl/ qnames: "
+                    <> qnameToText (head reserved)
+                )
             )
+        else do
+          results <- traverse (loadModule . snd) (Map.toList idx.piModules)
+          case partitionResults results (Map.elems idx.piModules) of
+            Left err -> pure (Left err)
+            Right loadedList -> do
+              let projectMods = Map.fromList (zip (Map.keys idx.piModules) loadedList)
+                  loaded = Map.union projectMods stdlib
+                  idx' =
+                    idx
+                      { piModules =
+                          Map.union
+                            idx.piModules
+                            (Map.map lmPath stdlib)
+                      }
+              pure
+                ( Right
+                    LoadedProject
+                      { lpConfig = cfg,
+                        lpIndex = idx',
+                        lpModules = loaded
+                      }
+                )
 
 partitionResults :: [Either [Diagnostic] LoadedModule] -> [FilePath] -> Either Text [LoadedModule]
 partitionResults [] [] = Right []

@@ -22,6 +22,7 @@ import Hwfl.Check.Scheme (quantify)
 import Hwfl.Check.Schema (schemaType, typeToSchema)
 import Hwfl.Check.Unify
   ( Tc,
+    freshMeta,
     runTc,
     tcError,
     tcEither,
@@ -229,6 +230,18 @@ inferTc env = \case
     TOption <$> inferTc env payload
   ETag (TypeName "Some") Nothing ->
     tcError (CannotInfer "Some requires a payload")
+  ETag (TypeName "Ok") (Just payload) -> do
+    a <- inferTc env payload
+    e <- freshMeta
+    pure (TResult a e)
+  ETag (TypeName "Ok") Nothing ->
+    tcError (CannotInfer "Ok requires a payload")
+  ETag (TypeName "Err") (Just payload) -> do
+    e <- inferTc env payload
+    a <- freshMeta
+    pure (TResult a e)
+  ETag (TypeName "Err") Nothing ->
+    tcError (CannotInfer "Err requires a payload")
   ETag (TypeName n) _ ->
     tcError (CannotInfer ("unknown tag constructor: " <> n))
 
@@ -257,6 +270,16 @@ checkTc env e want = do
       _ -> tcError (TypeMismatch want' (TOption tUnit))
     ETag (TypeName "Some") Nothing ->
       tcError (TypeMismatchMsg "Some requires a payload" want' tUnit)
+    ETag (TypeName "Ok") (Just payload) -> case want' of
+      TResult a _ -> checkTc env payload a
+      _ -> tcError (TypeMismatch want' (TResult tUnit tUnit))
+    ETag (TypeName "Ok") Nothing ->
+      tcError (TypeMismatchMsg "Ok requires a payload" want' tUnit)
+    ETag (TypeName "Err") (Just payload) -> case want' of
+      TResult _ e -> checkTc env payload e
+      _ -> tcError (TypeMismatch want' (TResult tUnit tUnit))
+    ETag (TypeName "Err") Nothing ->
+      tcError (TypeMismatchMsg "Err requires a payload" want' tUnit)
     ETag (TypeName n) _ ->
       tcError (CannotInfer ("unknown tag constructor: " <> n))
     EFun ps mt body -> case want' of
@@ -379,6 +402,18 @@ patternBindings env p ty = do
       PTag (TypeName "Some") Nothing -> case expected of
         TOption _ -> pure []
         _ -> tcError (TypeMismatchMsg "Some pattern" (TOption tUnit) expected)
+      PTag (TypeName "Ok") (Just p') -> case expected of
+        TResult a _ -> go p' a
+        _ -> tcError (TypeMismatchMsg "Ok pattern" (TResult tUnit tUnit) expected)
+      PTag (TypeName "Ok") Nothing -> case expected of
+        TResult _ _ -> pure []
+        _ -> tcError (TypeMismatchMsg "Ok pattern" (TResult tUnit tUnit) expected)
+      PTag (TypeName "Err") (Just p') -> case expected of
+        TResult _ e -> go p' e
+        _ -> tcError (TypeMismatchMsg "Err pattern" (TResult tUnit tUnit) expected)
+      PTag (TypeName "Err") Nothing -> case expected of
+        TResult _ _ -> pure []
+        _ -> tcError (TypeMismatchMsg "Err pattern" (TResult tUnit tUnit) expected)
       PTag _ mp -> case mp of
         Nothing -> pure []
         Just p' -> go p' expected

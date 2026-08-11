@@ -572,6 +572,7 @@ startRunWithPricing opts loaded ws meta store pricing spans seqRef mcpEnv = do
       baseEnv = withRunCtx runId started baseEnv0
       skillFuns = buildSkillFunTables opts.roSkillModules
       entryFuns = buildEntryFunTables opts.roEntryModules
+      libraries = buildLibraryRecords opts.roEntryModules
       host =
         mkHostEnv
           ws
@@ -597,6 +598,7 @@ startRunWithPricing opts loaded ws meta store pricing spans seqRef mcpEnv = do
             rcSkillFuns = skillFuns,
             rcSkillModules = opts.roSkillModules,
             rcEntryModules = entryFuns,
+            rcLibraries = libraries,
             rcNestDepth = 0
           }
       modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
@@ -820,6 +822,7 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
         rcSkillFuns = buildSkillFunTables skillMods,
         rcSkillModules = skillMods,
         rcEntryModules = buildEntryFunTables entryMods,
+        rcLibraries = buildLibraryRecords entryMods,
         rcNestDepth = 0
       }
 
@@ -1019,6 +1022,30 @@ buildEntryFunTables =
                           emSchemaDocs = lmSchemaDocs m
                         }
                   else Nothing
+
+-- | Library modules (no entry I/O): records of mutually-recursive closures for
+-- @hwfl/list.map@ / @lib/foo.bar@ projection at runtime.
+buildLibraryRecords :: Map QName LoadedModule -> Map QName Value
+buildLibraryRecords =
+  Map.mapMaybeWithKey $ \q m ->
+    let fm = lmFrontmatter m
+     in if isSkillQName q
+          then Nothing
+          else
+            if not (null fm.fmInputs) || not (null fm.fmOutputs)
+              then Nothing
+              else Just (libraryRecordValue m)
+
+libraryRecordValue :: LoadedModule -> Value
+libraryRecordValue m =
+  let typeEnv = loadTypeEnv m
+      ModuleBody decls _ = normalizeModuleParams typeEnv (lmBody m)
+      funs = [(n, ps, body) | DFun _ n ps _ body <- decls]
+      env =
+        Map.union
+          (Map.fromList [(n, VClosure ps body env) | (n, ps, body) <- funs])
+          (Map.union hostOpsEnv preludeEnv)
+   in VRecord [(n, VClosure ps body env) | (n, ps, body) <- funs]
 
 -- | Load @exec@ / @mcp@ policy from workspace @project.json@ when present
 -- (lone-module resume fallback).

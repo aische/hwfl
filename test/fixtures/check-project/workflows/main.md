@@ -4,20 +4,18 @@ inputs:
     xs: String
 outputs:
     unique: String
+    joined: String
 effects: []
 imports:
-    - lib/list
+    - hwfl/list
+    - hwfl/string
 ---
 
 ## body
 
 ```hwfl
-fun split_words(s: String): List<String> =
-  text.words(s)
-
-fun main(inputs): { unique: String } =
-  let words = split_words(inputs.xs)
-  let n = list.length(words)
-  let _uniq = lib/list.unique_by(words, 0, n, [])
-  { unique = "ok" }
+fun main(inputs): { unique: String, joined: String } =
+  let words = hwfl/string.words(inputs.xs)
+  let uniq = hwfl/list.unique(words)
+  { unique = hwfl/string.join_with(uniq, ","), joined = hwfl/string.join_with(words, " ") }
 ```
