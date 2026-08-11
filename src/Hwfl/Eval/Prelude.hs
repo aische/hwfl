@@ -211,6 +211,8 @@ valueEq a b = case (a, b) of
   (_, VClosure {}) -> Left (Trap "cannot compare closures")
   (VTopFun {}, _) -> Left (Trap "cannot compare top-level funs")
   (_, VTopFun {}) -> Left (Trap "cannot compare top-level funs")
+  (VLibFun {}, _) -> Left (Trap "cannot compare library funs")
+  (_, VLibFun {}) -> Left (Trap "cannot compare library funs")
   (VBuiltin {}, _) -> Left (Trap "cannot compare builtins")
   (_, VBuiltin {}) -> Left (Trap "cannot compare builtins")
   (VHostOp {}, _) -> Left (Trap "cannot compare host ops")

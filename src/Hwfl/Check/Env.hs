@@ -46,6 +46,8 @@ data TypeEnv = TypeEnv
 data ModuleExport = ModuleExport
   { meValues :: Map Ident Scheme,
     meEffects :: Map Ident (Set Effect),
+    -- | Top-level @type@ aliases defined in this module (not re-exports).
+    meTypes :: Map TypeName TypeExpr,
     -- | When the module is an entry module (has @inputs@/@outputs@), the
     -- resolved @(inputs, outputs)@ types enabling @qname(inputs)@ call syntax.
     meEntryIO :: Maybe (TypeExpr, TypeExpr)

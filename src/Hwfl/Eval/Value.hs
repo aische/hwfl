@@ -22,7 +22,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Expr (Expr, Param)
-import Hwfl.Ast.Name (Ident (..), QName (..), TypeName (..))
+import Hwfl.Ast.Name (Ident (..), QName (..), TypeName (..), qnameToText)
 import Hwfl.Llm.Types (Turn)
 
 -- | Environment: identifier → value.
@@ -144,6 +144,9 @@ data Value
     VClosure [Param] Expr Env
   | -- | Top-level module function by name (avoids cyclic env in snapshots).
     VTopFun Ident
+  | -- | Library export (@lib/foo.bar@ / @hwfl/list.map@): module qname + fun
+    -- name. Resolved via 'RunCtx' library fun tables (no knot-tied closure env).
+    VLibFun QName Ident
   | VBuiltin Builtin
   | -- | Host op callable (fs.read, llm.chat, …). Only the runtime driver applies these.
     VHostOp HostOpId
@@ -188,6 +191,8 @@ renderValue = \case
   VSecret {} -> Left "cannot render a Secret as text"
   VClosure {} -> Left "cannot render a closure as text"
   VTopFun (Ident n) -> Left ("cannot render top-level fun as text: " <> n)
+  VLibFun q (Ident n) ->
+    Left ("cannot render library fun as text: " <> qnameToText q <> "." <> n)
   VBuiltin {} -> Left "cannot render a builtin as text"
   VHostOp op -> Left ("cannot render host op as text: " <> hostOpName op)
   VToolSpec ts -> Left ("cannot render tool spec as text: " <> ts.tvsName)

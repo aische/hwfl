@@ -17,6 +17,7 @@ module Hwfl.Project
     moduleRelPath,
     projectHashForModules,
     isProjectDir,
+    findProjectRoot,
     validateMcpPolicy,
     isBareBasename,
   )
@@ -50,6 +51,7 @@ import System.FilePath
     makeRelative,
     normalise,
     splitDirectories,
+    takeDirectory,
     (</>),
   )
 
@@ -313,6 +315,24 @@ loadProjectConfig root = do
 
 isProjectDir :: FilePath -> IO Bool
 isProjectDir path = safeDoesFileExist (path </> "project.json")
+
+-- | Walk parents of @start@ looking for @project.json@ (inclusive).
+findProjectRoot :: FilePath -> IO (Maybe FilePath)
+findProjectRoot start = go (normalise start) (32 :: Int)
+  where
+    go _ 0 = pure Nothing
+    go path n = do
+      -- If @start@ is a file, begin at its directory.
+      isFile <- safeDoesFileExist path
+      let dir = if isFile then takeDirectory path else path
+      isProj <- isProjectDir dir
+      if isProj
+        then pure (Just dir)
+        else
+          let parent = takeDirectory dir
+           in if parent == dir
+                then pure Nothing
+                else go parent (n - 1)
 
 qnameFromText :: Text -> QName
 qnameFromText t = qnameFromParts (T.splitOn "/" t)

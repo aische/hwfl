@@ -26,10 +26,11 @@ where
 import Control.Exception (finally)
 import Data.Aeson (object, (.=))
 import Data.ByteString qualified as BS
+import Data.Functor ((<&>))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -38,10 +39,10 @@ import Data.Word (Word8)
 import Numeric (showHex)
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Expr (Arg (..), Expr (..), ExprF (..), Field (..), MatchArm (..), Param (..), StringPart (..))
-import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), Section (..))
+import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), SchemaDoc, Section (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), Slug, qnameToText)
 import Hwfl.Ast.Skill (SkillKind (..), SkillMeta (..))
-import Hwfl.Check.Env (TypeEnv, resolveType)
+import Hwfl.Check.Env (TypeEnv (..), resolveType)
 import Hwfl.Check.Error (CheckError, renderLocatedCheckError)
 import Hwfl.Check.Infer (inferModuleEnv)
 import Hwfl.Check.Module
@@ -89,6 +90,7 @@ import Hwfl.Project
     LoadedProject (..),
     McpPolicy (..),
     ProjectConfig (..),
+    findProjectRoot,
     isProjectDir,
     loadProject,
     loadProjectConfig,
@@ -144,7 +146,7 @@ import Hwfl.SkillCatalog
   )
 import Hwfl.Source (Diagnostic, Pos (..), mkDiagnostic, renderDiagnostics)
 import System.Directory (doesFileExist, doesPathExist)
-import System.FilePath (takeDirectory)
+import System.FilePath (makeRelative, normalise)
 import System.IO (IOMode (..), hPutStrLn, stderr, withBinaryFile)
 
 data RunOptions = RunOptions
@@ -309,23 +311,80 @@ runTargetModule req = do
               ]
           )
     else do
-      result <- loadModule req.rtrTarget
-      case result of
-        Left diags -> pure (Left (RtParse req.rtrTarget diags))
-        Right loaded ->
-          if not req.rtrSkipCheck
-            then case checkLoadedModule loaded of
-              Left err -> pure (Left (RtModule req.rtrTarget err))
-              Right checked ->
-                case resolveRunInputs req req.rtrTarget loaded checked.crEnv of
-                  Left e -> pure (Left e)
-                  Right inputs -> runMod inputs loaded
-            else case exampleTypeEnv loaded of
-              Left err -> pure (Left (RtModule req.rtrTarget err))
-              Right env ->
-                case resolveRunInputs req req.rtrTarget loaded env of
-                  Left e -> pure (Left e)
-                  Right inputs -> runMod inputs loaded
+      -- Prefer the enclosing project so `lib/*` / sibling imports link at
+      -- check and runtime (same model as resume). Workspace may still point
+      -- at a different tree (e.g. semantic-check dogfood).
+      mRoot <- findProjectRoot req.rtrTarget
+      case mRoot of
+        Just root -> runTargetModuleInProject req root
+        Nothing -> runTargetModuleLone req
+
+-- | Module path under a @project.json@ tree: load the whole project, check it,
+-- run the named module with library / entry tables populated.
+runTargetModuleInProject ::
+  RunTargetRequest -> FilePath -> IO (Either RunTargetError RunOutcome)
+runTargetModuleInProject req root = do
+  lpE <- loadProject root
+  case lpE of
+    Left err -> pure (Left (RtProject (PceLoad err)))
+    Right lp -> do
+      catalogE <- resolveTargetCatalog req.rtrSkipCheck lp
+      case catalogE of
+        Left e -> pure (Left e)
+        Right catalog ->
+          case moduleForPath root req.rtrTarget lp of
+            Nothing ->
+              pure $
+                Left
+                  ( RtParse
+                      req.rtrTarget
+                      [ mkDiagnostic
+                          req.rtrTarget
+                          (Pos 1 1)
+                          ("module not in project: " <> T.pack req.rtrTarget)
+                      ]
+                  )
+            Just loaded ->
+              case exampleTypeEnv loaded of
+                Left err -> pure (Left (RtModule req.rtrTarget err))
+                Right env ->
+                  case resolveRunInputs req req.rtrTarget loaded env of
+                    Left e -> pure (Left e)
+                    Right inputs -> do
+                      let skillMods = callableSkillModules lp.lpModules
+                          opts =
+                            mkTargetRunOptions
+                              req {rtrInputs = inputs}
+                              req.rtrTarget
+                              (Just (projectHashForModules lp.lpModules))
+                              lp.lpConfig.pcExec
+                              lp.lpConfig.pcMcp
+                              root
+                              catalog
+                              skillMods
+                              lp.lpModules
+                      Right <$> runLoadedModule opts loaded
+
+-- | True lone module (no enclosing project.json): no import graph / libs.
+runTargetModuleLone :: RunTargetRequest -> IO (Either RunTargetError RunOutcome)
+runTargetModuleLone req = do
+  result <- loadModule req.rtrTarget
+  case result of
+    Left diags -> pure (Left (RtParse req.rtrTarget diags))
+    Right loaded ->
+      if not req.rtrSkipCheck
+        then case checkLoadedModule loaded of
+          Left err -> pure (Left (RtModule req.rtrTarget err))
+          Right checked ->
+            case resolveRunInputs req req.rtrTarget loaded checked.crEnv of
+              Left e -> pure (Left e)
+              Right inputs -> runMod inputs loaded
+        else case exampleTypeEnv loaded of
+          Left err -> pure (Left (RtModule req.rtrTarget err))
+          Right env ->
+            case resolveRunInputs req req.rtrTarget loaded env of
+              Left e -> pure (Left e)
+              Right inputs -> runMod inputs loaded
   where
     runMod inputs loaded = do
       let (catalog, skillMods) = emptySkillRuntime
@@ -341,6 +400,16 @@ runTargetModule req = do
               skillMods
               Map.empty
       Right <$> runLoadedModule opts loaded
+
+-- | Resolve a filesystem module path to a loaded module in @lp@.
+moduleForPath :: FilePath -> FilePath -> LoadedProject -> Maybe LoadedModule
+moduleForPath root path lp =
+  let want = normalise (makeRelative root (normalise path))
+   in listToMaybe
+        [ m
+          | (q, m) <- Map.toList lp.lpModules,
+            normalise (makeRelative root (modulePathForQname root q)) == want
+        ]
 
 -- | Apply optional @--example@ (base) then CLI @--input@ overrides.
 resolveRunInputs ::
@@ -478,6 +547,39 @@ loadTypeEnv loaded =
       Right env -> env
       Left _ -> preludeTypeEnv
 
+-- | Library modules from a project map (non-skill, no entry I/O).
+libraryModules :: Map QName LoadedModule -> [LoadedModule]
+libraryModules =
+  Map.elems
+    . Map.mapMaybeWithKey
+      ( \q m ->
+          let fm = lmFrontmatter m
+           in if isSkillQName q
+                || not (null fm.fmInputs)
+                || not (null fm.fmOutputs)
+                then Nothing
+                else Just m
+      )
+
+-- | Merge library aliases / sections / schema docs into the entry surface so
+-- @schema(T)@ and @section@ inside @lib/*@ resolve at runtime (types are not
+-- yet exported across modules; this keeps factored examples runnable).
+mergeLibrarySurface ::
+  LoadedModule ->
+  Map QName LoadedModule ->
+  (TypeEnv, Map.Map Slug Text, [SchemaDoc])
+mergeLibrarySurface entry entryMods =
+  let libs = libraryModules entryMods
+      entryEnv = loadTypeEnv entry
+      libAliases =
+        Map.unions [teAliases (loadTypeEnv m) | m <- libs]
+      typeEnv = entryEnv {teAliases = teAliases entryEnv `Map.union` libAliases}
+      sections =
+        sectionMap entry
+          `Map.union` Map.unions (map sectionMap libs)
+      docs = lmSchemaDocs entry ++ concatMap lmSchemaDocs libs
+   in (typeEnv, sections, docs)
+
 -- | Ambient run context (spec §01 §4) injected at runtime only.
 mkCtxValue :: Text -> Text -> Value
 mkCtxValue runId started =
@@ -567,12 +669,13 @@ startRunWithPricing opts loaded ws meta store pricing spans seqRef mcpEnv = do
   let runId = meta.rmRunId
       started = meta.rmStartedAt
       hash = meta.rmProjectHash
-      typeEnv = loadTypeEnv loaded
+      (typeEnv, sections, schemaDocs) = mergeLibrarySurface loaded opts.roEntryModules
       (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
       skillFuns = buildSkillFunTables opts.roSkillModules
       entryFuns = buildEntryFunTables opts.roEntryModules
       libraries = buildLibraryRecords opts.roEntryModules
+      libraryFuns = buildLibraryFunTables opts.roEntryModules
       host =
         mkHostEnv
           ws
@@ -586,11 +689,11 @@ startRunWithPricing opts loaded ws meta store pricing spans seqRef mcpEnv = do
       ctx =
         RunCtx
           { rcHost = host,
-            rcSections = sectionMap loaded,
+            rcSections = sections,
             rcFuns = funs,
             rcBaseEnv = baseEnv,
             rcTypeEnv = typeEnv,
-            rcSchemaDocs = lmSchemaDocs loaded,
+            rcSchemaDocs = schemaDocs,
             rcStore = store,
             rcProjectHash = hash,
             rcSeq = seqRef,
@@ -599,6 +702,7 @@ startRunWithPricing opts loaded ws meta store pricing spans seqRef mcpEnv = do
             rcSkillModules = opts.roSkillModules,
             rcEntryModules = entryFuns,
             rcLibraries = libraries,
+            rcLibraryFuns = libraryFuns,
             rcNestDepth = 0
           }
       modName = "module:" <> qnameToText (fmName (lmFrontmatter loaded))
@@ -775,7 +879,7 @@ mkCtx ::
 mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catalog skillMods entryMods execPol mcpPol projectRoot modelCatalog = do
   ws <- newWorkspace wsRoot
   mcpEnv <- newMcpEnv mcpPol projectRoot wsRoot (hPutStrLn stderr . T.unpack)
-  let typeEnv = loadTypeEnv loaded
+  let (typeEnv, sections, schemaDocs) = mergeLibrarySurface loaded entryMods
       (baseEnv0, funs) = loadRunEnvWithTypes typeEnv (lmBody loaded)
       baseEnv = withRunCtx runId started baseEnv0
       resumeOpts =
@@ -810,11 +914,11 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
   pure
     RunCtx
       { rcHost = host,
-        rcSections = sectionMap loaded,
+        rcSections = sections,
         rcFuns = funs,
         rcBaseEnv = baseEnv,
         rcTypeEnv = typeEnv,
-        rcSchemaDocs = lmSchemaDocs loaded,
+        rcSchemaDocs = schemaDocs,
         rcStore = store,
         rcProjectHash = hash,
         rcSeq = seqRef,
@@ -823,6 +927,7 @@ mkCtx provider pricing wsRoot loaded store hash runId started seqRef spans catal
         rcSkillModules = skillMods,
         rcEntryModules = buildEntryFunTables entryMods,
         rcLibraries = buildLibraryRecords entryMods,
+        rcLibraryFuns = buildLibraryFunTables entryMods,
         rcNestDepth = 0
       }
 
@@ -1023,29 +1128,43 @@ buildEntryFunTables =
                         }
                   else Nothing
 
--- | Library modules (no entry I/O): records of mutually-recursive closures for
--- @hwfl/list.map@ / @lib/foo.bar@ projection at runtime.
+-- | Library modules (no entry I/O): records of 'VLibFun' for @qname.fun@
+-- projection. Mutual recursion uses qname+name refs (like 'VTopFun') so
+-- snapshots do not walk knot-tied closure environments.
 buildLibraryRecords :: Map QName LoadedModule -> Map QName Value
 buildLibraryRecords =
   Map.mapMaybeWithKey $ \q m ->
-    let fm = lmFrontmatter m
-     in if isSkillQName q
-          then Nothing
-          else
-            if not (null fm.fmInputs) || not (null fm.fmOutputs)
-              then Nothing
-              else Just (libraryRecordValue m)
+    libraryModuleFuns q m
+      <&> \(funs, _) -> VRecord [(n, VLibFun q n) | (n, _, _) <- funs]
 
-libraryRecordValue :: LoadedModule -> Value
-libraryRecordValue m =
-  let typeEnv = loadTypeEnv m
-      ModuleBody decls _ = normalizeModuleParams typeEnv (lmBody m)
-      funs = [(n, ps, body) | DFun _ n ps _ body <- decls]
-      env =
-        Map.union
-          (Map.fromList [(n, VClosure ps body env) | (n, ps, body) <- funs])
-          (Map.union hostOpsEnv preludeEnv)
-   in VRecord [(n, VClosure ps body env) | (n, ps, body) <- funs]
+-- | Fun tables + base envs for 'VLibFun' application.
+buildLibraryFunTables :: Map QName LoadedModule -> Map QName (Env, FunTable)
+buildLibraryFunTables =
+  Map.mapMaybeWithKey $ \q m ->
+    libraryModuleFuns q m
+      <&> \(funs, table) ->
+        let env =
+              Map.union
+                (Map.fromList [(n, VLibFun q n) | (n, _, _) <- funs])
+                (Map.union hostOpsEnv preludeEnv)
+         in (env, table)
+
+libraryModuleFuns ::
+  QName ->
+  LoadedModule ->
+  Maybe ([(Ident, [Param], Expr)], FunTable)
+libraryModuleFuns q m =
+  let fm = lmFrontmatter m
+   in if isSkillQName q
+        || not (null fm.fmInputs)
+        || not (null fm.fmOutputs)
+        then Nothing
+        else
+          let typeEnv = loadTypeEnv m
+              ModuleBody decls _ = normalizeModuleParams typeEnv (lmBody m)
+              funs = [(n, ps, body) | DFun _ n ps _ body <- decls]
+              table = Map.fromList [(n, (ps, body)) | (n, ps, body) <- funs]
+           in Just (funs, table)
 
 -- | Load @exec@ / @mcp@ policy from workspace @project.json@ when present
 -- (lone-module resume fallback).
@@ -1209,20 +1328,6 @@ resolveResumeProject entryPath loaded workspaceRoot = do
 -- and any connections it lazily spawned — is done, success or failure.
 withMcpTeardown :: RunCtx -> IO a -> IO a
 withMcpTeardown ctx act = act `finally` closeMcpEnv ctx.rcHost.heMcp
-
-findProjectRoot :: FilePath -> IO (Maybe FilePath)
-findProjectRoot start = go start (32 :: Int)
-  where
-    go _ 0 = pure Nothing
-    go path n = do
-      isProj <- isProjectDir path
-      if isProj
-        then pure (Just path)
-        else
-          let parent = takeDirectory path
-           in if parent == path
-                then pure Nothing
-                else go parent (n - 1)
 
 stepRun :: FilePath -> Text -> LlmProvider -> FilePath -> Observer -> IO RunOutcome
 stepRun workspace runId provider catalogPath observer = do

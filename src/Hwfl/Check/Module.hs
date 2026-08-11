@@ -15,6 +15,7 @@ module Hwfl.Check.Module
 where
 
 import Control.Applicative ((<|>))
+import Control.Monad (foldM)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as K
 import Data.Aeson.KeyMap qualified as KM
@@ -42,7 +43,7 @@ import Hwfl.Check.Env
     typeEq,
   )
 import Hwfl.Check.Error (CheckError (..))
-import Hwfl.Check.Infer (check, infer, inferModuleEnv)
+import Hwfl.Check.Infer (check, infer, inferModuleEnvFrom)
 import Hwfl.Check.Scheme (Scheme (..))
 import Hwfl.Check.Schema (typeToSchema)
 import Hwfl.Eval.Value (Value (..))
@@ -70,7 +71,8 @@ checkModuleBody = checkModuleBodyInContext emptyModuleCheckContext
 
 checkModuleBodyInContext :: ModuleCheckContext -> ModuleBody -> Either CheckError CheckResult
 checkModuleBodyInContext ctx body@(ModuleBody decls mexpr) = do
-  env0 <- inferModuleEnv body
+  imported <- mergeImportedTypes ctx.mccImports
+  env0 <- inferModuleEnvFrom imported body
   let env = setImports ctx.mccImports env0
   mapM_ (checkDecl env) decls
   env' <- case mexpr of
@@ -80,6 +82,23 @@ checkModuleBodyInContext ctx body@(ModuleBody decls mexpr) = do
       pure env
   effEnv <- analyzeModuleEffects env' body
   pure CheckResult {crEnv = env', crEffects = effEnv}
+
+-- | Union @meTypes@ from imports; duplicate names across imports are errors.
+mergeImportedTypes :: Map Text ModuleExport -> Either CheckError (Map TypeName TypeExpr)
+mergeImportedTypes imps =
+  foldM
+    ( \acc ex ->
+        foldM
+          ( \acc' (n, ty) ->
+              case Map.lookup n acc' of
+                Nothing -> Right (Map.insert n ty acc')
+                Just _ -> Left (DuplicateType n)
+          )
+          acc
+          (Map.toList ex.meTypes)
+    )
+    Map.empty
+    (Map.elems imps)
 
 checkDecl :: TypeEnv -> Decl -> Either CheckError ()
 checkDecl env = \case

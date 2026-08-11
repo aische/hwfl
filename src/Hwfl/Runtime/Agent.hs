@@ -32,7 +32,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Hwfl.Ast.Expr (Param (..))
-import Hwfl.Ast.Name (Ident (..), TypeName (..))
+import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameToText)
 import Hwfl.Ast.Type (TypeExpr (..))
 import Hwfl.Check.Prelude (preludeTypeEnv)
 import Hwfl.Check.Schema (typeToSchema)
@@ -89,6 +89,26 @@ buildToolSpec funs callee = case callee of
               tvsParameters = schema,
               tvsCallee = callee
             }
+  VLibFun q n -> do
+    -- Agent tool lists are built from the *entry* fun table; library callees
+    -- still need a schema — fall back to empty-object params if unknown here.
+    schema <- case Map.lookup n funs of
+      Just (ps, _) -> paramsSchema ps
+      Nothing ->
+        Right
+          ( Aeson.object
+              [ "type" .= Aeson.String "object",
+                "properties" .= Aeson.object []
+              ]
+          )
+    pure $
+      VToolSpec
+        ToolSpecValue
+          { tvsName = sanitizeToolName (qnameToText q <> "_" <> unIdent n),
+            tvsDescription = "library function " <> qnameToText q <> "." <> unIdent n,
+            tvsParameters = schema,
+            tvsCallee = callee
+          }
   VClosure ps _ _ -> do
     schema <- paramsSchema ps
     pure $
@@ -323,7 +343,7 @@ sanitizeToolName = T.map safe
 -- synthetic @submit@ tool) are treated as already taken so user tools are
 -- renamed instead of colliding with them.
 uniquifyToolNames :: [Text] -> [ToolSpecValue] -> [ToolSpecValue]
-uniquifyToolNames reserved = go reserved
+uniquifyToolNames = go
   where
     go _ [] = []
     go used (ts : rest) =
@@ -742,6 +762,7 @@ coerceToolArgs ts json = case ts.tvsCallee of
     Aeson.String sid -> Right [(Just (Ident "id"), VString sid)]
     _ -> Left "skill_load arguments must be an object or string id"
   VTopFun {} -> namedObjectArgs json
+  VLibFun {} -> namedObjectArgs json
   VClosure {} -> namedObjectArgs json
   VSkillMain {} -> namedObjectArgs json
   -- MCP tools advertise an arbitrary JSON Schema, not hwfl param types, so

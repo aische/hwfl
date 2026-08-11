@@ -132,9 +132,11 @@ data RunCtx = RunCtx
     rcSkillModules :: Map QName LoadedModule,
     -- | Prebuilt runtime for callable entry modules (same-project; E11).
     rcEntryModules :: Map QName EntryModuleRuntime,
-    -- | Library modules (@lib/*@, @hwfl/*@, …) as records of closures for
+    -- | Library modules (@lib/*@, @hwfl/*@, …) as records of 'VLibFun' for
     -- @qname.fun@ projection (stdlib / project libs).
     rcLibraries :: Map QName Value,
+    -- | Fun tables + base envs for 'VLibFun' application (keyed by module qname).
+    rcLibraryFuns :: Map QName (Env, FunTable),
     -- | Nest depth while stepping a 'BranchMachine' (agent tool / FrInvoke / par).
     -- Snapshot writes are suppressed when > 0 so a bare branch never overwrites
     -- root @snapshot.json@; the outer wrapper persists the full machine.
@@ -256,6 +258,18 @@ openApply ctx fv argv = case fv of
     Just (params, body) -> case bindParams params argv of
       Left e -> Left (EvalErr e)
       Right binds -> Right (CurEval body (extendEnvMany binds ctx.rcBaseEnv))
+  VLibFun q n -> case Map.lookup q ctx.rcLibraryFuns of
+    Nothing ->
+      Left (EvalErr (Trap ("unknown library module: " <> qnameToText q)))
+    Just (env, funs) -> case Map.lookup n funs of
+      Nothing ->
+        Left
+          ( EvalErr
+              (Trap ("unknown library fun: " <> qnameToText q <> "." <> unIdent n))
+          )
+      Just (params, body) -> case bindParams params argv of
+        Left e -> Left (EvalErr e)
+        Right binds -> Right (CurEval body (extendEnvMany binds env))
   VSkillMain q -> case Map.lookup q ctx.rcSkillFuns of
     Nothing -> Left (EvalErr (Trap ("unknown skill module: " <> qnameToText q)))
     Just (env, funs) -> case Map.lookup (Ident "main") funs of
@@ -1823,6 +1837,7 @@ isObsSpanThunk :: Value -> Bool
 isObsSpanThunk = \case
   VClosure {} -> True
   VTopFun {} -> True
+  VLibFun {} -> True
   _ -> False
 
 pauseIfStep :: StepMode -> Machine -> Machine

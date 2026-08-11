@@ -3,12 +3,15 @@ module Hwfl.Check.Infer
   ( infer,
     check,
     inferModuleEnv,
+    inferModuleEnvFrom,
   )
 where
 
 import Control.Monad (foldM, unless, when)
 import Data.Bifunctor (first)
 import Data.Foldable (for_)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Expr
 import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameToText)
@@ -34,9 +37,15 @@ import Hwfl.Check.Unify
 
 -- | Collect aliases + function types from decls (bodies checked separately).
 inferModuleEnv :: ModuleBody -> Either CheckError TypeEnv
-inferModuleEnv (ModuleBody decls _) = do
+inferModuleEnv = inferModuleEnvFrom Map.empty
+
+-- | Like 'inferModuleEnv', but seed aliases from imports first so local
+-- decls / signatures may mention shared @types/*@ names.
+inferModuleEnvFrom :: Map TypeName TypeExpr -> ModuleBody -> Either CheckError TypeEnv
+inferModuleEnvFrom imported (ModuleBody decls _) = do
   checkDuplicateFuns decls
-  env0 <- foldM addAlias preludeTypeEnv [(n, ty) | DType _ n ty <- decls]
+  envBase <- foldM addAlias preludeTypeEnv (Map.toList imported)
+  env0 <- foldM addAlias envBase [(n, ty) | DType _ n ty <- decls]
   mapM_ (uncurry (resolveAliasDef env0)) [(n, ty) | DType _ n ty <- decls]
   foldM addFun env0 [(n, ps, mt) | DFun _ n ps mt _ <- decls]
   where
@@ -171,7 +180,7 @@ inferTc env = \case
         checkTc env e1 want
         let sch = quantify want
         inferTc (extendScheme n sch env) e2
-      (Nothing, EFun _ _ _) -> do
+      (Nothing, EFun {}) -> do
         t1 <- inferTc env e1
         sch <- generalize env t1
         inferTc (extendScheme n sch env) e2
@@ -232,8 +241,7 @@ inferTc env = \case
     tcError (CannotInfer "Some requires a payload")
   ETag (TypeName "Ok") (Just payload) -> do
     a <- inferTc env payload
-    e <- freshMeta
-    pure (TResult a e)
+    TResult a <$> freshMeta
   ETag (TypeName "Ok") Nothing ->
     tcError (CannotInfer "Ok requires a payload")
   ETag (TypeName "Err") (Just payload) -> do
@@ -276,7 +284,7 @@ checkTc env e want = do
     ETag (TypeName "Ok") Nothing ->
       tcError (TypeMismatchMsg "Ok requires a payload" want' tUnit)
     ETag (TypeName "Err") (Just payload) -> case want' of
-      TResult _ e -> checkTc env payload e
+      TResult _ _e -> checkTc env payload _e
       _ -> tcError (TypeMismatch want' (TResult tUnit tUnit))
     ETag (TypeName "Err") Nothing ->
       tcError (TypeMismatchMsg "Err requires a payload" want' tUnit)

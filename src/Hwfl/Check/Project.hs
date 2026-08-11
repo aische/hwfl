@@ -295,6 +295,12 @@ moduleExportFrom fm (ModuleBody decls _) result =
               Just sch <- [Map.lookup n result.crEnv.teVars]
           ],
       meEffects = result.crEffects,
+      meTypes =
+        Map.fromList
+          [ (n, ty)
+            | DType _ n _ <- decls,
+              Just ty <- [Map.lookup n result.crEnv.teAliases]
+          ],
       meEntryIO = entryIO
     }
   where

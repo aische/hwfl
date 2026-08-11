@@ -6,16 +6,16 @@ import Data.Aeson (encode, object, (.=))
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy.Char8 qualified as BL
 import Data.Either (isRight)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
-import Hwfl.Ast.Name (Ident (..))
-import Hwfl.Check.Module (checkLoadedModule)
+import Hwfl.Ast.Name (Ident (..), QName (..))
+import Hwfl.Check.Project (checkProject)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
-import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Provider (LlmProvider)
 import Hwfl.Llm.Types
   ( ChatRequest (..),
@@ -27,7 +27,8 @@ import Hwfl.Llm.Types
     TokenUsage (..),
     Turn (..),
   )
-import Hwfl.Parse.Load (loadModule)
+import Hwfl.Obs.Observer (noopObserver)
+import Hwfl.Project (LoadedProject (..), loadProject)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
@@ -40,8 +41,14 @@ import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 
+checkerProject :: FilePath
+checkerProject = "examples/semantic-check"
+
 checkerPath :: FilePath
 checkerPath = "examples/semantic-check/workflows/main.md"
+
+checkerEntry :: QName
+checkerEntry = QName [Ident "workflows", Ident "main"]
 
 fixtureRoot :: FilePath
 fixtureRoot = "test/fixtures/semantic-target"
@@ -55,27 +62,33 @@ baseInputs =
 
 runChecker :: FilePath -> [(Ident, Value)] -> Text -> LlmProvider -> IO RunOutcome
 runChecker tmp inputs runId provider = do
-  loaded <- loadModule checkerPath
-  case loaded of
-    Left diags -> expectationFailure (show diags) >> error "unreachable"
-    Right m ->
-      runLoadedModule
-        RunOptions
-          { roWorkspace = tmp,
-            roProvider = provider,
-            roInputs = inputs,
-            roRunId = Just runId,
-            roEntry = checkerPath,
-            roMode = StepRun,
-            roProjectHash = Nothing,
-            roExec = Nothing, roMcp = mempty, roProjectRoot = "",
-            roObserver = noopObserver,
-            roCost = False,
-            roModelCatalog = "model-catalog.json",
-            roSkillCatalog = fst emptySkillRuntime,
-            roSkillModules = snd emptySkillRuntime, roEntryModules = mempty
-          }
-        m
+  lpE <- loadProject checkerProject
+  case lpE of
+    Left err -> expectationFailure (T.unpack err) >> error "unreachable"
+    Right lp ->
+      case Map.lookup checkerEntry lp.lpModules of
+        Nothing -> expectationFailure "workflows/main missing" >> error "unreachable"
+        Just m ->
+          runLoadedModule
+            RunOptions
+              { roWorkspace = tmp,
+                roProvider = provider,
+                roInputs = inputs,
+                roRunId = Just runId,
+                roEntry = checkerPath,
+                roMode = StepRun,
+                roProjectHash = Nothing,
+                roExec = Nothing,
+                roMcp = mempty,
+                roProjectRoot = checkerProject,
+                roObserver = noopObserver,
+                roCost = False,
+                roModelCatalog = "model-catalog.json",
+                roSkillCatalog = fst emptySkillRuntime,
+                roSkillModules = snd emptySkillRuntime,
+                roEntryModules = lp.lpModules
+              }
+            m
 
 emptyPragmatic :: Aeson.Value
 emptyPragmatic =
@@ -310,11 +323,9 @@ lastUserText req
 
 spec :: Spec
 spec = describe "semantic-check dogfood (M8 / E20 deepen)" $ do
-  it "type-checks as a single module" $ do
-    loaded <- loadModule checkerPath
-    case loaded of
-      Left diags -> expectationFailure (show diags)
-      Right m -> checkLoadedModule m `shouldSatisfy` isRight
+  it "type-checks as a project (main + lib/*)" $ do
+    result <- checkProject checkerProject
+    result `shouldSatisfy` isRight
 
   it "reviews fixture: structural, prose, quoted redundancy, policy gate shape" $
     withSystemTempDirectory "hwfl-semcheck" $ \tmp -> do

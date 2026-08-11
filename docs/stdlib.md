@@ -92,6 +92,11 @@ Author and domain helpers stay in the project’s `lib/`. Factor large
 examples (`real-story-writer`, `semantic-check`, …) into project modules;
 graduate only generic pieces into `stdlib/` / `hwfl/…`.
 
+Shared record / alias shapes belong in **`types/*.md`** (typically one
+`types/main` per project). Importing `types/main` brings those aliases into
+scope unqualified (`Finding`, …). Do not duplicate `type` blocks across
+`lib/` files.
+
 ## Pure operators in the prelude
 
 Minimal operators that are painful as library functions may be kernel

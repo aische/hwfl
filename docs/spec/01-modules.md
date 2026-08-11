@@ -250,6 +250,12 @@ v0 may still expose a compact recent-events slice.
 `types/*.md` may contain only `type` declarations in a `hwfl` fence.
 Cycles among aliases are rejected.
 
+Importing a module that defines top-level `type` aliases **injects those
+names into the importer’s type environment** (unqualified). Prefer one
+shared `types/main` (or a small `types/*` set) over duplicating aliases in
+every `lib/` file. Value exports remain qualified (`lib/foo.bar`); type
+exports are ambient after import.
+
 ## 6. Authoring example
 
 ````markdown

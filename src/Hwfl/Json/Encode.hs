@@ -190,6 +190,8 @@ valueToAeson = \case
   VSecret _ -> Right (Aeson.String "[REDACTED]")
   VClosure {} -> Right (Aeson.String "<closure>")
   VTopFun (Ident n) -> Right (Aeson.String ("<fun:" <> n <> ">"))
+  VLibFun q (Ident n) ->
+    Right (Aeson.String ("<libfun:" <> qnameToText q <> "." <> n <> ">"))
   VBuiltin {} -> Right (Aeson.String "<builtin>")
   VHostOp op -> Right (Aeson.String ("<" <> hostOpName op <> ">"))
   VToolSpec ts -> Right (Aeson.String ("<tool:" <> ts.tvsName <> ">"))

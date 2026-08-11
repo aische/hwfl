@@ -91,7 +91,7 @@ import Hwfl.Obs.Observer
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Obs.Span (SpanRecord (..))
 import Hwfl.Parse.Load (loadModule)
-import Hwfl.Project (isProjectDir)
+import Hwfl.Project (findProjectRoot, isProjectDir)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
   ( RunOutcome (..),
@@ -146,22 +146,30 @@ renderDriverError = \case
   DeModule path err -> renderLocatedCheckError path err
 
 -- | Static check of a project directory or a single @.md@ module.
+-- Module paths under a @project.json@ tree check the enclosing project so
+-- @lib/*@ imports resolve.
 driverCheck :: FilePath -> IO (Either DriverError DriverCheckOk)
 driverCheck path = do
   isProj <- isProjectDir path
   if isProj
-    then do
-      result <- checkProject path
+    then checkAsProject path
+    else do
+      mRoot <- findProjectRoot path
+      case mRoot of
+        Just root -> checkAsProject root
+        Nothing -> do
+          result <- loadModule path
+          pure $ case result of
+            Left diags -> Left (DeParse path diags)
+            Right loaded -> case checkLoadedModule loaded of
+              Left err -> Left (DeModule path err)
+              Right _ -> Right CheckOkModule
+  where
+    checkAsProject root = do
+      result <- checkProject root
       pure $ case result of
         Left err -> Left (DeProject err)
         Right ok -> Right (CheckOkProject ok)
-    else do
-      result <- loadModule path
-      pure $ case result of
-        Left diags -> Left (DeParse path diags)
-        Right loaded -> case checkLoadedModule loaded of
-          Left err -> Left (DeModule path err)
-          Right _ -> Right CheckOkModule
 
 -- | Request to start a new run (project or single module).
 data DriverRunRequest = DriverRunRequest

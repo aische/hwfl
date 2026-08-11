@@ -67,7 +67,8 @@ cabal run hwfl -- run examples/semantic-check/workflows/main.md \
 
 | | hwfi | hwfl (this) |
 | --- | --- | --- |
-| Author tools / modules | **74** + workflow | **1** module |
+| Author tools / modules | **74** + workflow | **1** entry + `lib/*` + `types/main` |
 | Policy | micro-tools | ordinary `fun`s + gated LLM |
 
-Layer 3 stays in-module (no split pragmatic workflow / JSON reload).
+Layer 3 stays in-project (no split pragmatic workflow / JSON reload). Shared
+shapes live in [`types/main.md`](types/main.md); helpers in `lib/`.

@@ -20,6 +20,10 @@ spec = describe "project check (M9)" $ do
     result <- checkProject (fixtureRoot "check-project")
     result `shouldSatisfy` isRight
 
+  it "imports type aliases from types/main into lib and workflows" $ do
+    result <- checkProject (fixtureRoot "check-types")
+    result `shouldSatisfy` isRight
+
   it "rejects cyclic imports" $ do
     result <- checkProject (fixtureRoot "check-project-cycle")
     case result of
@@ -34,7 +38,7 @@ spec = describe "project check (M9)" $ do
       Left (PceImportCycle qs) -> do
         qs `shouldContain` ["workflows/a"]
         qs `shouldContain` ["workflows/b"]
-        qs `shouldSatisfy` (notElem "lib/base")
+        qs `shouldSatisfy` notElem "lib/base"
         case qs of
           (x : _) -> last qs `shouldBe` x
           [] -> expectationFailure "empty cycle path"

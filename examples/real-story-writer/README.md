@@ -119,6 +119,8 @@ not `world_pack`. Override with `KB_MCP_ROOT` / `KB_MCP_DB` /
 | Path | Role |
 | ---- | ---- |
 | `project.json` | Entrypoint + `mcp.servers.kb` |
-| `workflows/main.md` | Smoke + live pipeline |
+| `types/main.md` | Shared story / KB record aliases |
+| `lib/*.md` | KB, claims, bible, extract, chapter, smoke helpers |
+| `workflows/main.md` | Live + smoke orchestration + prompts |
 | `scripts/run-kb-mcp.sh` | Optional manual launcher |
 | `sandbox/` | Empty workspace stub |

@@ -844,6 +844,12 @@ valueToJson = \case
         "env" .= envToJson env
       ]
   V.VTopFun (Ident n) -> object ["tag" .= String "topfun", "name" .= n]
+  V.VLibFun q (Ident n) ->
+    object
+      [ "tag" .= String "libfun",
+        "qname" .= qnameToText q,
+        "name" .= n
+      ]
   V.VBuiltin b -> object ["tag" .= String "builtin", "op" .= showText b]
   V.VHostOp op -> object ["tag" .= String "host", "op" .= hostOpName op]
   V.VToolSpec ts -> object ["tag" .= String "tool_spec", "tool" .= toolSpecToJson ts]
@@ -886,6 +892,9 @@ parseValue = withObject "Value" $ \o -> do
         <*> (o .: "body" >>= readText)
         <*> (o .: "env" >>= parseEnv)
     "topfun" -> V.VTopFun . Ident <$> o .: "name"
+    "libfun" ->
+      (V.VLibFun . qnameFromText <$> (o .: "qname"))
+        <*> (Ident <$> o .: "name")
     "builtin" -> V.VBuiltin <$> (o .: "op" >>= readText)
     "host" -> V.VHostOp <$> (o .: "op" >>= parseHostOp)
     "tool_spec" -> V.VToolSpec <$> (o .: "tool" >>= parseToolSpec)
