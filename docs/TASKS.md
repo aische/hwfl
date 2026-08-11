@@ -17,9 +17,9 @@ Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
 - [x] **Ship stdlib** — pack under repo `stdlib/` (qnames `hwfl/list`,
       `hwfl/string`, `hwfl/option`, …); loader resolves pack root from
       `HWFL_STDLIB` or a sensible default; use from examples
-- [ ] **Factor large examples** — split oversized mains
-      (`real-story-writer`, `semantic-check`, …) into project `lib/` /
-      multi-module once stdlib exists
+- [x] **Factor large examples** — split oversized mains
+      (`real-story-writer`, `semantic-check`) into project `lib/` /
+      `types/main` (+ `VLibFun`, imported type aliases)
 - [ ] **Short hello path** — `hwfl init` scaffold; keep
       [tutorial.md](tutorial.md) focused on check → run (mock) → resume →
       show (shell completions optional)
@@ -83,7 +83,8 @@ and interpreter. See [idea.md](idea.md).
 
 ## Done
 
-Shipped `hwfl/*` stdlib pack + loader, MCP client (stdio) + story-writer /
+Factored `semantic-check` / `real-story-writer` into `lib/` + `types/main`,
+shipped `hwfl/*` stdlib pack + loader, MCP client (stdio) + story-writer /
 real-story-writer examples, Context L1+L2 (heuristic), bug-fix High +
 Medium (except deferred M-3 / M-16 / M-18), **H-8** / **M-20** / **M-21**,
 selected Lows through L-15 + L-18, **value / let polymorphism**, and typed
