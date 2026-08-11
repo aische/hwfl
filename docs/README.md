@@ -3,9 +3,8 @@
 Provisional working name: **hwfl** (Haskell workflow language — ML-shaped
 surface, Haskell implementation).
 
-**North star:** durable workflow **runtime library** (+ CLI), aimed at a
-**workflow research lab** (check / run / compare / mutate) and a
-**separate** remote control plane. Details in [idea.md](idea.md).
+**North star:** a small **language + durable interpreter** (library + CLI)
+with first-class LLM and other host effects. Details in [idea.md](idea.md).
 
 This folder is **`docs/`** in the hwfl repository. Keep the **hwfi** repo
 nearby as a behavioural / design reference (see [hwfi-reference.md](hwfi-reference.md)).

@@ -1,45 +1,37 @@
 # Status
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 ## Current focus
-**Agent substrate** — MCP client dogfooded; product-demo story pipeline
-in `examples/real-story-writer` (kb-mcp world model). Fixture
-`examples/story-writer` stays the regression harness. Next: git /
-persistent terminals. Prefer MCP or workflow modules over new host ops.
+**Language + interpreter** — ship in-language `lib/`, a short hello path
+(`hwfl init` + tutorial entry), and keep new capabilities in MCP or `lib/`
+unless they need a host op.
 
 ## North star
-hwfl = durable workflow **runtime library** (language + interpreter).
-Coding-agent and semantic-check are benchmarks / dogfood, not the
-product. Broader lab framing in [idea.md](idea.md).
+Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
-- **M-21** — `exec.run` readers use `forkFinally` (always `putMVar`);
-  `readCapped` catches IO errors like drain; `ExecSpec` regressions
-- **M-20** — On MCP transport timeout/error, invalidate cached
-  connection (kill process group) and reconnect lazily on next call;
-  regression in `McpSpec`
-- **H-8** — `mcp.allow` + basename-only command; absolute `cwd` gated by
-  `mcp.allow_absolute_cwd` (default false); fail closed at load + spawn
-- **real-story-writer** — layered KB repair + `strict_kb`; smoke fixture
-  unchanged; `story-writer` kept
-- **MCP dogfood** — fixture + live extract loop; stdio client per
-  [spec/13-mcp.md](spec/13-mcp.md)
+- Docs: clarified language + interpreter framing ([idea.md](idea.md))
+- **M-21** — `exec.run` reader `forkFinally`; `ExecSpec` regressions
+- **M-20** — MCP transport error invalidates cached connection
+- **H-8** — `mcp.allow` + absolute-cwd gate
+- MCP client + `story-writer` / `real-story-writer` examples
 
 ## Blockers
 None.
 
 ## Next up
-1. Git (read-heavy) / persistent terminals (or MCP equivalents)
-2. Optional: agent path with `world_*` + `mcp.tools` bind (filter commit)
-3. Context L2 follow-up: `consolidate = "llm"` + lasting `context`
+1. In-language `lib/` ([stdlib.md](stdlib.md)); factor large examples into
+   multi-module projects where helpful
+2. `hwfl init` and a short check → run (mock) → resume → show tutorial
+3. Prefer MCP / `lib/` for domain tools (git, terminals, …)
 4. Opportunistic Lows; M-3 / M-16 / M-18 only if they bite
 
 ## Deferred
-- **`consolidate = "llm"`** — LLM compact + lasting agent `context`
-- **hwfl as MCP server** — expose runtime to Cursor (super low priority)
-- **M-3** / **M-18** / **M-16** — see TASKS / BUG_REPORT
-- Remaining Lows; Docker `exec.runtime`; semantic-check S4/S6; skills
-  phase D; concurrent `par` host IO; Tier B; `latest` run-id; `lib/`
+- Git / persistent terminals (MCP first)
+- `consolidate = "llm"` + lasting agent `context`
+- hwfl as MCP server
+- Lab fitness / coding-agent Tier B / Docker `exec.runtime`
+- **M-3** / **M-18** / **M-16**; remaining Lows
 
 ## Open naming
 Working title **hwfl** / CLI `hwfl` / fence `hwfl` is provisional.

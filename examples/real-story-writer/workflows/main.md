@@ -35,7 +35,7 @@ examples:
 
 ## overview
 
-Product-demo story pipeline against external **kb-mcp** (`fiction.v1`).
+Multi-chapter story pipeline against external **kb-mcp** (`fiction.v1`).
 
 - `mode=smoke` — no LLM: multi-chapter hard-coded deltas, planted
   continuity clash dry_run → regen/commit, growing snapshots.

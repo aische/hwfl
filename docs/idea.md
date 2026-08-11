@@ -1,27 +1,26 @@
 # Idea
 
-A resumable workflow engine whose programs are **typed markdown modules**:
-prose (prompts, descriptions) and code share one file, the way PHP mixed
-HTML and logic for the web. Inside those modules runs a **small ML-ish
-general-purpose language** with first-class LLM, filesystem, parallelism,
+A small **programming language** whose programs are **typed markdown
+modules**: prose (prompts, descriptions) and code share one file, the way
+PHP mixed HTML and logic for the web. Inside those modules runs an **ML-ish
+kernel** with first-class LLM calls, filesystem, process, parallelism,
 human confirmation, and durable resume.
 
 Working name: **hwfl** (originally plm, Prose ML).
 
 ## North star
 
-**hwfl is the durable workflow runtime (Haskell library + CLI).** It powers
-a **workflow research lab**: author → check → run → inspect → **compare
-orchestration variants** (multiple markdown programs on the same fixtures —
-cheap because the experiment *is* the workflow, not a second host app) →
-optionally mutate / evolve candidates. Coding-agent tasks and
-semantic-check are hard benchmarks — not the product itself.
+**hwfl is a language + durable interpreter** (Haskell library + CLI).
 
-A **remote control plane** (separate repo) depends on hwfl as a library:
-Postgres for experiment / run metadata, materialized project + workspace
-sandboxes to execute, HTTP + WebSocket/SSE mapping the existing
-check / run / step / resume / approve / show machine — not a remote
-terminal. Multi-tenant auth, queuing, and chat UX stay in that app.
+Authors write programs as markdown modules; the interpreter checks them,
+runs them with LLM and other host effects, and resumes after crash or
+human pause. The same driver façade is available as a library for other
+frontends (for example a remote control plane in a separate repository).
+
+Example projects under `examples/` — coding agents, story pipelines,
+compare/evolve loops, semantic-check, and so on — exercise the language
+across different program shapes and guide which builtins and libraries
+to add next.
 
 ## Problem
 
@@ -56,19 +55,13 @@ We want language-level ergonomics **and** document-shaped authoring.
 7. **Static check before run** — project graph, signatures, effects, and
    types fail closed before the first billed token.
 8. **Callable as a library** — one driver façade (check / run / step /
-   resume / approve / show + run-store queries) shared by the CLI and HTTP
-   frontends; FS run-store today.
-9. **Comparative + genetic workflows** — first-class: ship N **separate
-   example projects** (distinct trees; accept duplication until `lib/`)
-   and compare on shared fixtures (spans / cost / outcome). Not one
-   workflow with a mode switch. Separately: materialize candidate
-   projects (and workspaces), invoke nested runs, score, iterate /
-   evolve; evolution logic prefers hwfl modules over host growth.
-   Comparison without mutation is already research — evolve is not
-   required to justify multiple exemplars.
-10. **Dogfood semantic analysis** — use the language to analyse its own
-    projects (prompts, refs, coherence) without inventing a second DSL.
-    Research track; not on the critical path.
+   resume / approve / show + run-store queries) shared by the CLI and any
+   external frontend; FS run-store today.
+9. **Stdlib in-language** — prefer `lib/` modules and MCP clients over
+   growing the Haskell host-op set. New host ops only when the language
+   cannot express the need.
+10. **Teachable surface** — a short path from install → tiny program →
+    check / run / resume / show.
 
 ## Non-goals (this repo)
 
@@ -80,7 +73,7 @@ We want language-level ergonomics **and** document-shaped authoring.
 - Embedding a full existing language (JS / Python / Lua runtimes)
 - User-defined algebraic effect handlers
 - Reintroducing hwfi’s step DSL as the computation substrate
-- Cursor-class RAG / LSP / embeddings until a measured coding-agent gap
+- Cursor-class RAG / LSP / embeddings until a measured language gap
 
 ## Constraints
 
@@ -91,8 +84,7 @@ We want language-level ergonomics **and** document-shaped authoring.
 - Security defaults: workspace sandbox, opt-in `exec`, secret redaction
 - Prefer MCP **client** / in-language modules over growing the host-op
   set (stdio servers: KB, web search, … — [spec/13-mcp.md](spec/13-mcp.md))
-- **Project** (workflow modules / genome) ≠ **workspace** (sandbox data +
-  `.hwfl/runs`); lab and control plane materialize both as directories
+- **Project** (modules) ≠ **workspace** (sandbox data + `.hwfl/runs`)
 
 ## Relationship to hwfi
 
@@ -106,15 +98,8 @@ the computation substrate.** Skills (progressive disclosure) ship as
 
 ## Success intuition
 
-An author (human or agent) can write a non-trivial multi-step agent
-pipeline — including parallelism, human gates, and structured LLM JSON —
-in a handful of markdown modules, resume after crash mid-LLM-call, and
-inspect a span tree of what ran. Proof point: hwfi’s `semantic-check`
-(~74 tool files) collapsed to **one** hwfl module
-(`examples/semantic-check`) with the same layered review policy — the GP
-language replaces micro-tool fan-out.
-
-**Lab intuition:** a parent workflow (or thin driver) can spawn N candidate
-projects in temp dirs, check/run each against a shared task fixture,
-read spans + cost + outcome, and select/mutate for the next generation —
-locally via the library/CLI; on a server via the separate control plane.
+An author can write a non-trivial program — LLM structured output,
+parallelism, human gates, tools, resume mid-call — in a handful of
+markdown modules, and inspect a span tree of what ran. Example programs
+(coding-agent, story pipelines, local compare/evolve, semantic-check vs
+hwfi’s micro-tool fan-out) show that the language carries those shapes.

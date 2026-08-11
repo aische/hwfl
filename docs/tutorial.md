@@ -1,9 +1,12 @@
 # Tutorial: run lifecycle
 
 Walk through the durable CLI loop: **module → check → run → (approve) →
-resume → show**. Language surface is in
-[language-reference.md](language-reference.md); agent dogfood is in
-`examples/coding-agent`.
+resume → show**. Language surface:
+[language-reference.md](language-reference.md). More programs live under
+`examples/`.
+
+**Planned:** `hwfl init` (see [TASKS.md](TASKS.md)). Until then, start from
+`examples/obs-span.md` below.
 
 ## Prerequisites
 
@@ -247,14 +250,15 @@ cabal run hwfl -- resume /tmp/hwfl-tut <run-id>
 | Doc / example | When |
 | ------------- | ---- |
 | [language-reference.md](language-reference.md) | Keywords, types, prelude, host ops |
-| `examples/coding-agent` | Credible chat → coding session → serial task/verify |
+| [stdlib.md](stdlib.md) | What belongs in `lib/` vs host |
+| `examples/coding-agent` | Chat → coding session → serial task/verify |
 | `examples/simple-coding-agent` | Flat `llm.agent_object` + stack skills |
-| `examples/skills` | Minimal `skill.discover` / `skill.load` demo |
-| `examples/compare` | Lab: compare → mutate genomes → next generation |
-| `examples/evolve-agent` | Lab: evolve coding-agent genomes on a fixed task |
+| `examples/skills` | Minimal `skill.discover` / `skill.load` |
+| `examples/compare` | Nested runs: compare → mutate → next generation |
+| `examples/evolve-agent` | Nested runs: evolve agent variants on a fixture |
 | `examples/semantic-check` | Multi-layer review workflow |
-| `examples/story-writer` | MCP fixture: planted continuity clash / snapshot |
-| `examples/real-story-writer` | Product demo: bible → chapters + layered KB repair |
+| `examples/story-writer` | MCP fixture: continuity clash / snapshot |
+| `examples/real-story-writer` | Multi-chapter story pipeline + KB repair |
 
 The coding session (`workflows/coding`) lists `skill.discover` /
 `skill.load` and loads stack instruction skills (python / react /

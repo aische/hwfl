@@ -6,7 +6,8 @@ specs are updated.
 
 ## 1. Product summary
 
-A **Haskell library** (GHC2021) with a CLI frontend that:
+**hwfl is a small programming language + durable interpreter** (Haskell
+library + CLI, GHC2021):
 
 1. Loads a **project** of markdown modules (+ small JSON config).
 2. **Checks** the project (parse, types, effects, reference graph) before
@@ -18,10 +19,8 @@ A **Haskell library** (GHC2021) with a CLI frontend that:
 6. Exposes richer **observability** than a flat event list (span trees).
 
 The CLI is one frontend over a driver façade (check / run / step /
-resume / approve / show + run-store). A remote control plane and
-genetic/comparative lab are **consumers** of that library — the HTTP
-surface and multi-tenant product live in a **separate repository**.
-See [idea.md](../idea.md).
+resume / approve / show + run-store). Other frontends (for example a
+remote control plane) can use the same library. See [idea.md](../idea.md).
 
 Non-goals for this repo: GUI/IDE shell, Servant/HTTP in-tree, distributed
 multi-tenant runtime, package registry, embedding JS/Python/Lua VMs.

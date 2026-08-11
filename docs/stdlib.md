@@ -5,6 +5,10 @@ Normative host set: [spec/05-host-ops.md](spec/05-host-ops.md).
 Everything else belongs as **hwfl modules** under `lib/` (and, when the set
 stabilizes, a bootstrapped stdlib shipped with the CLI).
 
+**Priority:** ship `lib/` and use it from examples. Prefer MCP or `lib/`
+for new capabilities; add host ops only when the language cannot express
+the need. See [TASKS.md](TASKS.md).
+
 ## Candidate `lib/` modules
 
 | Module                      | Contents                                                                          |

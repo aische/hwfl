@@ -151,10 +151,10 @@ hwfl run   <project> …   # check (or reuse) then evaluate
 hwfl step / resume / show / approve
 ```
 
-These commands are **one frontend** over a library driver. A control-plane
-HTTP/WS app calls the same operations (plus run-store queries and an
-`Observer` hook for live spans / pause / finish) — without Servant living
-in this repo. See [idea.md](idea.md) north star.
+These commands are **one frontend** over a library driver. External apps
+can call the same operations (plus run-store queries and an `Observer`
+hook for live spans / pause / finish) — without Servant living in this
+repo. See [idea.md](idea.md).
 
 ## Library vs control plane
 
@@ -175,30 +175,31 @@ run metadata, queue, materialize project + workspace temp dirs, map
 pause/approve over WebSocket or SSE. It must not reimplement the machine;
 it persists metadata and schedules sandboxed `hwfl` library runs.
 
-**Genetic lab:** treat project trees as candidates (genome), workspaces as
-task fixtures + run sandboxes, invoke nested runs via `meta.invoke`, score
-from spans / outcome / cost. Prefer in-language evolution over a host
-“evolution engine.”
+**Genetic / compare examples:** treat project trees as candidates,
+workspaces as task fixtures + run sandboxes, invoke nested runs via
+`meta.invoke`, score from spans / outcome / cost. Prefer in-language
+evolution over a host “evolution engine.”
 
 ## Project vs workspace
 
 | Root | Role |
 | ---- | ---- |
-| **Project** | Markdown modules, `project.json`, skills — the program (lab: genome) |
+| **Project** | Markdown modules, `project.json`, skills — the program |
 | **Workspace** | Sandboxed FS + `.hwfl/runs` — data and durable run state |
 
-CLI accepts `--workspace`. Lab and control plane materialize both as
-directories (often temp); do not collapse them into one tree unless the
-task truly is “edit the project in place.”
+CLI accepts `--workspace`. External drivers (and some examples) may
+materialize both as directories; do not collapse them into one tree unless
+the task truly is “edit the project in place.”
 
 ## Stdlib policy
 
-- Prefer **hwfl modules** under `lib/` for list/string/json helpers.
+- Prefer **hwfl modules** under `lib/` for list/string/json helpers
+  ([stdlib.md](stdlib.md)).
 - Prefer **MCP client** ([13-mcp.md](spec/13-mcp.md)) for external tool
   ecosystems (KB, search, …) over one-off domain host ops.
 - Host ops only when the implementation _must_ be in Haskell (LLM, FS sandbox,
   process, snapshot, true parallelism, MCP transport).
-- Never grow the host op set to paper over a missing kernel feature.
+- Do not grow the host op set to paper over a missing kernel feature.
 
 ## Relationship of control flow constructs
 

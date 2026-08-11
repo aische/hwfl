@@ -1,13 +1,11 @@
 # hwfl
 
-Durable workflow **runtime** (Haskell library + CLI). Programs are typed
-markdown modules: prose and an ML-ish kernel share one file. LLM calls,
-filesystem, `exec`, parallelism, and human confirm are host effects with
-checkpointed resume.
+A small **programming language** + durable **interpreter** (Haskell
+library + CLI). Programs are typed markdown modules: prose and an ML-ish
+kernel share one file. LLM calls, filesystem, `exec`, parallelism, and
+human confirm are first-class host effects with checkpointed resume.
 
-Coding-agent and semantic-check are hard benchmarks / dogfood — the
-product is the runtime. Lab framing (compare / mutate / evolve) and the
-separate control plane live in [docs/idea.md](docs/idea.md).
+Vision and goals: [docs/idea.md](docs/idea.md).
 
 ## Why
 
@@ -180,15 +178,14 @@ More: [examples/simple-coding-agent/README.md](examples/simple-coding-agent/READ
 | ---- | ---- |
 | `src/Hwfl/` | Library: parse, check, eval, durable runtime, LLM, observability |
 | `app/` | CLI wrapping the driver façade |
-| `examples/` | Example modules and projects |
+| `examples/` | Example programs and projects |
 | `docs/` | Spec, architecture, language reference |
 
 ## Docs
 
+- [docs/idea.md](docs/idea.md) — vision and goals
 - [docs/tutorial.md](docs/tutorial.md) — check → run → approve → resume → show
 - [docs/language-reference.md](docs/language-reference.md) — surface language
+- [docs/stdlib.md](docs/stdlib.md) — in-language `lib/` vs host ops
 - [docs/architecture.md](docs/architecture.md) — layers and boundaries
-- [docs/idea.md](docs/idea.md) — vision, lab, control-plane boundary
-- [examples/coding-agent](examples/coding-agent) — skill-driven coding agent
-- [examples/simple-coding-agent](examples/simple-coding-agent) — one-shot `agent_object`
-- [examples/chat](examples/chat) — minimal workflow chat (`human.ask` + `/quit`)
+- [examples/](examples/) — example programs (agents, story, compare, …)
