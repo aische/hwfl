@@ -1,6 +1,7 @@
 # hwfl Bug Report
 
-- **Date:** 2026-08-05 (initial); **amended 2026-08-10** (MCP / concurrency follow-up)
+- **Date:** 2026-08-05 (initial); **amended 2026-08-12** (MCP / concurrency
+  follow-up and docs sync)
 - **Scope:** `src/Hwfl/**`, `app/Main.hs`, `hwfl.cabal`, `model-catalog.json`; 2026-08-10
   pass focused on MCP client (`Mcp/Client`, `Runtime/Mcp`, `Host` mcp.*),
   `Exec` / `ProcGroup`, run-store locking, and agent human-gate promotion.
@@ -10,8 +11,8 @@
   `test/fixtures/mcp/echo_server.py`. `.env` present but gitignored and
   untracked — no keys committed.
 - **Status:** All Highs fixed or retracted (H-1; **H-8** fixed 2026-08-10).
-  Medium open: **M-3**, **M-16**, **M-18**. **M-20** / **M-21** fixed
-  2026-08-10. Remaining Lows are hygiene — see table and
+  Medium open: **M-3**, **M-16**. **M-18** fixed 2026-08-12;
+  **M-20** / **M-21** fixed 2026-08-10. Remaining Lows are hygiene — see table and
   [TASKS.md](TASKS.md).
   This report stays the durable source of truth for findings.
 - **Repository:** `hwfl` — durable workflow runtime library. Markdown modules (L1) → typed ML kernel: checker + pure evaluator (L2) → CEK machine with snapshot/resume, FS sandbox, `exec.run` allowlist, `llm.*` provider, MCP stdio client, human gates (L3). Run state persists under `workspace/.hwfl/runs/<run-id>/{meta.json, snapshot.json, spans.jsonl, events.jsonl, transitions.jsonl}`.
@@ -409,20 +410,19 @@ Two processes approving the same paused run both run the full continuation (doub
   mismatches are recorded as `finish_reason_mismatch` without changing
   content-based control flow.
 
-### M-18 — Project hash includes full prose bodies → resume falsely reports "stale project"
+### M-18 — ~~Project hash includes full prose bodies → resume falsely reports "stale project"~~ **Fixed**
 
 - **Location:** `src/Hwfl/Project.hs` (`projectHashForModules`)
-- **Verification:** `[Reported]` — confirmed still open (2026-08-10)
+- **Verification:** `[Reported]` — **Fixed** (2026-08-12)
 
-`projectHashForModules` folds `show m` over each `LoadedModule` (includes
-`lmProseBody`, `lmSections`, frontmatter, and body AST) into a weak `Int`
-polynomial hash. Any whitespace/prose edit changes the hash and blocks
-resume with `ConfigErr "stale project: hash mismatch"` — safe, but a
-comment edit bricks an otherwise valid resume. The `Int` fold is also a
-poor digest (wrap / collision risk for adversarial trees).
+Before the fix, `projectHashForModules` folded `show m` over each
+`LoadedModule` (including `lmProseBody`, `lmSections`, frontmatter, and body
+AST) into a weak `Int` polynomial hash. Any whitespace/prose edit changed the
+hash and blocked resume with `ConfigErr "stale project: hash mismatch"`.
 
-- **Suggested fix:** hash structural AST + frontmatter (or normalized code
-  fences), not prose; use a real digest (SHA-256).
+- **Fix applied:** hash module identity, frontmatter, and code-fence body AST
+  with SHA-256; exclude prose bodies, raw sections, and schema docs. The
+  digest is truncated to the existing 16-character run metadata field.
 
 ### M-19 — H-6 residuals: checker still accepts some runtime-failing call shapes
 
@@ -528,7 +528,7 @@ closes pipes while readers run).
 | L-14 | `Parse/Expr.hs`                                              | **Fixed** (2026-08): `&&` / `\|\|` desugar to `if` so evaluation short-circuits.                                                                                                         |
 | L-15 | `Json/Encode.hs`                                             | **Fixed** (2026-08): nullary variants encode as `{"tag":…}` (same tagged shape as payload); Option Some/None unchanged. Schema-free decode stays a record, never `VString`.          |
 | L-16 | `Check/Infer.hs`, `Check/Env.hs`, `Json/Encode.hs`           | **Fixed** (2026-08): duplicate record fields rejected at check; `json.encode` errors on duplicate keys.                                                                                |
-| L-17 | `Check/Prelude.hs:360`, `Infer.hs:736-745,770-773`           | Curried `obs.span("n")(thunk)` returns `Unit` while the 2-arg form returns the body type — inconsistent over-strict typing.                                                            |
+| L-17 | `Check/Prelude.hs:360`, `Infer.hs:736-745,770-773`           | **Fixed** (2026-08): curried `obs.span("n")(thunk)` now returns the thunk body type, matching the two-argument form; regression in `Obs.SpanSpec`. |
 | L-18 | `Check/Module.hs`                                            | **Fixed** (2026-08): example input values validated vs frontmatter `TypeExpr` (JSON Schema); CLI `--example <name>`.                                                                  |
 | L-19 | `Agent.hs`, `Snapshot.hs`                                    | **Fixed** with H-5: source/snapshot `max_rounds` validated; extension uses checked add (no wrap).                                                                                      |
 | L-20 | `Runtime/Ignore.hs:69-105`                                   | `isIgnored` checks hidden segments before rules, so `!.env` can never un-ignore a hidden name — deviates from gitignore semantics.                                                     |
@@ -563,7 +563,7 @@ closes pipes while readers run).
 ## Recommended fix order
 
 **Completed (2026-08):** all original Highs (H-1a–H-7; H-1 retracted);
-Medium except M-3 / M-16 / M-18; selected Lows (L-1–3, L-5–8, L-11,
+Medium except M-3 / M-16; selected Lows (L-1–3, L-5–8, L-11,
 L-13–16, L-19, L-22, L-24). See
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 
@@ -572,9 +572,8 @@ L-13–16, L-19, L-22, L-24). See
 1. **M-16** — multi-process run-store locking (when parallel lab
    processes share a run dir).
 2. **M-3** — skill-body prompt trust (when third-party skills matter).
-3. **M-18** — project-hash / prose-edit resume UX.
-4. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-17,
-   L-20–21, L-23, L-25–27 — fsync, CLI, ignore/glob, confirmOf,
+3. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-20–21,
+   L-23, L-25–27 — fsync, CLI, ignore/glob, confirmOf,
    module splits, …).
 
 **Completed same day:** **H-8** MCP command/cwd allowlist; **M-20**
@@ -594,8 +593,9 @@ substrate (MCP dogfood / git / terminals). See [STATUS.md](STATUS.md).
   `Runtime/Mcp` registry, `Exec`/`ProcGroup`, store atomic rename, agent
   human-gate promotion. Executed MCP timeout→reuse probe (r2 timeout,
   r3 ok after wait). Spec §3 allowlist gap filed as H-8 (fixed same day).
-  Coverage extended to post-audit MCP modules; prior High/Med status
-  reconfirmed for M-3 / M-16 / M-18.
+  Coverage extended to post-audit MCP modules; prior open status
+  reconfirmed for M-3 / M-16. M-18 was fixed in the subsequent
+  implementation pass.
 - **Coverage:** all `src/Hwfl/**` modules in initial pass; 2026-08-10
   focused on MCP / Exec / Store / Eval human-gate paths.
   `app/Main.hs`, `hwfl.cabal`, dogfood `project.json` included.

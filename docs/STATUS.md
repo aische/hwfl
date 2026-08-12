@@ -2,9 +2,9 @@
 Last updated: 2026-08-12
 
 ## Current focus
-**Polish + low-hanging fixes** — five targeted items (default `--workspace`,
-M-18 structural project hash, L-17 `obs.span` curried typing, L-20 ignore
-negation, L-26 `confirmOf` fail-closed). See TASKS.md §Now.
+**Polish + low-hanging fixes** — three remaining items (L-20 ignore negation,
+L-26 `confirmOf` fail-closed, and the related promotion helpers). See
+TASKS.md §Now.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
@@ -13,6 +13,8 @@ Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 - **M-18 structural project hash** — `projectHashForModules` now SHA-256
   over `lmFrontmatter` + `lmBody` only; `lmProseBody`/`lmSections` excluded;
   `cryptohash-sha256` added; prose edits no longer brick resume
+- **L-17 curried `obs.span` typing** — the checker now returns the thunk body
+  type for both curried and two-argument forms
 - **Default `--workspace`** — target project dir auto-derives workspace
 - **Short hello path** — `hwfl init` scaffolds LLM + confirm project
 - **Factored large examples** — `semantic-check` / `real-story-writer` into
@@ -23,7 +25,7 @@ Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 None.
 
 ## Next up
-1. Five Now items (see TASKS.md §Now)
+1. Three Now items (see TASKS.md §Now)
 2. Prefer MCP / stdlib for domain tools (git, terminals, …)
 3. Optional: shell completions; omit / `latest` run-id
 

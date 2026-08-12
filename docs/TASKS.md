@@ -7,19 +7,8 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 ## Now — polish and low-hanging fixes
 
-Five targeted improvements identified in review (2026-08-12):
+Three remaining improvements identified in review (2026-08-12):
 
-- [x] **Default `--workspace`** — when `run`'s target is a project directory,
-      derive `workspace = target` in `Main.hs`/`Args.hs` before falling back to
-      cwd; fixes the ergonomics gap in `hwfl init` / tutorial §4
-- [x] **M-18: structural project hash** — replace `show m` + DJB2 `Int` fold in
-      `Project.hs:projectHashForModules` with SHA-256 over code-fence AST +
-      frontmatter only (not `lmProseBody`/`lmSections`); prose edits no longer
-      brick resume
-- [x] **L-17: `obs.span` curried typing** — extend the `obs.span` special case in
-      `Check/Infer.hs` to `EApp (EApp obs_span name) thunk` so curried
-      `obs.span("n")(thunk)` infers the thunk's body type, consistent with the
-      2-arg form
 - [ ] **L-20: ignore negation rules beat hidden-segment default** — run the
       ignore rule set first in `Runtime/Ignore.hs`; apply the implicit hidden
       (`.`-prefixed) default only when no rule matches, so `!.env` can actually
@@ -109,8 +98,8 @@ Short hello path (`hwfl init` + tutorial), factored `semantic-check` /
 `real-story-writer` into `lib/` + `types/main`, shipped `hwfl/*` stdlib
 pack + loader, MCP client (stdio) + story-writer / real-story-writer
 examples, Context L1+L2 (heuristic), bug-fix High + Medium (except
-deferred M-3 / M-16 / M-18), **H-8** / **M-20** / **M-21**, selected Lows
-through L-15 + L-18, **value / let polymorphism**, and typed `--example`
+      deferred M-3 / M-16), **H-8** / **M-18** / **M-20** / **M-21**, selected Lows
+through L-18 (including L-17), **value / let polymorphism**, and typed `--example`
 archived in
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 Earlier milestones in

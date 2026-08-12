@@ -24,7 +24,7 @@ credentials (see `.env`).
 | ----- | ---- |
 | **Module** | One markdown file: YAML frontmatter + one `hwfl` code fence with `main` |
 | **Project** | Directory with `project.json` + modules (multi-file graph) |
-| **Workspace** | Sandbox for file / exec effects (`--workspace`; defaults to cwd) |
+| **Workspace** | Sandbox for file / exec effects (`--workspace`; project runs default to the project root) |
 | **Run** | One execution; id printed as `hwfl run: run_id=…`; state under `.hwfl/runs/<id>/` |
 
 **Project vs workspace:** the project (or module path) is *code*; the
@@ -61,15 +61,11 @@ Exit `0` on success; diagnostics on stderr and exit `1` on failure.
 
 Use the project directory as the workspace so run state lands next to the
 code (project ≠ workspace in general; here they coincide on purpose).
-Today `run` defaults `--workspace` to **cwd**, so when the project path
-is not the current directory you must pass `--workspace` or runs land
-elsewhere — a known footgun; follow-up is to default workspace to the
-project root when the run target is a project directory
-([TASKS.md](TASKS.md)).
+When the run target is a project directory, `run` derives the workspace from
+that project automatically. An explicit `--workspace` still overrides it.
 
 ```bash
 cabal run hwfl -- run /tmp/hwfl-hello \
-  --workspace /tmp/hwfl-hello \
   --llm-provider mock
 ```
 
