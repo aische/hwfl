@@ -9,7 +9,7 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 Three remaining improvements identified in review (2026-08-12):
 
-- [ ] **L-20: ignore negation rules beat hidden-segment default** — run the
+- [x] **L-20: ignore negation rules beat hidden-segment default** — run the
       ignore rule set first in `Runtime/Ignore.hs`; apply the implicit hidden
       (`.`-prefixed) default only when no rule matches, so `!.env` can actually
       un-ignore `.env`

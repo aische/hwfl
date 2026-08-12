@@ -3,7 +3,8 @@
 -- Respects workspace-root @.gitignore@ and @.ignore@ even when @.git@ is
 -- absent. When neither file exists (or both are empty), applies a small
 -- baseline of dependency / build directory names. Hidden names (@.*@) are
--- always skipped. Nested ignore files are not loaded (v1).
+-- skipped by default but can be un-ignored with a negation rule (@!.env@).
+-- Nested ignore files are not loaded (v1).
 module Hwfl.Runtime.Ignore
   ( IgnoreSet,
     loadIgnoreSet,
@@ -120,9 +121,13 @@ parseLine raw0 =
 
 -- | @True@ when @rel@ (workspace-relative, @\/@-separated or native) should be
 -- omitted from find/grep. @isDir@ distinguishes directory-only rules.
+--
+-- Rule-set evaluation order (gitignore semantics):
+--   1. Walk all rules in order; last match wins (negation rules override
+--      earlier ignore rules).
+--   2. Only when *no* rule matched does the implicit hidden-segment default
+--      kick in, so @!.env@ can un-ignore @.env@.
 isIgnored :: IgnoreSet -> FilePath -> Bool -> Bool
-isIgnored _ig rel _isDir
-  | isHiddenSegment rel = True
 isIgnored ig rel isDir =
   let path = normaliseRel rel
       decision =
@@ -136,7 +141,8 @@ isIgnored ig rel isDir =
           (igRules ig)
    in case decision of
         Just ignored -> ignored
-        Nothing -> False
+        -- No explicit rule matched; fall back to the hidden-segment heuristic.
+        Nothing -> isHiddenSegment rel
 
 isHiddenSegment :: FilePath -> Bool
 isHiddenSegment rel =
