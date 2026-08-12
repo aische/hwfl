@@ -12,7 +12,7 @@ Five targeted improvements identified in review (2026-08-12):
 - [x] **Default `--workspace`** — when `run`'s target is a project directory,
       derive `workspace = target` in `Main.hs`/`Args.hs` before falling back to
       cwd; fixes the ergonomics gap in `hwfl init` / tutorial §4
-- [ ] **M-18: structural project hash** — replace `show m` + DJB2 `Int` fold in
+- [x] **M-18: structural project hash** — replace `show m` + DJB2 `Int` fold in
       `Project.hs:projectHashForModules` with SHA-256 over code-fence AST +
       frontmatter only (not `lmProseBody`/`lmSections`); prose edits no longer
       brick resume

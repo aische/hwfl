@@ -29,11 +29,16 @@ import Data.Aeson (FromJSON (..), withObject, (.:), (.:?))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types ((.!=), typeMismatch)
 import Data.Foldable (for_)
+import Crypto.Hash.SHA256 qualified as SHA256
+import Data.Bits (shiftR, (.&.))
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hwfl.Ast.Module (LoadedModule (..))
+import Data.Text.Encoding qualified as TE
+import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..))
 import Hwfl.Ast.Name (Ident (..), QName (..), qnameFromParts, qnameToText)
 import Hwfl.Ast.Type (Effect (..), parseEffectName)
 import Hwfl.Parse.Load (loadModule)
@@ -495,13 +500,34 @@ partitionResults (Left diags : _) (path : _) =
   Left (T.pack path <> ":\n" <> renderDiagnostics diags)
 partitionResults _ _ = Left "internal: module load count mismatch"
 
+-- | Stable structural fingerprint for a set of loaded modules.
+--
+-- Only frontmatter and the code-fence body AST contribute to the hash;
+-- prose bodies (@lmProseBody@), raw sections (@lmSections@), and schema
+-- docs (@lmSchemaDocs@) are excluded so that comment or prose edits do not
+-- brick an otherwise-valid resume.  SHA-256 is used as the digest to avoid
+-- the wrap/collision risk of the previous DJB2 @Int@ fold.
 projectHashForModules :: Map QName LoadedModule -> Text
 projectHashForModules mods =
-  let payload =
-        T.intercalate
-          "\n---\n"
-          [ qnameToText q <> "\n" <> T.pack (show m)
-            | q <- Map.keys mods,
-              Just m <- [Map.lookup q mods]
-          ]
-   in T.pack (show (T.foldl' (\h c -> h * 33 + fromEnum c) (0 :: Int) payload))
+  let structural m =
+        qnameToText (fmName (lmFrontmatter m))
+          <> "\n"
+          <> T.pack (show (lmFrontmatter m))
+          <> "\n"
+          <> T.pack (show (lmBody m))
+      payload :: ByteString
+      payload =
+        TE.encodeUtf8 $
+          T.intercalate "\n---\n" $
+            [structural m | m <- Map.elems mods]
+      digest = SHA256.hash payload
+   in T.take 16 (bsToHex digest)
+
+-- | Encode a 'ByteString' as lowercase hex text.
+bsToHex :: ByteString -> Text
+bsToHex bs = T.pack [hexNibble (fromIntegral b `shiftR` n .&. 0xF) | b <- BS.unpack bs, n <- [4, 0]]
+  where
+    hexNibble :: Int -> Char
+    hexNibble i
+      | i < 10 = toEnum (fromEnum '0' + i)
+      | otherwise = toEnum (fromEnum 'a' + i - 10)
