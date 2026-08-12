@@ -5,7 +5,31 @@ Active work only. Archive completed sections to `log/archive/` weekly.
 Findings live in [BUG_REPORT.md](BUG_REPORT.md) (IDs H-/M-/L-). Mark done
 here and in the report when fixed; do not re-litigate severity in this file.
 
-## Now — language + interpreter
+## Now — polish and low-hanging fixes
+
+Five targeted improvements identified in review (2026-08-12):
+
+- [ ] **Default `--workspace`** — when `run`'s target is a project directory,
+      derive `workspace = target` in `Main.hs`/`Args.hs` before falling back to
+      cwd; fixes the ergonomics gap in `hwfl init` / tutorial §4
+- [ ] **M-18: structural project hash** — replace `show m` + DJB2 `Int` fold in
+      `Project.hs:projectHashForModules` with SHA-256 over code-fence AST +
+      frontmatter only (not `lmProseBody`/`lmSections`); prose edits no longer
+      brick resume
+- [ ] **L-17: `obs.span` curried typing** — extend the `obs.span` special case in
+      `Check/Infer.hs` to `EApp (EApp obs_span name) thunk` so curried
+      `obs.span("n")(thunk)` infers the thunk's body type, consistent with the
+      2-arg form
+- [ ] **L-20: ignore negation rules beat hidden-segment default** — run the
+      ignore rule set first in `Runtime/Ignore.hs`; apply the implicit hidden
+      (`.`-prefixed) default only when no rule matches, so `!.env` can actually
+      un-ignore `.env`
+- [ ] **L-26: fail closed in `confirmOf`/`choiceOf`/`askOf` promotion** — return
+      `InternalErr "…: machine shape mismatch"` instead of synthesizing an empty
+      request when `mCurrent` doesn't match the expected shape in
+      `Runtime/Eval.hs`
+
+## Language + interpreter (ongoing policy)
 
 Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
 `lib/`) over growing the host-op set.
@@ -28,9 +52,6 @@ Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
 
 ## Next — examples and polish
 
-- [ ] Default `--workspace` to the project root when `run`’s target is a
-      project directory (today defaults to cwd; `hwfl init` / tutorial must
-      pass `--workspace` explicitly — see [tutorial.md](tutorial.md) §4)
 - [ ] Git (read-heavy) via MCP (or host if MCP is inadequate)
 - [ ] Persistent terminals via MCP vs one-shot `exec.run`
 - [ ] Optional: real-story-writer `world_*` via `mcp.tools` (bind /
@@ -45,12 +66,10 @@ Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
 ## Deferred bugs (fix only if they bite)
 
 - [ ] **M-3** — Skill-body prompt trust boundary (when third-party skills)
-- [ ] **M-18** — Project-hash / resume UX (only if prose edits brick resume
-      too often)
 - [ ] **M-16** — Multi-process run-store locking (when parallel processes
       share a run dir)
-- [ ] **Remaining Lows** — L-4, L-9–10, L-12, L-17, L-20–21, L-23,
-      L-25–27 (fsync, CLI, ignore/glob, confirmOf, mega-modules, …)
+- [ ] **Remaining Lows** — L-4, L-9–10, L-12, L-23, L-25 (fsync, CLI,
+      ignore/glob, stream append atomicity, section parse O(n²))
 
 ## Low priority
 

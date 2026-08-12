@@ -2,8 +2,9 @@
 Last updated: 2026-08-11
 
 ## Current focus
-**Language + interpreter** — prefer MCP / stdlib / project `lib/` over new
-host ops; opportunistic Lows.
+**Polish + low-hanging fixes** — five targeted items (default `--workspace`,
+M-18 structural project hash, L-17 `obs.span` curried typing, L-20 ignore
+negation, L-26 `confirmOf` fail-closed). See TASKS.md §Now.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
@@ -22,11 +23,9 @@ Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 None.
 
 ## Next up
-1. Prefer MCP / stdlib for domain tools (git, terminals, …)
-2. When `run` target is a project directory, default `--workspace` to that
-   project root (today: cwd; hello path must pass `--workspace` explicitly)
-3. Opportunistic Lows; M-3 / M-16 / M-18 only if they bite
-4. Optional: shell completions; omit / `latest` run-id
+1. Five Now items (see TASKS.md §Now)
+2. Prefer MCP / stdlib for domain tools (git, terminals, …)
+3. Optional: shell completions; omit / `latest` run-id
 
 ## Deferred
 - Git / persistent terminals (MCP first)
