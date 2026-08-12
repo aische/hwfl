@@ -16,7 +16,7 @@ Five targeted improvements identified in review (2026-08-12):
       `Project.hs:projectHashForModules` with SHA-256 over code-fence AST +
       frontmatter only (not `lmProseBody`/`lmSections`); prose edits no longer
       brick resume
-- [ ] **L-17: `obs.span` curried typing** — extend the `obs.span` special case in
+- [x] **L-17: `obs.span` curried typing** — extend the `obs.span` special case in
       `Check/Infer.hs` to `EApp (EApp obs_span name) thunk` so curried
       `obs.span("n")(thunk)` infers the thunk's body type, consistent with the
       2-arg form
