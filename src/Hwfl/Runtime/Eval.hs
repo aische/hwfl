@@ -948,33 +948,42 @@ stepAgentTool ctx mode m ag tr
                   MsPaused (PauseAwaitingConfirm _) -> do
                     let tr' = tr {trActiveMachine = Just (mkBranch bm')}
                         ag' = ag {agToolRound = Just tr'}
-                        m' =
-                          m
-                            { mStatus = MsPaused (PauseAwaitingConfirm (confirmOf bm')),
-                              mCurrent = CurAgent ag'
-                            }
-                    _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
-                    pure (Right (StepResult m' True))
+                    case confirmOf bm' of
+                      Left err -> pure (Left err)
+                      Right cr -> do
+                        let m' =
+                              m
+                                { mStatus = MsPaused (PauseAwaitingConfirm cr),
+                                  mCurrent = CurAgent ag'
+                                }
+                        _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
+                        pure (Right (StepResult m' True))
                   MsPaused (PauseAwaitingChoice _) -> do
                     let tr' = tr {trActiveMachine = Just (mkBranch bm')}
                         ag' = ag {agToolRound = Just tr'}
-                        m' =
-                          m
-                            { mStatus = MsPaused (PauseAwaitingChoice (choiceOf bm')),
-                              mCurrent = CurAgent ag'
-                            }
-                    _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
-                    pure (Right (StepResult m' True))
+                    case choiceOf bm' of
+                      Left err -> pure (Left err)
+                      Right cr -> do
+                        let m' =
+                              m
+                                { mStatus = MsPaused (PauseAwaitingChoice cr),
+                                  mCurrent = CurAgent ag'
+                                }
+                        _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
+                        pure (Right (StepResult m' True))
                   MsPaused (PauseAwaitingAsk _) -> do
                     let tr' = tr {trActiveMachine = Just (mkBranch bm')}
                         ag' = ag {agToolRound = Just tr'}
-                        m' =
-                          m
-                            { mStatus = MsPaused (PauseAwaitingAsk (askOf bm')),
-                              mCurrent = CurAgent ag'
-                            }
-                    _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
-                    pure (Right (StepResult m' True))
+                    case askOf bm' of
+                      Left err -> pure (Left err)
+                      Right ar -> do
+                        let m' =
+                              m
+                                { mStatus = MsPaused (PauseAwaitingAsk ar),
+                                  mCurrent = CurAgent ag'
+                                }
+                        _ <- persist ctx (Just (agentHostOp ag)) Nothing m'.mStatus (Just m')
+                        pure (Right (StepResult m' True))
                   MsPaused PauseExplicit -> do
                     let tr' = tr {trActiveMachine = Just (mkBranch bm')}
                         ag' = ag {agToolRound = Just tr'}
@@ -1019,20 +1028,20 @@ handleMixedSubmit ctx mode m ag tr = do
           }
   finishToolRound ctx mode m ag tr'
 
-confirmOf :: Machine -> ConfirmRequest
+confirmOf :: Machine -> Either RuntimeError ConfirmRequest
 confirmOf bm = case bm.mCurrent of
-  CurAwaitConfirm c -> c
-  _ -> ConfirmRequest "confirm" "" Nothing
+  CurAwaitConfirm c -> Right c
+  _ -> Left (InternalErr "confirmOf: machine shape mismatch")
 
-choiceOf :: Machine -> ChoiceRequest
+choiceOf :: Machine -> Either RuntimeError ChoiceRequest
 choiceOf bm = case bm.mCurrent of
-  CurAwaitChoice c -> c
-  _ -> ChoiceRequest "choice" "" [] Nothing
+  CurAwaitChoice c -> Right c
+  _ -> Left (InternalErr "choiceOf: machine shape mismatch")
 
-askOf :: Machine -> AskRequest
+askOf :: Machine -> Either RuntimeError AskRequest
 askOf bm = case bm.mCurrent of
-  CurAwaitAsk a -> a
-  _ -> AskRequest "ask" "" Nothing
+  CurAwaitAsk a -> Right a
+  _ -> Left (InternalErr "askOf: machine shape mismatch")
 
 startToolCall ::
   RunCtx ->

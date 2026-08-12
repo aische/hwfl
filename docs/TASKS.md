@@ -13,7 +13,7 @@ Three remaining improvements identified in review (2026-08-12):
       ignore rule set first in `Runtime/Ignore.hs`; apply the implicit hidden
       (`.`-prefixed) default only when no rule matches, so `!.env` can actually
       un-ignore `.env`
-- [ ] **L-26: fail closed in `confirmOf`/`choiceOf`/`askOf` promotion** — return
+- [x] **L-26: fail closed in `confirmOf`/`choiceOf`/`askOf` promotion** — return
       `InternalErr "…: machine shape mismatch"` instead of synthesizing an empty
       request when `mCurrent` doesn't match the expected shape in
       `Runtime/Eval.hs`
