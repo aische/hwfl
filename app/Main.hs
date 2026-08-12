@@ -2,7 +2,6 @@ module Main where
 
 import Control.Exception (IOException, catch)
 import Control.Monad (unless, when)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -72,7 +71,7 @@ import Hwfl.Runtime.Machine
 import Hwfl.Runtime.Run (parseCliInputs)
 import Hwfl.Runtime.Store (RunStore)
 import Hwfl.Source (renderDiagnostics)
-import System.Directory (getCurrentDirectory)
+import System.Directory (doesDirectoryExist, getCurrentDirectory)
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (ExitCode (..), exitWith)
 import System.IO (hFlush, hIsTerminalDevice, hPutStrLn, stdin, stderr)
@@ -175,7 +174,7 @@ cmdInit rest = case parseInitFlags rest of
         hPutStrLn stderr ("  hwfl check " <> ok.irRoot)
         hPutStrLn
           stderr
-          ("  hwfl run " <> ok.irRoot <> " --workspace " <> ok.irRoot <> " --llm-provider mock")
+          ("  hwfl run " <> ok.irRoot <> " --llm-provider mock")
         hPutStrLn stderr ("  hwfl approve " <> ok.irRoot <> " <run-id> --yes")
         hPutStrLn stderr ("  hwfl show " <> ok.irRoot <> " <run-id>")
 
@@ -232,7 +231,13 @@ cmdRun rest = case parseRunFlags rest of
         hPutStrLn stderr "hwfl run: --interactive requires a TTY stdin"
         exitWith (ExitFailure 2)
     cwd <- getCurrentDirectory
-    let ws = fromMaybe cwd flags.rfWorkspace
+    -- When the target is a project directory and no --workspace was given,
+    -- use the project directory itself as the workspace instead of cwd.
+    ws <- case flags.rfWorkspace of
+      Just explicit -> pure explicit
+      Nothing -> do
+        isDir <- doesDirectoryExist flags.rfModule
+        pure (if isDir then flags.rfModule else cwd)
     inputs <- case parseCliInputs flags.rfInputs of
       Left err -> do
         reportRuntimeFailure json 2 err

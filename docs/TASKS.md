@@ -9,7 +9,7 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 Five targeted improvements identified in review (2026-08-12):
 
-- [ ] **Default `--workspace`** — when `run`'s target is a project directory,
+- [x] **Default `--workspace`** — when `run`'s target is a project directory,
       derive `workspace = target` in `Main.hs`/`Args.hs` before falling back to
       cwd; fixes the ergonomics gap in `hwfl init` / tutorial §4
 - [ ] **M-18: structural project hash** — replace `show m` + DJB2 `Int` fold in
