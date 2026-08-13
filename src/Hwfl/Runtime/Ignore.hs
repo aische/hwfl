@@ -16,7 +16,7 @@ where
 import Control.Exception (IOException, try)
 import Data.Char (isSpace)
 import Data.List (foldl', isPrefixOf, isSuffixOf)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -28,7 +28,7 @@ import System.FilePath
   )
 
 -- | Compiled ignore rules for one workspace root.
-data IgnoreSet = IgnoreSet
+newtype IgnoreSet = IgnoreSet
   { igRules :: [Rule]
   }
   deriving stock (Eq, Show)
@@ -70,7 +70,7 @@ loadIgnoreSet :: FilePath -> IO IgnoreSet
 loadIgnoreSet root = do
   gi <- readMaybe (root </> ".gitignore")
   ig <- readMaybe (root </> ".ignore")
-  let combined = T.intercalate "\n" (mapMaybe id [gi, ig])
+  let combined = T.intercalate "\n" (catMaybes [gi, ig])
       parsed = parseIgnoreText combined
   pure $
     IgnoreSet

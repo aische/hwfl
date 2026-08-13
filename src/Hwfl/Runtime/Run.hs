@@ -26,6 +26,7 @@ where
 import Control.Exception (finally)
 import Data.Aeson (object, (.=))
 import Data.ByteString qualified as BS
+import Data.Either (fromRight)
 import Data.Functor ((<&>))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Map.Strict (Map)
@@ -36,7 +37,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word8)
-import Numeric (showHex)
 import Hwfl.Ast.Decl (Decl (..), ModuleBody (..))
 import Hwfl.Ast.Expr (Arg (..), Expr (..), ExprF (..), Field (..), MatchArm (..), Param (..), StringPart (..))
 import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..), SchemaDoc, Section (..))
@@ -145,6 +145,7 @@ import Hwfl.SkillCatalog
     skillMetaForModule,
   )
 import Hwfl.Source (Diagnostic, Pos (..), mkDiagnostic, renderDiagnostics)
+import Numeric (showHex)
 import System.Directory (doesFileExist, doesPathExist)
 import System.FilePath (makeRelative, normalise)
 import System.IO (IOMode (..), hPutStrLn, stderr, withBinaryFile)
@@ -490,7 +491,7 @@ normalizeModuleParams typeEnv (ModuleBody decls finalExpr) =
       p
         { paramType =
             fmap
-              (\ty -> either (const ty) id (resolveType typeEnv ty))
+              (\ty -> fromRight ty (resolveType typeEnv ty))
               p.paramType
         }
 

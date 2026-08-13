@@ -130,7 +130,7 @@ redactText = redactEmbeddedJson . redactTokens . redactPem
 
     looksLikeJwt token =
       case T.splitOn "." token of
-        [a, b, c] -> all (not . T.null) [a, b, c] && all (T.all base64UrlChar) [a, b, c]
+        [a, b, c] -> not (any T.null [a, b, c]) && all (T.all base64UrlChar) [a, b, c]
         _ -> False
     base64UrlChar c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_' || c == '-'
 

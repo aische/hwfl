@@ -158,8 +158,8 @@ bindParams params args
       | [p] <- params,
         Just fields <- recordParamFields p,
         length named == length fields =
-          VRecord <$> traverse (bindRecordField named) fields >>= \record ->
-            Right [(paramName p, record)]
+          traverse (bindRecordField named) fields >>= (\record ->
+            Right [(paramName p, record)]) . VRecord
       | [p] <- params,
         Just fields <- recordParamFields p =
           Left (arityMismatch (length fields) (length named))

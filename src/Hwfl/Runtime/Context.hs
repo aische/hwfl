@@ -13,6 +13,7 @@ module Hwfl.Runtime.Context
     defaultMaxToolResultChars,
     capToolResult,
     capTurnToolResults,
+
     -- * L2 consolidate / pins
     ConsolidateMode (..),
     Pin (..),
@@ -44,7 +45,7 @@ import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.Char (isAlphaNum)
 import Data.List (nubBy)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
@@ -431,7 +432,7 @@ assemblePrefix pins summary =
       sumBlock = case summary of
         Just s | not (T.null (T.strip s)) -> Just ("## Earlier context\n" <> s)
         _ -> Nothing
-      body = T.intercalate "\n\n" (mapMaybe id [pinBlock, sumBlock])
+      body = T.intercalate "\n\n" (catMaybes [pinBlock, sumBlock])
    in [TurnUser body | not (T.null body)]
 
 -------------------------------------------------------------------------------

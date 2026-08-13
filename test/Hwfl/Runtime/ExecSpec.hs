@@ -22,6 +22,7 @@ import System.Posix.Signals (nullSignal, signalProcess)
 import System.Posix.Types (CPid (..))
 import System.Timeout (timeout)
 import Test.Hspec
+import Data.Either (fromRight)
 
 spec :: Spec
 spec = describe "Hwfl.Runtime.Exec (M-6 / M-21)" $ do
@@ -162,7 +163,7 @@ spec = describe "Hwfl.Runtime.Exec (M-6 / M-21)" $ do
         forkFinally
           (throwIO (userError "simulated reader failure") >> pure BS.empty)
           ( \result ->
-              putMVar var (either (const BS.empty) id (result :: Either SomeException BS.ByteString))
+              putMVar var (fromRight BS.empty (result :: Either SomeException BS.ByteString))
           )
       mBs <- timeout 2_000_000 (takeMVar var)
       mBs `shouldBe` Just BS.empty

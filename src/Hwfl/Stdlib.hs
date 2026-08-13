@@ -18,9 +18,10 @@ module Hwfl.Stdlib
 where
 
 import Control.Exception (IOException, try)
+import Data.Either (fromRight)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Module (Frontmatter (..), LoadedModule (..))
@@ -117,7 +118,7 @@ discoverStdlib root = do
                 not ("." `T.isPrefixOf` T.pack name)
             ]
       pairs <- traverse pairFor mdFiles
-      let okPairs = mapMaybe id pairs
+      let okPairs = catMaybes pairs
           qs = map fst okPairs
           dupes = [q | q <- qs, length (filter (== q) qs) > 1]
       pure $
@@ -187,9 +188,9 @@ sequenceMap = go Map.empty
 safeDoesFileExist :: FilePath -> IO Bool
 safeDoesFileExist path = do
   result <- try (doesFileExist path) :: IO (Either IOException Bool)
-  pure (either (const False) id result)
+  pure (fromRight False result)
 
 safeDoesDirectoryExist :: FilePath -> IO Bool
 safeDoesDirectoryExist path = do
   result <- try (doesDirectoryExist path) :: IO (Either IOException Bool)
-  pure (either (const False) id result)
+  pure (fromRight False result)

@@ -217,7 +217,7 @@ l2Spec = do
           wm `shouldBe` 4
           pins `shouldSatisfy` (not . null)
           T.unpack summary `shouldContain` "user:"
-        Nothing -> expectationFailure "expected a compact result"
+        _ -> expectationFailure "expected a compact result"
 
   describe "parse consolidate knobs" $ do
     it "rejects consolidate=llm" $ do

@@ -43,6 +43,7 @@ import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileE
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
+import Data.Char (isDigit)
 
 spec :: Spec
 spec = describe "run-store interface (FS)" $ do
@@ -226,7 +227,7 @@ spec = describe "run-store interface (FS)" $ do
         doesFileExist (dir </> "run-x" </> "meta.json.tmp") `shouldReturn` False
         doesFileExist (dir </> "run-x" </> "snapshot.json.tmp") `shouldReturn` False
         names <- listDirectory (dir </> "run-x")
-        any (".tmp" `T.isSuffixOf`) (map T.pack names) `shouldBe` False
+        any ((".tmp" `T.isSuffixOf`) . T.pack) names `shouldBe` False
 
     it "rejects run ids that are not a single path component" $ do
       validateRunId "run-1" `shouldBe` Right "run-1"
@@ -362,5 +363,5 @@ spec = describe "run-store interface (FS)" $ do
           T.length ymd == 8
             && T.length hms == 6
             && T.length nonce == 16
-            && T.all (\c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) nonce
+            && T.all (\c -> isDigit c || (c >= 'a' && c <= 'f')) nonce
         _ -> False

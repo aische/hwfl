@@ -15,6 +15,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Ast.Type (TypeExpr (..))
+import Data.Maybe (fromMaybe)
 
 -- | @∀ α…. τ@. Empty quantifier list is a monotype.
 data Scheme = Scheme
@@ -57,7 +58,7 @@ substTVars :: [(Ident, TypeExpr)] -> TypeExpr -> TypeExpr
 substTVars sub = go
   where
     go = \case
-      TVar n -> maybe (TVar n) id (lookup n sub)
+      TVar n -> fromMaybe (TVar n) (lookup n sub)
       TList t -> TList (go t)
       TOption t -> TOption (go t)
       TResult a b -> TResult (go a) (go b)

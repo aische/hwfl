@@ -293,9 +293,7 @@ checkTc env e want = do
     EFun ps mt body -> case want' of
       TFun domain ret -> do
         binds <- paramBindings env ps domain
-        case mt of
-          Just ann -> unifyAnn env ret ann
-          Nothing -> pure ()
+        for_ mt (unifyAnn env ret)
         checkTc (extendVars binds env) body ret
       _ -> do
         got <- inferTc env e
@@ -314,7 +312,7 @@ checkTc env e want = do
           a <- tcEither (resolveType env ann)
           checkTc env e1 a
           pure (extendScheme n (quantify a) env)
-        (Nothing, EFun _ _ _) -> do
+        (Nothing, EFun {}) -> do
           t1 <- inferTc env e1
           sch <- generalize env t1
           pure (extendScheme n sch env)
@@ -552,9 +550,7 @@ paramBindings env ps domain = do
       unifyTypes domain' tUnit
       pure []
     [Param n mty] -> do
-      case mty of
-        Just ann -> unifyAnn env domain' ann
-        Nothing -> pure ()
+      for_ mty (unifyAnn env domain')
       domainZ <- zonk domain'
       pure [(n, domainZ)]
     _ -> case domain' of
@@ -576,9 +572,7 @@ paramBindings env ps domain = do
     zonkBind (n, ty) = (n,) <$> zonk ty
     bindNamedOptional fs (Param n mty) = case lookup n fs of
       Just ty -> do
-        case mty of
-          Just ann -> unifyAnn env ty ann
-          Nothing -> pure ()
+        for_ mty (unifyAnn env ty)
         pure (Just (n, ty))
       Nothing -> pure Nothing
 
@@ -1133,9 +1127,7 @@ inferMcpToolsApp env args = case classifyArgs args of
     case lookup (Ident "names") nes of
       Nothing -> pure ()
       Just e -> check env e (TList tString)
-    case lookup (Ident "bind") nes of
-      Nothing -> pure ()
-      Just e -> checkJsonish env e
+    for_ (lookup (Ident "bind") nes) (checkJsonish env)
     let known = [Ident "server", Ident "names", Ident "bind"]
     mapM_
       ( \(n, _) ->

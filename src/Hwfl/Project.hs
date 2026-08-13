@@ -25,14 +25,15 @@ where
 
 import Control.Exception (IOException, try)
 import Control.Monad (filterM)
+import Crypto.Hash.SHA256 qualified as SHA256
 import Data.Aeson (FromJSON (..), withObject, (.:), (.:?))
 import Data.Aeson qualified as Aeson
-import Data.Aeson.Types ((.!=), typeMismatch)
-import Data.Foldable (for_)
-import Crypto.Hash.SHA256 qualified as SHA256
+import Data.Aeson.Types (typeMismatch, (.!=))
 import Data.Bits (shiftR, (.&.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.Either (fromRight)
+import Data.Foldable (for_)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -250,7 +251,8 @@ instance FromJSON EffectsPolicy where
     denyE <- parseEffectList deny
     pure EffectsPolicy {epDefault = defE, epDeny = denyE}
     where
-      parseEffectList = traverse
+      parseEffectList =
+        traverse
           ( \s -> case parseEffectName s of
               Just e -> pure e
               Nothing -> fail ("unknown effect: " <> T.unpack s)
@@ -417,12 +419,12 @@ discoverModules root = do
 safeDoesFileExist :: FilePath -> IO Bool
 safeDoesFileExist path = do
   result <- try (doesFileExist path) :: IO (Either IOException Bool)
-  pure (either (const False) id result)
+  pure (fromRight False result)
 
 safeDoesDirectoryExist :: FilePath -> IO Bool
 safeDoesDirectoryExist path = do
   result <- try (doesDirectoryExist path) :: IO (Either IOException Bool)
-  pure (either (const False) id result)
+  pure (fromRight False result)
 
 loadProject :: FilePath -> IO (Either Text LoadedProject)
 loadProject root = loadProjectWithStdlib root Nothing
@@ -448,9 +450,7 @@ loadProjectWithStdlib root mPack = do
                     )
                 )
             _ -> do
-              stdlibE <- case mPack of
-                Just pack -> loadStdlibAt pack
-                Nothing -> loadStdlibModules
+              stdlibE <- maybe loadStdlibModules loadStdlibAt mPack
               case stdlibE of
                 Left err -> pure (Left err)
                 Right stdlib -> loadAll idx cfg stdlib

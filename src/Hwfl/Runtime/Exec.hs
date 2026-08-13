@@ -51,6 +51,7 @@ import System.Process.Typed
     withProcessTerm,
   )
 import System.Timeout (timeout)
+import Data.Either (fromRight)
 
 defaultExecTimeoutMs :: Int
 defaultExecTimeoutMs = 120_000
@@ -186,7 +187,7 @@ runCapped micros cap cfg = withProcessTerm cfg $ \p -> do
 forkReader :: MVar BS.ByteString -> IO BS.ByteString -> IO ()
 forkReader var action =
   void $ forkFinally action $ \result ->
-    putMVar var (either (const BS.empty) id (result :: Either SomeException BS.ByteString))
+    putMVar var (fromRight BS.empty (result :: Either SomeException BS.ByteString))
 
 -- | Read at most @cap@ bytes, then drain the remainder so the child is not
 -- blocked on a full pipe. Never retains more than @cap@ bytes.

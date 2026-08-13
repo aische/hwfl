@@ -17,7 +17,7 @@ import System.Directory
   )
 import System.FilePath (takeBaseName, takeFileName, (</>))
 
-data InitError
+newtype InitError
   = InitAlreadyExists FilePath
   deriving stock (Eq, Show)
 

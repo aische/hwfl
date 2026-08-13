@@ -56,9 +56,9 @@ spec = describe "stdlib pack" $ do
 
 withEnv :: String -> String -> IO a -> IO a
 withEnv key val action = do
-  before <- lookupEnv key
+  bef <- lookupEnv key
   setEnv key val
-  action `finally` case before of
+  action `finally` case bef of
     Nothing -> unsetEnv key
     Just old -> setEnv key old
 

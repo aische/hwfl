@@ -17,7 +17,7 @@ import Data.Vector qualified as V
 -- | Validate @value@ against @schema@. On failure, returns a short path-prefixed
 -- reason (e.g. @score: expected integer@).
 validateAgainstSchema :: Value -> Value -> Either Text ()
-validateAgainstSchema schema value = go "$" schema value
+validateAgainstSchema = go "$"
 
 go :: Text -> Value -> Value -> Either Text ()
 go path schema value = case schema of

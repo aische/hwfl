@@ -38,7 +38,7 @@ module Hwfl.Runtime.Workspace
 where
 
 import Control.Exception (IOException, bracketOnError, finally, onException, try)
-import Control.Monad (foldM)
+import Control.Monad (foldM, void)
 import Data.Bits ((.&.))
 import Data.ByteString qualified as BS
 import Data.Char (toLower)
@@ -399,11 +399,11 @@ findFiles ws glob = case parseGlob glob of
       walkFiles
         ws
         ign
-        (\_ -> case pat of
+        ( \_ -> case pat of
             GlobRecursiveExt _ -> True
             GlobRootExt _ -> False
         )
-        (\name -> pure (matchPat pat name))
+        (pure . matchPat pat)
     pure (map T.pack <$> paths)
 
 data GlobPat
@@ -558,7 +558,7 @@ removeLeafSymlink ws rel path = do
 mkdirPath :: Workspace -> Text -> IO (Either RuntimeError ())
 mkdirPath ws rel = case resolveRelSegments rel of
   Left e -> pure (Left e)
-  Right segs -> fmap (fmap (const ())) (ensureDirUnderRoot ws rel segs)
+  Right segs -> fmap void (ensureDirUnderRoot ws rel segs)
 
 -- | Whether a workspace path exists. Missing ⇒ @False@.
 --

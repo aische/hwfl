@@ -20,11 +20,11 @@ import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Eval (StepMode (..))
 import Hwfl.Runtime.Run
   ( RunOptions (..),
-    runLoadedModule,
     emptySkillRuntime,
+    runLoadedModule,
   )
-import Hwfl.Runtime.Store (readRunMeta, storeRunId)
 import Hwfl.Runtime.Snapshot (RunMeta (..))
+import Hwfl.Runtime.Store (readRunMeta, storeRunId)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -112,7 +112,8 @@ spec = describe "live observer hook" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = catalog,
-                    roSkillModules = skillMods, roEntryModules = mempty
+                    roSkillModules = skillMods,
+                    roEntryModules = mempty
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -150,7 +151,8 @@ spec = describe "live observer hook" $ do
                     roCost = False,
                     roModelCatalog = "model-catalog.json",
                     roSkillCatalog = catalog,
-                    roSkillModules = skillMods, roEntryModules = mempty
+                    roSkillModules = skillMods,
+                    roEntryModules = mempty
                   }
           outcome <- runLoadedModule opts loaded
           case outcome of
@@ -197,7 +199,7 @@ spec = describe "live observer hook" $ do
               }
       result <- driverRun req
       case result of
-        Right (OutcomeCompleted _ _ _) -> do
+        Right (OutcomeCompleted {}) -> do
           evs <- readIORef evsRef
           any
             ( \case
