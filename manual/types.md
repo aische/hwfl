@@ -11,7 +11,7 @@ and the module `effects:` list must cover every top-level `fun`.
 | `Unit` | `()` | |
 | `Bool` | `true` `false` | |
 | `Int` | `0` `-12` | Arbitrary precision |
-| `Float` | `1.5` | Must have a decimal point |
+| `Float` | `1.5` | Must have a decimal point; no mix with `Int` |
 | `String` | `"…"` `"""…"""` `$"…"` | UTF-8 |
 | `Bytes` | — | No coercion to/from `String` |
 | `Json` | — | Untyped; prefer records at boundaries |
@@ -24,6 +24,11 @@ and the module `effects:` list must cover every top-level `fun`.
 | `Schema` | `schema(T)` | JSON Schema for structured LLM / MCP decode |
 | `ToolSpec` | `tool(f)` | Agent tool registration |
 | `Turn` | from `llm.agent` `history` | Pass it through; do not construct by hand |
+
+`Int` and `Float` do not mix in `+` `-` `*` `/` or ordered comparison.
+Convert with [`int.to_float`](library/prelude.md) and `float.round` /
+`floor` / `ceil` / `trunc`. Integers beyond about `2^53` are not exact as
+`Float`; overflow of `int.to_float` is a trap.
 
 ## Records
 

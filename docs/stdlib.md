@@ -83,8 +83,8 @@ lib/story_claims.dedupe(rows)
 | `hwfl/text` | only if migrating metrics/similarity out of the Pure prelude |
 
 Pure prelude keeps minimal operators and foundations that are painful as
-library code (`list.length` / `list.concat`, arithmetic/ord, `schema` /
-`tool`, current `text.*` until a migration pass).
+library code (`list.length` / `list.concat`, `int.to_float` / `float.round`,
+arithmetic/ord, `schema` / `tool`, current `text.*` until a migration pass).
 
 ## Project `lib/`
 
@@ -103,7 +103,8 @@ Minimal operators that are painful as library functions may be kernel
 builtins (still **Pure**, not host ops):
 
 - arithmetic `+ - * /` — same numeric sort only (`Int` or `Float`); **no**
-  `String` `+` (use interpolation or `hwfl/string`)
+  `String` `+` (use interpolation or `hwfl/string`); convert with
+  `int.to_float` / `float.round` (and `floor` / `ceil` / `trunc`)
 - comparisons `== !=` — comparable sorts (bases, plus structural `List` /
   records); `String` ≅ `FileRef` only via dedicated **path coercibility**
 - ordered `< ≤ > ≥` — same sort among `Int` | `Float` | `String` | `FileRef`

@@ -105,6 +105,34 @@ spec = describe "pure evaluator" $ do
     it "rejects mixed Int/Float arithmetic" $
       evalE "1 + 2.0" `shouldSatisfy` isLeft
 
+    it "converts Int to Float" $ do
+      evalE "int.to_float(2)" `shouldBe` Right (VFloat 2.0)
+      evalE "int.to_float(0 - 3) * 1.5" `shouldBe` Right (VFloat (-4.5))
+
+    it "traps int.to_float overflow" $
+      applyBuiltin BIntToFloat [VInt (10 ^ (400 :: Int))]
+        `shouldBe` Left (Trap "int.to_float produced a non-finite Float")
+
+    it "rounds Float to Int" $ do
+      evalE "float.round(1.4)" `shouldBe` Right (VInt 1)
+      evalE "float.round(1.6)" `shouldBe` Right (VInt 2)
+      evalE "float.round(1.5)" `shouldBe` Right (VInt 2)
+      evalE "float.round(2.5)" `shouldBe` Right (VInt 2)
+      evalE "float.round(0.0 - 1.5)" `shouldBe` Right (VInt (-2))
+      evalE "float.round(3.7) + 1" `shouldBe` Right (VInt 5)
+
+    it "truncates, floors, and ceils Float to Int" $ do
+      evalE "float.trunc(1.9)" `shouldBe` Right (VInt 1)
+      evalE "float.trunc(0.0 - 1.9)" `shouldBe` Right (VInt (-1))
+      evalE "float.floor(1.9)" `shouldBe` Right (VInt 1)
+      evalE "float.floor(0.0 - 1.1)" `shouldBe` Right (VInt (-2))
+      evalE "float.ceil(1.1)" `shouldBe` Right (VInt 2)
+      evalE "float.ceil(0.0 - 1.1)" `shouldBe` Right (VInt (-1))
+
+    it "rejects conversion on the wrong sort" $ do
+      evalE "int.to_float(1.0)" `shouldSatisfy` isLeft
+      evalE "float.round(1)" `shouldSatisfy` isLeft
+
     it "rejects String +" $
       evalE "\"a\" + \"b\"" `shouldSatisfy` isLeft
 

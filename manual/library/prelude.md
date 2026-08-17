@@ -24,6 +24,35 @@ list.concat([1, 2], [3])  -- [1, 2, 3]
 
 Named form: `list.concat(left = xs, right = ys)`.
 
+## `int`
+
+### `int.to_float`
+
+**Signature:** `Int -> Float`
+
+```hwfl
+int.to_float(2) * 1.5    -- 3.0
+```
+
+Traps if the integer cannot be a finite `Float` (magnitude beyond about
+`1.8e308`). Integers past about `2^53` are finite but not exact.
+
+## `float`
+
+`Float` to `Int`. Arithmetic stays same-sort; convert explicitly.
+
+| Op | Towards | `1.9` | `-1.9` | half (`.5`) |
+|----|---------|-------|--------|-------------|
+| `float.trunc` | zero | `1` | `-1` | truncated |
+| `float.floor` | −∞ | `1` | `-2` | — |
+| `float.ceil` | +∞ | `2` | `-1` | — |
+| `float.round` | nearest, ties to even | `2` | `-2` | `0.5 → 0`, `1.5 → 2`, `2.5 → 2` |
+
+```hwfl
+float.round(3.7) + 1     -- 5
+float.floor(0.0 - 1.1)   -- -2
+```
+
 ## `text`
 
 Curried; two-argument calls `text.contains(hay, needle)` work.
@@ -112,5 +141,5 @@ Available on every run. Reading it does not require `Read`. There is no
 ## Operators
 
 Documented under [syntax](../language.md) and the
-[cheatsheet](../cheatsheet.md). Arithmetic is same-sort only; no
-`String +`.
+[cheatsheet](../cheatsheet.md). Arithmetic is same-sort only; convert
+with `int.to_float` / `float.round` (no `String +`).

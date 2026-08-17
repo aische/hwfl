@@ -25,6 +25,7 @@ while you write. Use [syntax](language.md) when you need a form. Use the
 | Compose workflows | import + `qname(inputs)`, or [`meta.invoke`](library/meta.md) |
 | Parallel map | `par` / `join` — [syntax](language.md) |
 | List / option helpers | [`hwfl/list`](library/stdlib.md) (import; not prelude) |
+| Convert Int / Float | [`int.to_float`](library/prelude.md), `float.round` |
 | Run it | [CLI](cli.md) |
 
 ## How to use this book

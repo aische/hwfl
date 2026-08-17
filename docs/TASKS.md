@@ -99,8 +99,9 @@ Short hello path (`hwfl init` + tutorial), factored `semantic-check` /
 pack + loader, MCP client (stdio) + story-writer / real-story-writer
 examples, Context L1+L2 (heuristic), bug-fix High + Medium (except
       deferred M-3 / M-16), **H-8** / **M-18** / **M-20** / **M-21**, selected Lows
-through L-18 (including L-17), **value / let polymorphism**, and typed `--example`
-archived in
+through L-18 (including L-17), **value / let polymorphism**, typed `--example`,
+and **Int/Float conversion** (`int.to_float`, `float.round` / `floor` /
+`ceil` / `trunc`) archived in
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 Earlier milestones in
 [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md).

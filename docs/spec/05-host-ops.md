@@ -301,12 +301,15 @@ Consume external MCP servers (stdio v1). Full design:
 
 Shipped in v0 as prelude record projections — **no snapshot boundary**.
 Prefer migrating to `hwfl/*` / project `lib/*` once the import graph and
-stdlib pack exist.
+stdlib pack exist. Numeric conversions (`int.to_float`, `float.round` and
+friends) stay in the prelude: they cannot be expressed in the language.
 
 | Module | Op | Signature (sketch) |
 |--------|-----|-------------------|
 | `list` | `length` | `List<T> -> Int` |
 | `list` | `concat` | `List<T> -> List<T> -> List<T>` |
+| `int` | `to_float` | `Int -> Float` (trap if non-finite) |
+| `float` | `trunc` / `floor` / `ceil` / `round` | `Float -> Int` (`round` ties to even) |
 | `text` | `metrics` | `String -> { chars, tokens, lines, entropy, uniqueness }` |
 | `text` | `similarity` | `String -> String -> Float` (Jaccard on words) |
 | `text` | `contains` | `String -> String -> Bool` |

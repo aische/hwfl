@@ -39,6 +39,8 @@ No snapshot boundary.
 |----|-----------|
 | `list.length` | `List<T> -> Int` |
 | `list.concat` | `List<T> -> List<T> -> List<T>` |
+| `int.to_float` | `Int -> Float` (trap if non-finite) |
+| `float.trunc` / `floor` / `ceil` / `round` | `Float -> Int` (`round` ties to even) |
 | `text.metrics` | `String -> { chars, tokens, lines, entropy, uniqueness }` |
 | `text.similarity` | `String -> String -> Float` |
 | `text.contains` | `String -> String -> Bool` |
@@ -53,7 +55,7 @@ No snapshot boundary.
 | `json.encode` | encodable value → `String` |
 | `tool` | function / host op → `ToolSpec` |
 | `schema` | type → `Schema` |
-| `+` `-` `*` `/` | Int / Float (same-sort); spaced `a / b` divides, tight `a/b` is a qname |
+| `+` `-` `*` `/` | Int / Float (same-sort); convert with `int.to_float` / `float.round`; spaced `a / b` divides, tight `a/b` is a qname |
 | `==` `!=` `<` `<=` `>` `>=` | |
 | `&&` `\|\|` `not` | Bool (`&&` / `\|\|` short-circuit) |
 

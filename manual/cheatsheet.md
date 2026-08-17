@@ -68,7 +68,9 @@ Ambient: `ctx.run.id : String`, `ctx.run.started_at : String`.
 | `not` | `Bool -> Bool` | `Bool` |
 
 Spaced `a / b` divides. Tight `a/b` is a module qname. Bare operators
-(`let f = +`) are rejected — apply them.
+(`let f = +`) are rejected — apply them. Convert with `int.to_float` /
+`float.round` (and `floor` / `ceil` / `trunc`); there is no mixed
+arithmetic.
 
 ## Prelude
 
@@ -78,6 +80,11 @@ Always in scope. Pure. No snapshot.
 |----|-----------|
 | `list.length` | `List<a> -> Int` |
 | `list.concat` | `(List<a>, List<a>) -> List<a>` |
+| `int.to_float` | `Int -> Float` (trap if non-finite) |
+| `float.trunc` | `Float -> Int` (toward zero) |
+| `float.floor` | `Float -> Int` (toward −∞) |
+| `float.ceil` | `Float -> Int` (toward +∞) |
+| `float.round` | `Float -> Int` (nearest; ties to even) |
 | `text.metrics` | `String -> { chars: Int, tokens: Int, lines: Int, entropy: Float, uniqueness: Float }` |
 | `text.similarity` | `String -> String -> Float` |
 | `text.contains` | `String -> String -> Bool` |
@@ -276,23 +283,24 @@ the stdlib name is `join_with`.
 ## A–Z
 
 `&&` · `||` · `!=` · `==` · `<` · `<=` · `>` · `>=` · `*` · `+` · `-` · `/` ·
-`@slug` · `$"…"` · `all` · `and_then` · `any` · `append` · `choice` ·
+`@slug` · `$"…"` · `all` · `and_then` · `any` · `append` · `ceil` · `choice` ·
 `confirm` · `contains` · `ctx.run` · `drop` · `exec.run` · `false` ·
-`filter` · `find` · `flat_map` · `fold_left` · `fs.copy` · `fs.edit` ·
+`filter` · `find` · `flat_map` · `float.ceil` · `float.floor` ·
+`float.round` · `float.trunc` · `floor` · `fold_left` · `fs.copy` · `fs.edit` ·
 `fs.exists` · `fs.find` · `fs.grep` · `fs.list` · `fs.mkdir` · `fs.move` ·
 `fs.patch` · `fs.read` · `fs.read_slice` · `fs.remove` · `fs.stat` ·
 `fs.write` · `fun` · `head` · `human.ask` · `human.choice` ·
-`human.confirm` · `if` · `is_empty` · `is_err` · `is_none` · `is_ok` ·
+`human.confirm` · `if` · `int.to_float` · `is_empty` · `is_err` · `is_none` · `is_ok` ·
 `is_some` · `join` · `join_with` · `json.encode` · `length` · `let` ·
 `list.concat` · `list.length` · `llm.agent` · `llm.agent_object` ·
 `llm.chat` · `llm.chat_messages` · `llm.object` · `map` · `map_err` ·
 `match` · `mcp.call` · `mcp.tools` · `md.sections` · `meta.check_module` ·
 `meta.check_project` · `meta.invoke` · `meta.list_runs` ·
 `meta.read_snapshot` · `meta.read_spans` · `not` · `nth` · `obs.log` ·
-`obs.span` · `or_else` · `par` · `reverse` · `schema` · `skill.discover` ·
+`obs.span` · `or_else` · `par` · `reverse` · `round` · `schema` · `skill.discover` ·
 `skill.load` · `starts_with` · `strip_suffix` · `take` · `text.contains` ·
 `text.is_qname` · `text.metrics` · `text.normalize_token` ·
 `text.similarity` · `text.split_sentences` · `text.starts_with` ·
 `text.strip_suffix` · `text.trim` · `text.words` · `to_list` ·
-`to_option` · `tool` · `trim` · `true` · `try` · `type` · `unique` ·
+`to_option` · `tool` · `trim` · `true` · `trunc` · `try` · `type` · `unique` ·
 `unique_by` · `unwrap_or` · `words`

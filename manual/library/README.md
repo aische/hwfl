@@ -13,7 +13,7 @@ human gates, and nested runs.
 
 | Page | Contents |
 |------|----------|
-| [Prelude](prelude.md) | `list.*`, `text.*`, `md.*`, `json.encode`, `tool`, `schema`, `ctx`, operators |
+| [Prelude](prelude.md) | `list.*`, `int.to_float`, `float.round`, `text.*`, `md.*`, `json.encode`, `tool`, `schema`, `ctx`, operators |
 | [fs](fs.md) | Workspace files |
 | [llm](llm.md) | Chat, structured object, agents |
 | [Agent context](llm-context.md) | `context_window`, `consolidate`, pins |

@@ -254,10 +254,13 @@ llm.chat(system = @system, prompt = "Hi", model = "deepseek4flash")
 
 Same-sort arithmetic only (`Int` with `Int`, `Float` with `Float`).
 **No** `String` `+` — use interpolation or `hwfl/string.join_with`.
+Convert with `int.to_float` and `float.round` / `floor` / `ceil` / `trunc`.
 
 ```hwfl
 1 + 2
 3.0 * 2.0
+int.to_float(2) * 1.5      -- 3.0
+float.round(3.7) + 1       -- 5
 "abc" == "abc"
 "a.txt" == someFileRef     -- path coercibility
 true && false

@@ -2,13 +2,16 @@
 Last updated: 2026-08-17
 
 ## Current focus
-**User manual** — author-facing `manual/` book. Spec/backlog voice stripped
-from the worst pages; remaining editorial nits are optional.
+**Language surface** — explicit `Int`/`Float` conversions shipped. User
+manual is in good shape; remaining editorial nits are optional.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
+- **`int.to_float` / `float.round`** — explicit same-sort conversions in
+  the pure prelude (`trunc` / `floor` / `ceil` / round-half-to-even);
+  overflow of `int.to_float` traps
 - **User manual pass** — dropped implementation/spec leaks (`agHistory`,
   L1/L2, kernel AST, `forall e`, Docker, `on_error`, prelude stub, “what
   this book is not”) and a few unclear bits (`try`/`catch`, resume, MCP

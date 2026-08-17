@@ -32,6 +32,8 @@ preludeTypeEnv =
                    (Ident "skill", skillType),
                    (Ident "mcp", mcpType),
                    (Ident "list", listType),
+                   (Ident "int", intType),
+                   (Ident "float", floatType),
                    (Ident "text", textType),
                    (Ident "md", mdType),
                    (Ident "json", jsonType),
@@ -580,6 +582,21 @@ mcpType =
           [EffExec]
           (TList (t "ToolSpec"))
       )
+    ]
+
+intType :: TypeExpr
+intType =
+  TRecord
+    [ (Ident "to_float", TFun (t "Int") (t "Float"))
+    ]
+
+floatType :: TypeExpr
+floatType =
+  TRecord
+    [ (Ident "trunc", TFun (t "Float") (t "Int")),
+      (Ident "floor", TFun (t "Float") (t "Int")),
+      (Ident "ceil", TFun (t "Float") (t "Int")),
+      (Ident "round", TFun (t "Float") (t "Int"))
     ]
 
 -- | Domains use Json as a placeholder; Infer special-cases @list.length@ / @list.concat@.
