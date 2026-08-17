@@ -5,7 +5,8 @@ modules: YAML frontmatter, prose sections, and one `hwfl` code fence. The
 interpreter checks the program, then runs it with checkpointed host effects
 (files, models, processes, humans, MCP).
 
-This book is the **author manual**. Open the [cheatsheet](cheatsheet.md)
+This book is the **author manual**. Open the [tutorial](tutorial.md) for
+the check → run → approve loop. Open the [cheatsheet](cheatsheet.md)
 while you write. Use [syntax](language.md) when you need a form. Use the
 [library](library/README.md) pages for arguments, errors, and examples.
 
@@ -26,12 +27,14 @@ while you write. Use [syntax](language.md) when you need a form. Use the
 | Parallel map | `par` / `join` — [syntax](language.md) |
 | List / option helpers | [`hwfl/list`](library/stdlib.md) (import; not prelude) |
 | Convert Int / Float | [`int.to_float`](library/prelude.md), `float.round` |
+| First run | [Tutorial](tutorial.md) |
 | Run it | [CLI](cli.md) |
 
 ## How to use this book
 
 | Page | Open when |
 |------|-----------|
+| [Tutorial](tutorial.md) | First run: init → check → mock run → approve → show |
 | [Cheatsheet](cheatsheet.md) | Always — every name and signature, `Ctrl-F` |
 | [Syntax](language.md) | Writing a construct (`let`, `match`, records, …) |
 | [Types](types.md) / [Effects](effects.md) | Declaring `inputs`, `outputs`, `effects` |

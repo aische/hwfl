@@ -160,7 +160,7 @@ In scope:
   schemes for top-level / let-bound functions.
 - Instantiation at use sites (HM-style schemes + unification).
 - Enough for stdlib list / option / result combinators
-  ([stdlib.md](../stdlib.md)).
+  ([architecture.md](../architecture.md)).
 
 Still deferred: effect polymorphism (`forall e. …`), higher-kinded user
 types beyond existing `List` / `Option` / `Result`, first-class

@@ -28,7 +28,7 @@ cabal run exe:hwfl -- approve /tmp/hwfl-hello --yes
 cabal run exe:hwfl -- show /tmp/hwfl-hello
 ```
 
-Full walkthrough: [docs/tutorial.md](docs/tutorial.md).
+Full walkthrough: [manual/tutorial.md](manual/tutorial.md).
 
 ## Example
 
@@ -186,7 +186,7 @@ Needs a configured `model-catalog.json` and provider credentials (see
 `.env`). Run state lands under the workspace `.hwfl/runs/<run-id>/`.
 More: [examples/simple-coding-agent/README.md](examples/simple-coding-agent/README.md),
 [examples/coding-agent/README.md](examples/coding-agent/README.md),
-[docs/tutorial.md](docs/tutorial.md).
+[manual/tutorial.md](manual/tutorial.md).
 
 ## Layout
 
@@ -195,13 +195,12 @@ More: [examples/simple-coding-agent/README.md](examples/simple-coding-agent/READ
 | `src/Hwfl/` | Library: parse, check, eval, durable runtime, LLM, observability |
 | `app/` | CLI wrapping the driver façade |
 | `examples/` | Example programs and projects |
-| `docs/` | Spec, architecture, language reference |
+| `docs/` | Spec, architecture, maintainer internals |
+| `manual/` | Author manual |
 
 ## Docs
 
+- [manual/](manual/README.md) — author book (tutorial, cheatsheet, library)
 - [docs/idea.md](docs/idea.md) — vision and goals
-- [docs/tutorial.md](docs/tutorial.md) — `hwfl init` → check → run → approve → show
-- [docs/language-reference.md](docs/language-reference.md) — surface language
-- [docs/stdlib.md](docs/stdlib.md) — `hwfl/*` stdlib (`HWFL_STDLIB`) vs host ops
 - [docs/architecture.md](docs/architecture.md) — layers and boundaries
 - [examples/](examples/) — example programs (agents, story, compare, …)

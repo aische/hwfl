@@ -1,5 +1,6 @@
-(* hwfl kernel grammar sketch — provisional, informative for M0.
-   Not frozen; adjust during parser implementation but keep coverage. *)
+(* Non-normative kernel grammar sketch. Parser (Hwfl.Parse.*) is source
+   of truth. Keep coverage when the surface changes; do not treat this
+   file as frozen. *)
 
 (* --- Modules (body of ```hwfl fence) --- *)
 
@@ -47,7 +48,8 @@ Task         = "task" Block ;
 ConfirmExpr  = "confirm" RecordLit ;
 TryExpr      = "try" Expr "catch" "(" Ident ")" "=>" Expr ;
 
-ParOpt       = "max" "=" Nat | "on_error" "=" StringLit ;
+ParOpt       = "max" "=" Nat
+             | "on_error" "=" StringLit ;   (* [defer] fail|collect *)
 Block        = "{" Expr "}" ;
 
 CmpExpr      = PipeExpr ;

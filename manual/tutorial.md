@@ -1,9 +1,8 @@
 # Tutorial: run lifecycle
 
 Walk through the durable CLI loop: **init → check → run (mock) →
-approve → show**. Language surface:
-[language-reference.md](language-reference.md). More programs live under
-`examples/`.
+approve → show**. Language surface: [cheatsheet](cheatsheet.md). More
+programs live under `examples/` in the repository.
 
 ## Prerequisites
 
@@ -200,8 +199,9 @@ cabal run hwfl -- run examples/summarise.md \
 
 | Doc / example | When |
 | ------------- | ---- |
-| [language-reference.md](language-reference.md) | Keywords, types, prelude, host ops |
-| [stdlib.md](stdlib.md) | `hwfl/*` stdlib + `HWFL_STDLIB` vs host |
+| [Cheatsheet](cheatsheet.md) | Keywords, types, prelude, host ops |
+| [Stdlib](library/stdlib.md) | `hwfl/list`, `hwfl/string`, `hwfl/option`, `hwfl/result` |
+| [Cookbook](cookbook.md) | Copyable program shapes |
 | `examples/coding-agent` | Chat → coding session → serial task/verify |
 | `examples/simple-coding-agent` | Flat `llm.agent_object` + stack skills |
 | `examples/skills` | Minimal `skill.discover` / `skill.load` |

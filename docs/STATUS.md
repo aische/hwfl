@@ -2,31 +2,29 @@
 Last updated: 2026-08-17
 
 ## Current focus
-**CLI UX** — omit / `latest` run-id for continue commands. Prefer MCP /
-stdlib for new domain tools.
+**Docs split** — user book is `manual/`; `docs/` is maintainer internals.
+Working title **hwfl** remains provisional (rename next).
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
-- **Omit / `latest` run-id** — `step` / `resume` / `approve` / `choose` /
-  `reply` / `extend` / `show` take an optional run id; missing or `latest`
-  is newest `started_at`. `latest` is reserved on create
-- **`int.to_float` / `float.round`** — explicit same-sort conversions in
-  the pure prelude (`trunc` / `floor` / `ceil` / round-half-to-even);
-  overflow of `int.to_float` traps
-- **User manual pass** — dropped implementation/spec leaks
-- **M-18 structural project hash** — prose edits no longer brick resume
-- **L-17 curried `obs.span` typing**; default `--workspace`; short hello
-  path; shipped `hwfl/*` stdlib; value / let polymorphism; **M-21** /
-  **M-20** / **H-8**; **L-20** / **L-26**
+- **Maintainer docs pass** — deleted `language-reference.md` and
+  `docs/examples/`; tutorial moved to `manual/tutorial.md`; stdlib policy
+  folded into [architecture.md](architecture.md); skills / semantic-check
+  plans archived
+- **Omit / `latest` run-id** — continue commands take an optional id;
+  missing or `latest` is newest `started_at`
+- **`int.to_float` / `float.round`** — explicit same-sort conversions
+- **User manual** — author book under `manual/`
 
 ## Blockers
 None.
 
 ## Next up
-1. Prefer MCP / stdlib for domain tools (git, terminals, …)
-2. Optional: shell completions
+1. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
+2. Prefer MCP / stdlib for domain tools (git, terminals, …)
+3. Optional: CI; shell completions
 
 ## Deferred
 - Git / persistent terminals (MCP first)

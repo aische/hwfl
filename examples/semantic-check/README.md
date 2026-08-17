@@ -72,3 +72,5 @@ cabal run hwfl -- run examples/semantic-check/workflows/main.md \
 
 Layer 3 stays in-project (no split pragmatic workflow / JSON reload). Shared
 shapes live in [`types/main.md`](types/main.md); helpers in `lib/`.
+Research notes (S4/S6 parked):
+[docs/log/archive/semantic-check-plan.md](../../docs/log/archive/semantic-check-plan.md).

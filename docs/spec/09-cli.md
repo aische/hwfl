@@ -74,12 +74,12 @@ JSON Schema path (same as tool-arg decode), not the CLI string heuristics.
 | 3    | paused awaiting confirm (optional convention) |
 | 4    | stale project / resume refused                |
 
-Exact codes may adjust in M4; stay stable after first release tag.
+Exact codes are stable for v0.
 
 ## 4. Output
 
 - Human logs on stderr
-- Primary result JSON on stdout for `run` when `--output json` **[recommend]**
+- Primary result JSON on stdout for a completed `run`
 - Spans always on disk under `.hwfl/runs/…`
 
 ## 5. Completions / UX
@@ -96,7 +96,7 @@ still wins. `latest` cannot be used as a created run id. When the alias
 is used, stderr prints `hwfl: using run_id=…`.
 
 `hwfl init` ships a minimal hello project (LLM + confirm) for the
-check → run (mock) → approve → show path; see [tutorial.md](../tutorial.md).
+check → run (mock) → approve → show path; see [manual/tutorial.md](../../manual/tutorial.md).
 
 **Workspace default:** without `--workspace`, `run` derives the workspace
 from the project root when the target is a project directory; otherwise it

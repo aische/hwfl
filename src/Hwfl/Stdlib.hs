@@ -1,6 +1,6 @@
 -- | Shipped @hwfl/*@ stdlib pack: resolve root and load markdown modules.
 --
--- Pack root (see docs/stdlib.md):
+-- Pack root (see docs/architecture.md, Stdlib policy):
 --
 -- 1. @HWFL_STDLIB@ when set (must be an existing directory)
 -- 2. Else Cabal data-files @stdlib/@ when present

@@ -1,5 +1,9 @@
 # Semantic-check — research plan (“semantic type system”)
 
+**Archived 2026-08-17.** Shipped layers live in
+[`examples/semantic-check/`](../../../examples/semantic-check/). S4 / S6
+remain parked ([TASKS.md](../../TASKS.md)).
+
 **Status:** **parked research.** **S2** (obligation graph), **S1** (role
 typing), **S5** (prose↔code contracts), and **S3** (proposition algebra)
 shipped. S4 / S6 not on the critical path — resume when a lab or

@@ -83,7 +83,7 @@ to the last `N` user turns (+ follow-ons). Full `agHistory` is unchanged
 in snapshots. When set, injects `get_history` (chunk pages over the
 hidden prefix). Optional `max_tool_result_chars` caps tool payloads on
 the wire (defaults to 16000 when windowing); see
-[language-reference.md](../language-reference.md).
+[manual/library/llm-context.md](../../manual/library/llm-context.md).
 
 **Consolidate (L2):** optional `consolidate = "heuristic" | "manual"`
 (omit = off). Heuristic auto-folds the droppable prefix into pins + a
@@ -100,7 +100,7 @@ summarizer must not re-pay for already-folded spans. When implementing
 record: pins + summary + watermark) so chat loops and other history
 chunkers can carry compact memory without token waste. Update the
 signatures in this section and
-[language-reference.md](../language-reference.md) in the same change.
+[manual/library/llm.md](../../manual/library/llm.md) in the same change.
 
 **`max_rounds` budget:** Exhausting `max_rounds` pauses the in-flight
 agent (`PauseAwaitingAgent` / status `awaiting_extend`) instead of
@@ -253,8 +253,8 @@ normal boundaries.
 
 ## 6.1 Skills (`Meta` / `Read`)
 
-Progressive-disclosure skill catalog for agents. Design + acceptance:
-[skills-plan.md](../skills-plan.md). Phases A–C shipped.
+Progressive-disclosure skill catalog for agents. Phases A–C shipped.
+Design notes: [log/archive/skills-plan.md](../log/archive/skills-plan.md).
 
 | Op | Effects | Signature (sketch) |
 |----|---------|-------------------|

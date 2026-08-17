@@ -1,6 +1,7 @@
 # Summary
 
 [Start here](README.md)
+[Tutorial](tutorial.md)
 [Cheatsheet](cheatsheet.md)
 
 # Language

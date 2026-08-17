@@ -90,7 +90,8 @@ Under `skills/`, missing `skill:` defaults to **callable**. Nested fields:
 
 **Instruction** skills are prose-only: no ` ```hwfl ` fence (rejected), no
 typed `inputs`/`outputs`. **Callable** skills are ordinary typed modules
-(same check path as `tools/`). Full behaviour: [skills-plan.md](../skills-plan.md).
+(same check path as `tools/`). Load / discover: [05-host-ops.md](05-host-ops.md) §6.1.
+Design notes: [log/archive/skills-plan.md](../log/archive/skills-plan.md).
 
 `examples` is **authoring / tooling metadata** (control-plane Inputs box,
 docs). Omit, `null`, or `[]` means none. Each item:
@@ -187,7 +188,7 @@ not from the project tree:
 
 1. Pack root = `HWFL_STDLIB` when set; otherwise a sensible default
    (install data-files / directory next to the binary; repo checkout may
-   default to `<repo>/stdlib`). See [stdlib.md](../stdlib.md).
+   default to `<repo>/stdlib`). Policy: [architecture.md](../architecture.md).
 2. Loader merges those modules into the project module map before check
    and eval (same library linking as project `lib/`).
 3. Project files must not use frontmatter `name: hwfl/…` (reserved).

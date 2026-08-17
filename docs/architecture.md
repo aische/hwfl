@@ -56,6 +56,8 @@ hwfl/
     Cli/                      # JSON / CLI helpers
   test/
   examples/
+  manual/                     # author book
+  docs/                       # spec, architecture, session internals
 ```
 
 Exact module names are not normative; boundaries are.
@@ -144,7 +146,8 @@ lib/*.md                # project-local libraries
 ```
 
 Shipped stdlib (`hwfl/…`) is **not** under the project tree; the loader
-reads it from `HWFL_STDLIB` or a default pack root ([stdlib.md](stdlib.md)).
+reads it from `HWFL_STDLIB` or a default pack root (see Stdlib policy
+below).
 
 ## Check vs run
 
@@ -196,15 +199,33 @@ the task truly is “edit the project in place.”
 
 ## Stdlib policy
 
-- **Polymorphism first**, then shipped markdown stdlib (`hwfl/…`) plus
-  project `lib/` — see [stdlib.md](stdlib.md).
-- Pack root: `HWFL_STDLIB` if set, else a sensible install/repo default
-  (not configured per `project.json`).
+Three layers — do not conflate:
+
+| Layer | Location | How found |
+| ----- | -------- | --------- |
+| Prelude / host | Haskell | Always in scope (`list.length`, `fs.read`, `+`) |
+| Stdlib pack | Repo `stdlib/` (`list.md` → `hwfl/list`) | `imports: [hwfl/list]` |
+| Project `lib/` | `<project>/lib/*.md` | `imports: [lib/foo]` |
+
+Pack root at check/run: `HWFL_STDLIB` if set (fail closed if missing) →
+Cabal data-files → walk parents of cwd for `stdlib/`. Not configured per
+`project.json`. Projects must not claim `hwfl/` qnames. There is no
+`lib/x` → `hwfl/x` fallback.
+
+Shipped pack: `hwfl/list`, `hwfl/string`, `hwfl/option`, `hwfl/result`
+(author catalog: [manual/library/stdlib.md](../manual/library/stdlib.md)).
+Shared record / alias shapes belong in project `types/*.md`.
+
+Value / let-polymorphism is in check. Effect polymorphism (`forall e. …`)
+stays deferred.
+
 - Prefer **MCP client** ([13-mcp.md](spec/13-mcp.md)) for external tool
   ecosystems (KB, search, …) over one-off domain host ops.
 - Host ops only when the implementation _must_ be in Haskell (LLM, FS sandbox,
   process, snapshot, true parallelism, MCP transport).
 - Do not grow the host op set to paper over a missing kernel feature.
+  If you are about to add `host.list_unique_by`, write `hwfl/list.unique_by`
+  in markdown first.
 
 ## Relationship of control flow constructs
 

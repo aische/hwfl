@@ -1,10 +1,22 @@
-# 12 — Example suite (design oracle)
+# 12 — Language contracts
 
-These programs define the language more sharply than prose. During
-implementation, each gets: expected type, expected host-span sequence
-(pattern), and snapshot points.
+Contracts for check / run / resume / spans. Syntax may drift; the
+**contracts** should not. Live programs live under `examples/`; tests
+under `test/`. This file is not a second example tree.
 
-Syntax may drift; **contracts** should not.
+| Contract | Live |
+| -------- | ---- |
+| E04 summarise | `examples/summarise.md` |
+| E08 `par` + confirm | cooperative `par` + `human.confirm` (see §5 [06-runtime.md](06-runtime.md)) |
+| E11 nested entry | `examples/call-inner-workflow/` |
+| E14 `llm.object` | `test/Hwfl/Runtime/ObjectSpec.hs` |
+| E15b `llm.agent_object` | `examples/agent-object.md` |
+| E16 `obs.span` | `examples/obs-span.md` |
+| E20 semantic-check | `examples/semantic-check/` |
+| E21 coding agent | `examples/coding-agent/` |
+| E22 compare | `examples/compare/` |
+| E23 evolve-agent | `examples/evolve-agent/` |
+| E24 / E25 story | `examples/story-writer/`, `examples/real-story-writer/` |
 
 Legend: **P** = pure, **H** = host, **R** = resume-sensitive, **C** = confirm,
 **A** = agent.
@@ -242,6 +254,6 @@ check is local.
 
 ## Using the suite
 
-1. Add fixtures under `examples/` / `test/fixtures/` in the greenfield repo.
-2. Wire golden tests per milestone (don’t require LLM for pure/check cases).
+1. Add fixtures under `examples/` / `test/fixtures/`.
+2. Wire tests per contract (don’t require LLM for pure/check cases).
 3. For LLM cases, use a mock `LlmProvider`.

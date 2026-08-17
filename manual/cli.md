@@ -74,6 +74,8 @@ Stderr includes `hwfl run: run_id=<id>` and pause hints such as
 
 ## Hello loop
 
+Full walkthrough: [tutorial](tutorial.md).
+
 ```bash
 hwfl init /tmp/hwfl-hello
 hwfl check /tmp/hwfl-hello

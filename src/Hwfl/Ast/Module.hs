@@ -31,7 +31,7 @@ data Frontmatter = Frontmatter
     fmOutputs :: [(Ident, TypeExpr)],
     fmEffects :: Maybe [Effect],
     fmImports :: [QName],
-    -- | Nested @skill:@ block when present (skills-plan §4.1).
+    -- | Nested @skill:@ block when present (spec/01-modules.md).
     fmSkill :: Maybe SkillMeta,
     -- | Optional documented example run inputs for tooling / UI.
     fmExamples :: [ExampleInputs]

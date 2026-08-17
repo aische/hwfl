@@ -12,7 +12,8 @@
   untracked — no keys committed.
 - **Status:** All Highs fixed or retracted (H-1; **H-8** fixed 2026-08-10).
   Medium open: **M-3**, **M-16**. **M-18** fixed 2026-08-12;
-  **M-20** / **M-21** fixed 2026-08-10. Remaining Lows are hygiene — see table and
+  **M-20** / **M-21** fixed 2026-08-10. **L-20** / **L-26** fixed
+  2026-08. Remaining Lows are hygiene — see table and
   [TASKS.md](TASKS.md).
   This report stays the durable source of truth for findings.
 - **Repository:** `hwfl` — durable workflow runtime library. Markdown modules (L1) → typed ML kernel: checker + pure evaluator (L2) → CEK machine with snapshot/resume, FS sandbox, `exec.run` allowlist, `llm.*` provider, MCP stdio client, human gates (L3). Run state persists under `workspace/.hwfl/runs/<run-id>/{meta.json, snapshot.json, spans.jsonl, events.jsonl, transitions.jsonl}`.
@@ -531,13 +532,13 @@ closes pipes while readers run).
 | L-17 | `Check/Prelude.hs:360`, `Infer.hs:736-745,770-773`           | **Fixed** (2026-08): curried `obs.span("n")(thunk)` now returns the thunk body type, matching the two-argument form; regression in `Obs.SpanSpec`. |
 | L-18 | `Check/Module.hs`                                            | **Fixed** (2026-08): example input values validated vs frontmatter `TypeExpr` (JSON Schema); CLI `--example <name>`.                                                                  |
 | L-19 | `Agent.hs`, `Snapshot.hs`                                    | **Fixed** with H-5: source/snapshot `max_rounds` validated; extension uses checked add (no wrap).                                                                                      |
-| L-20 | `Runtime/Ignore.hs:69-105`                                   | `isIgnored` checks hidden segments before rules, so `!.env` can never un-ignore a hidden name — deviates from gitignore semantics.                                                     |
+| L-20 | `Runtime/Ignore.hs`                                          | **Fixed** (2026-08): ignore rules run first; hidden-segment default only when no rule matches (`!.env` un-ignores `.env`). |
 | L-21 | `Runtime/Ignore.hs:168-181`                                  | `globMatch` naive backtracking (`any (go ps) (tails xs)`) — exponential on many-`*` rules vs long paths.                                                                               |
 | L-22 | `Workspace.hs` `matchPat`                                    | **Fixed** (2026-08): `fs.find` / `fs.grep` extension globs compare ASCII case-insensitively.                                                                                          |
 | L-23 | `Obs/Stream.hs:86-110`                                       | `appendText` read-modify-write not atomic; concurrent `onChunk` calls could drop text (single-threaded in practice).                                                                   |
 | L-24 | `Workspace.hs` write/copy/remove                             | **Fixed** with H-1a: `O_NOFOLLOW` writes / `rename` copies close the leaf TOCTOU; `removePath` unlinks leaf symlinks.                                                                  |
 | L-25 | `Parse/Section.hs:55-58,66-70`                               | `headings !! j` comprehension + fence rescan are O(n²) on large prose modules.                                                                                                         |
-| L-26 | `Eval.hs` agent tool promote (`confirmOf` / `choiceOf` / `askOf`) | Agent nested-tool pause promotion discards `PauseAwaitingConfirm c` (etc.) and re-derives via `confirmOf bm'`, which invents an empty request if `mCurrent` mismatches. `FrInvoke` correctly threads `c`. Fail closed instead of synthesizing defaults. |
+| L-26 | `Eval.hs` agent tool promote (`confirmOf` / `choiceOf` / `askOf`) | **Fixed** (2026-08): fail closed with `InternalErr` on machine shape mismatch instead of synthesizing an empty request. |
 | L-27 | `Runtime/Eval.hs` (~3.2k), `Run.hs` (~1.5k), `Host.hs` (~1.3k) | Mega-modules concentrate interpreter / lifecycle / host dispatch — high review cost and regression risk. Split along Step / Agent / Par / HostApply and continue-paused helpers when touching the area. |
 
 ---
@@ -564,23 +565,22 @@ closes pipes while readers run).
 
 **Completed (2026-08):** all original Highs (H-1a–H-7; H-1 retracted);
 Medium except M-3 / M-16; selected Lows (L-1–3, L-5–8, L-11,
-L-13–16, L-19, L-22, L-24). See
+L-13–20, L-22, L-24, L-26). See
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 
-**Open after 2026-08-10 MCP follow-up (priority):**
+**Open (fix when they bite):**
 
 1. **M-16** — multi-process run-store locking (when parallel lab
    processes share a run dir).
 2. **M-3** — skill-body prompt trust (when third-party skills matter).
-3. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-20–21,
-   L-23, L-25–27 — fsync, CLI, ignore/glob, confirmOf,
-   module splits, …).
+3. Remaining **Lows** opportunistically (L-4, L-9–10, L-12, L-21,
+   L-23, L-25, L-27 — fsync, CLI, glob ReDoS, stream append,
+   section parse, mega-modules).
 
 **Completed same day:** **H-8** MCP command/cwd allowlist; **M-20**
 MCP timeout reconnect; **M-21** `exec.run` reader `forkFinally`.
 
-Agent context L1+L2 (heuristic) shipped. Active product work: agent
-substrate (MCP dogfood / git / terminals). See [STATUS.md](STATUS.md).
+See [STATUS.md](STATUS.md).
 
 ---
 
