@@ -1,5 +1,7 @@
 # hwfl
 
+[![CI](https://github.com/aische/hwfl/actions/workflows/ci.yml/badge.svg)](https://github.com/aische/hwfl/actions/workflows/ci.yml)
+
 A small **programming language** + durable **interpreter** (Haskell
 library + CLI). Programs are typed markdown modules: prose and an ML-ish
 kernel share one file. LLM calls, filesystem, `exec`, parallelism, and
@@ -17,6 +19,7 @@ module, then runs it durably and observably.
 ## Quick start
 
 ```bash
+cabal test
 cabal build exe:hwfl
 cabal run exe:hwfl -- init /tmp/hwfl-hello
 cabal run exe:hwfl -- check /tmp/hwfl-hello

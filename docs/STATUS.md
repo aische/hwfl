@@ -2,13 +2,15 @@
 Last updated: 2026-08-17
 
 ## Current focus
-**Docs split** — user book is `manual/`; `docs/` is maintainer internals.
-Working title **hwfl** remains provisional (rename next).
+Working title **hwfl** remains provisional (rename next). User book is
+`manual/`; `docs/` is maintainer internals.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
+- **CI** — GitHub Actions `cabal test` on GHC 9.6 / Ubuntu; mock LLM
+  only. macOS runner deferred
 - **Maintainer docs pass** — deleted `language-reference.md` and
   `docs/examples/`; tutorial moved to `manual/tutorial.md`; stdlib policy
   folded into [architecture.md](architecture.md); skills / semantic-check
@@ -24,7 +26,7 @@ None.
 ## Next up
 1. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
 2. Prefer MCP / stdlib for domain tools (git, terminals, …)
-3. Optional: CI; shell completions
+3. Optional: shell completions
 
 ## Deferred
 - Git / persistent terminals (MCP first)
@@ -33,6 +35,7 @@ None.
 - Lab fitness / coding-agent Tier B / Docker `exec.runtime`
 - **M-3** / **M-16**; remaining Lows
 - Effect polymorphism (`forall e. …`)
+- macOS CI runner
 
 ## Open naming
 Working title **hwfl** / CLI `hwfl` / fence `hwfl` is provisional.

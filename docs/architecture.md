@@ -56,6 +56,7 @@ hwfl/
     Cli/                      # JSON / CLI helpers
   test/
   examples/
+  .github/workflows/ci.yml    # cabal test, GHC 9.6, Ubuntu
   manual/                     # author book
   docs/                       # spec, architecture, session internals
 ```

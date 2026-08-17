@@ -51,7 +51,6 @@ Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
       (spec [05-host-ops.md](spec/05-host-ops.md) §3.1)
 - [ ] Alternate `LlmProvider` (OpenAI/Anthropic SDK, etc.)
 - [ ] Shell completions (with or after `hwfl init`)
-- [ ] CI (`cabal test` on GHC 9.6, macOS + Linux)
 
 ## Future / nice-to-have
 
