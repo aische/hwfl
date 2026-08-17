@@ -8,6 +8,7 @@ import Hwfl.Driver
     defaultDriverRunRequest,
     driverApprove,
     driverCheck,
+    driverResolveRunId,
     driverRun,
     noopObserver,
     storeRunId,
@@ -57,6 +58,8 @@ spec = do
           Left err -> expectationFailure (show err)
           Right (OutcomePaused _ msg store _) -> do
             T.unpack msg `shouldContain` "Accept this greeting?"
+            resolved <- driverResolveRunId dir Nothing
+            resolved `shouldBe` Right (storeRunId store)
             approved <-
               driverApprove
                 dir

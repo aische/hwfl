@@ -2,24 +2,23 @@
 Last updated: 2026-08-17
 
 ## Current focus
-**Language surface** — explicit `Int`/`Float` conversions shipped. User
-manual is in good shape; remaining editorial nits are optional.
+**CLI UX** — omit / `latest` run-id for continue commands. Prefer MCP /
+stdlib for new domain tools.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
+- **Omit / `latest` run-id** — `step` / `resume` / `approve` / `choose` /
+  `reply` / `extend` / `show` take an optional run id; missing or `latest`
+  is newest `started_at`. `latest` is reserved on create
 - **`int.to_float` / `float.round`** — explicit same-sort conversions in
   the pure prelude (`trunc` / `floor` / `ceil` / round-half-to-even);
   overflow of `int.to_float` traps
-- **User manual pass** — dropped implementation/spec leaks (`agHistory`,
-  L1/L2, kernel AST, `forall e`, Docker, `on_error`, prelude stub, “what
-  this book is not”) and a few unclear bits (`try`/`catch`, resume, MCP
-  sandbox)
+- **User manual pass** — dropped implementation/spec leaks
 - **M-18 structural project hash** — prose edits no longer brick resume
-- **L-17 curried `obs.span` typing**
-- **Default `--workspace`**; **short hello path**; factored large examples
-- **Shipped `hwfl/*` stdlib**; **Value / let polymorphism**; **M-21** /
+- **L-17 curried `obs.span` typing**; default `--workspace`; short hello
+  path; shipped `hwfl/*` stdlib; value / let polymorphism; **M-21** /
   **M-20** / **H-8**; **L-20** / **L-26**
 
 ## Blockers
@@ -27,7 +26,7 @@ None.
 
 ## Next up
 1. Prefer MCP / stdlib for domain tools (git, terminals, …)
-2. Optional: shell completions; omit / `latest` run-id
+2. Optional: shell completions
 
 ## Deferred
 - Git / persistent terminals (MCP first)

@@ -17,6 +17,8 @@ module Hwfl.Runtime.Store
     validateRunId,
     renderRunIdError,
     maxRunIdLength,
+    latestRunAlias,
+    resolveRunId,
     RunStoreError (..),
     renderRunStoreError,
 
@@ -64,7 +66,9 @@ import Data.Aeson.Types (Parser, parseEither)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.IORef (IORef, modifyIORef', readIORef)
+import Data.List (maximumBy)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
+import Data.Ord (comparing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
@@ -169,6 +173,26 @@ validateRunId rid
     isRunIdChar c =
       isAsciiUpper c || isAsciiLower c || isDigit c || c == '.' || c == '_' || c == '-'
 
+-- | CLI alias for the newest @started_at@ in this workspace. Not a store key;
+-- 'createRun' refuses it so a real run cannot collide with the alias.
+latestRunAlias :: Text
+latestRunAlias = "latest"
+
+-- | Resolve a continue-command run id. 'Nothing' and @latest@ mean the run
+-- with the newest 'rmStartedAt' (tie-break: 'rmRunId'). Any other token is
+-- returned unchanged — validation happens when the run is opened.
+resolveRunId :: FilePath -> Maybe Text -> IO (Either Text Text)
+resolveRunId workspace mId = case mId of
+  Just rid | rid /= latestRunAlias -> pure (Right rid)
+  _ -> do
+    metas <- listRuns workspace
+    case metas of
+      [] ->
+        pure (Left ("no runs in workspace: " <> T.pack workspace))
+      xs ->
+        let best = maximumBy (comparing (.rmStartedAt) <> comparing (.rmRunId)) xs
+         in pure (Right best.rmRunId)
+
 -- | Failures of the create/open path that are the caller's fault.
 data RunStoreError
   = RseRunId RunIdError
@@ -177,12 +201,16 @@ data RunStoreError
     -- replaced and the sequence restarts); continue an existing run with
     -- resume / step instead.
     RseAlreadyExists Text
+  | -- | Caller asked to create a run named 'latestRunAlias'.
+    RseReserved Text
   deriving stock (Eq, Show)
 
 renderRunStoreError :: RunStoreError -> Text
 renderRunStoreError = \case
   RseRunId e -> renderRunIdError e
   RseAlreadyExists rid -> "run id already exists: " <> rid
+  RseReserved rid ->
+    "run id '" <> rid <> "' is reserved for the CLI latest-run alias"
 
 data SpanFilter = SpanFilter
   { sfNamePrefix :: Maybe Text,
@@ -378,21 +406,23 @@ runDirFor :: FilePath -> Text -> Either RunIdError FilePath
 runDirFor workspace rid = (\r -> runsRoot workspace </> T.unpack r) <$> validateRunId rid
 
 fsCreate :: RunRef -> RunMeta -> IO (Either RunStoreError RunStore)
-fsCreate ref meta = case runDirFor ref.rrWorkspace ref.rrRunId of
-  Left e -> pure (Left (RseRunId e))
-  Right root -> do
-    createDirectoryIfMissing True (runsRoot ref.rrWorkspace)
-    -- createDirectory (not …IfMissing) so an id already in use is rejected
-    -- without a check/create race.
-    created <- try (createDirectory root)
-    case created of
-      Left err
-        | isAlreadyExistsError err -> pure (Left (RseAlreadyExists ref.rrRunId))
-        | otherwise -> throwIO err
-      Right () -> do
-        let store = mkHandle (Just root) ref.rrRunId (const (pure ()))
-        fsWriteMeta store meta
-        pure (Right store)
+fsCreate ref meta
+  | ref.rrRunId == latestRunAlias = pure (Left (RseReserved latestRunAlias))
+  | otherwise = case runDirFor ref.rrWorkspace ref.rrRunId of
+      Left e -> pure (Left (RseRunId e))
+      Right root -> do
+        createDirectoryIfMissing True (runsRoot ref.rrWorkspace)
+        -- createDirectory (not …IfMissing) so an id already in use is rejected
+        -- without a check/create race.
+        created <- try (createDirectory root)
+        case created of
+          Left err
+            | isAlreadyExistsError err -> pure (Left (RseAlreadyExists ref.rrRunId))
+            | otherwise -> throwIO err
+          Right () -> do
+            let store = mkHandle (Just root) ref.rrRunId (const (pure ()))
+            fsWriteMeta store meta
+            pure (Right store)
 
 fsOpen :: RunRef -> IO (Maybe RunStore)
 fsOpen ref = case runDirFor ref.rrWorkspace ref.rrRunId of

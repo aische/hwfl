@@ -3,12 +3,18 @@ module Hwfl.Cli.ArgsSpec (spec) where
 import Hwfl.Cli.Args
   ( RunFlags (..),
     flagProviderSet,
+    parseApprove,
     parseCheckFlags,
+    parseChoose,
+    parseExtend,
     parseInitFlags,
+    parseReply,
     parseRunFlags,
+    parseShow,
     parseWsRun,
     wantsJson,
   )
+import Hwfl.Obs.Show (ShowMode (..))
 import Hwfl.Runtime.Error (RuntimeError (..), runtimeExitCode)
 import Test.Hspec
 
@@ -76,7 +82,48 @@ spec = do
   describe "parseWsRun" $ do
     it "accepts dash-prefixed workspace after --" $
       parseWsRun ["--", "-ws", "run1"]
-        `shouldBe` Right ("-ws", "run1", "simple", "model-catalog.json", False)
+        `shouldBe` Right ("-ws", Just "run1", "simple", "model-catalog.json", False)
+    it "omits run-id when only workspace is given" $
+      parseWsRun ["ws"]
+        `shouldBe` Right ("ws", Nothing, "simple", "model-catalog.json", False)
+    it "accepts explicit latest token" $
+      parseWsRun ["ws", "latest"]
+        `shouldBe` Right ("ws", Just "latest", "simple", "model-catalog.json", False)
+    it "rejects a missing workspace" $
+      parseWsRun ["--dump"]
+        `shouldBe` Left "usage: hwfl step|resume <workspace> [run-id] [options]"
+
+  describe "parseApprove" $ do
+    it "allows omitted run-id with --yes" $
+      parseApprove ["ws", "--yes"]
+        `shouldBe` Right ("ws", Nothing, True, "simple", "model-catalog.json", False)
+    it "still requires --yes or --no" $
+      parseApprove ["ws"] `shouldBe` Left "hwfl approve needs --yes or --no"
+    it "keeps an explicit run-id" $
+      parseApprove ["ws", "run-1", "--no"]
+        `shouldBe` Right ("ws", Just "run-1", False, "simple", "model-catalog.json", False)
+
+  describe "parseChoose" $ do
+    it "allows omitted run-id with --select" $
+      parseChoose ["ws", "--select", "staging"]
+        `shouldBe` Right ("ws", Nothing, "staging", "simple", "model-catalog.json", False)
+
+  describe "parseReply" $ do
+    it "allows omitted run-id with --text" $
+      parseReply ["ws", "--text", "hi"]
+        `shouldBe` Right ("ws", Nothing, "hi", "simple", "model-catalog.json", False)
+
+  describe "parseExtend" $ do
+    it "allows omitted run-id with --rounds" $
+      parseExtend ["ws", "--rounds", "4"]
+        `shouldBe` Right ("ws", Nothing, 4, "simple", "model-catalog.json", False)
+
+  describe "parseShow" $ do
+    it "allows omitted run-id" $
+      parseShow ["ws"] `shouldBe` Right ("ws", Nothing, ShowSummary, Nothing)
+    it "accepts latest plus --tree" $
+      parseShow ["ws", "latest", "--tree"]
+        `shouldBe` Right ("ws", Just "latest", ShowTree, Nothing)
 
   describe "runtimeExitCode" $ do
     it "maps StaleProjectErr to 4" $

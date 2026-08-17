@@ -18,7 +18,7 @@ where
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..))
+import Hwfl.Obs.Show (ShowMode (..))
 
 -- | True only when @--json@ appears as a flag token, not as a value of a
 -- preceding option (e.g. @--workspace --json@).
@@ -193,13 +193,13 @@ runFlag x xs f cont = case x of
   "--interactive" -> Just (cont xs f {rfInteractive = True} False)
   _ -> Nothing
 
-parseWsRun :: [String] -> Either String (FilePath, Text, String, FilePath, Bool)
+parseWsRun :: [String] -> Either String (FilePath, Maybe Text, String, FilePath, Bool)
 parseWsRun = go Nothing Nothing "simple" "model-catalog.json" False False
   where
     go mWs mId prov catalog dump endOpts = \case
-      [] -> case (mWs, mId) of
-        (Just ws, Just rid) -> Right (ws, rid, prov, catalog, dump)
-        _ -> Left "usage: hwfl step|resume <workspace> <run-id> [options]"
+      [] -> case mWs of
+        Just ws -> Right (ws, mId, prov, catalog, dump)
+        Nothing -> Left "usage: hwfl step|resume <workspace> [run-id] [options]"
       ("--" : rest)
         | not endOpts -> go mWs mId prov catalog dump True rest
       ("--llm-provider" : p : rest)
@@ -215,14 +215,14 @@ parseWsRun = go Nothing Nothing "simple" "model-catalog.json" False False
             (Just _, Nothing) -> go mWs (Just (T.pack x)) prov catalog dump endOpts rest
             _ -> Left ("unexpected argument: " <> x)
 
-parseApprove :: [String] -> Either String (FilePath, Text, Bool, String, FilePath, Bool)
+parseApprove :: [String] -> Either String (FilePath, Maybe Text, Bool, String, FilePath, Bool)
 parseApprove = go Nothing Nothing Nothing "simple" "model-catalog.json" False False
   where
     go mWs mId mYes prov catalog dump endOpts = \case
-      [] -> case (mWs, mId, mYes) of
-        (Just ws, Just rid, Just yes) -> Right (ws, rid, yes, prov, catalog, dump)
-        (_, _, Nothing) -> Left "hwfl approve needs --yes or --no"
-        _ -> Left "usage: hwfl approve <workspace> <run-id> --yes|--no"
+      [] -> case (mWs, mYes) of
+        (Just ws, Just yes) -> Right (ws, mId, yes, prov, catalog, dump)
+        (_, Nothing) -> Left "hwfl approve needs --yes or --no"
+        _ -> Left "usage: hwfl approve <workspace> [run-id] --yes|--no"
       ("--" : rest)
         | not endOpts -> go mWs mId mYes prov catalog dump True rest
       ("--yes" : rest)
@@ -242,14 +242,14 @@ parseApprove = go Nothing Nothing Nothing "simple" "model-catalog.json" False Fa
             (Just _, Nothing) -> go mWs (Just (T.pack x)) mYes prov catalog dump endOpts rest
             _ -> Left ("unexpected argument: " <> x)
 
-parseChoose :: [String] -> Either String (FilePath, Text, Text, String, FilePath, Bool)
+parseChoose :: [String] -> Either String (FilePath, Maybe Text, Text, String, FilePath, Bool)
 parseChoose = go Nothing Nothing Nothing "simple" "model-catalog.json" False False
   where
     go mWs mId mSel prov catalog dump endOpts = \case
-      [] -> case (mWs, mId, mSel) of
-        (Just ws, Just rid, Just sel) -> Right (ws, rid, sel, prov, catalog, dump)
-        (_, _, Nothing) -> Left "hwfl choose needs --select <option>"
-        _ -> Left "usage: hwfl choose <workspace> <run-id> --select <option>"
+      [] -> case (mWs, mSel) of
+        (Just ws, Just sel) -> Right (ws, mId, sel, prov, catalog, dump)
+        (_, Nothing) -> Left "hwfl choose needs --select <option>"
+        _ -> Left "usage: hwfl choose <workspace> [run-id] --select <option>"
       ("--" : rest)
         | not endOpts -> go mWs mId mSel prov catalog dump True rest
       ("--select" : s : rest)
@@ -267,14 +267,14 @@ parseChoose = go Nothing Nothing Nothing "simple" "model-catalog.json" False Fal
             (Just _, Nothing) -> go mWs (Just (T.pack x)) mSel prov catalog dump endOpts rest
             _ -> Left ("unexpected argument: " <> x)
 
-parseReply :: [String] -> Either String (FilePath, Text, Text, String, FilePath, Bool)
+parseReply :: [String] -> Either String (FilePath, Maybe Text, Text, String, FilePath, Bool)
 parseReply = go Nothing Nothing Nothing "simple" "model-catalog.json" False False
   where
     go mWs mId mText prov catalog dump endOpts = \case
-      [] -> case (mWs, mId, mText) of
-        (Just ws, Just rid, Just text) -> Right (ws, rid, text, prov, catalog, dump)
-        (_, _, Nothing) -> Left "hwfl reply needs --text <string>"
-        _ -> Left "usage: hwfl reply <workspace> <run-id> --text <string>"
+      [] -> case (mWs, mText) of
+        (Just ws, Just text) -> Right (ws, mId, text, prov, catalog, dump)
+        (_, Nothing) -> Left "hwfl reply needs --text <string>"
+        _ -> Left "usage: hwfl reply <workspace> [run-id] --text <string>"
       ("--" : rest)
         | not endOpts -> go mWs mId mText prov catalog dump True rest
       ("--text" : text : rest)
@@ -292,14 +292,14 @@ parseReply = go Nothing Nothing Nothing "simple" "model-catalog.json" False Fals
             (Just _, Nothing) -> go mWs (Just (T.pack x)) mText prov catalog dump endOpts rest
             _ -> Left ("unexpected argument: " <> x)
 
-parseExtend :: [String] -> Either String (FilePath, Text, Int, String, FilePath, Bool)
+parseExtend :: [String] -> Either String (FilePath, Maybe Text, Int, String, FilePath, Bool)
 parseExtend = go Nothing Nothing Nothing "simple" "model-catalog.json" False False
   where
     go mWs mId mRounds prov catalog dump endOpts = \case
-      [] -> case (mWs, mId, mRounds) of
-        (Just ws, Just rid, Just n) -> Right (ws, rid, n, prov, catalog, dump)
-        (_, _, Nothing) -> Left "hwfl extend needs --rounds N"
-        _ -> Left "usage: hwfl extend <workspace> <run-id> --rounds N"
+      [] -> case (mWs, mRounds) of
+        (Just ws, Just n) -> Right (ws, mId, n, prov, catalog, dump)
+        (_, Nothing) -> Left "hwfl extend needs --rounds N"
+        _ -> Left "usage: hwfl extend <workspace> [run-id] --rounds N"
       ("--" : rest)
         | not endOpts -> go mWs mId mRounds prov catalog dump True rest
       ("--rounds" : n : rest)
@@ -319,20 +319,14 @@ parseExtend = go Nothing Nothing Nothing "simple" "model-catalog.json" False Fal
             (Just _, Nothing) -> go mWs (Just (T.pack x)) mRounds prov catalog dump endOpts rest
             _ -> Left ("unexpected argument: " <> x)
 
-parseShow :: [String] -> Either String ShowOptions
+parseShow :: [String] -> Either String (FilePath, Maybe Text, ShowMode, Maybe Text)
 parseShow = go Nothing Nothing ShowSummary Nothing False
   where
     go mWs mId mode filt endOpts = \case
-      [] -> case (mWs, mId) of
-        (Just ws, Just rid) ->
-          Right
-            ShowOptions
-              { soWorkspace = ws,
-                soRunId = rid,
-                soMode = mode,
-                soFilter = filt
-              }
-        _ -> Left "usage: hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
+      [] -> case mWs of
+        Just ws -> Right (ws, mId, mode, filt)
+        Nothing ->
+          Left "usage: hwfl show <workspace> [run-id] [--tree|--spans|--snapshot] [--filter PREFIX]"
       ("--" : rest)
         | not endOpts -> go mWs mId mode filt True rest
       ("--tree" : rest)

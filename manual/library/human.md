@@ -16,7 +16,7 @@ let ok = confirm {
 }
 ```
 
-Resolve: `hwfl approve <workspace> <run-id> --yes` or `--no`.
+Resolve: `hwfl approve <workspace> [run-id] --yes` or `--no`.
 
 ## `human.choice`
 
@@ -32,7 +32,7 @@ let env = choice {
 }
 ```
 
-Resolve: `hwfl choose <workspace> <run-id> --select staging`.
+Resolve: `hwfl choose <workspace> [run-id] --select staging`.
 
 ## `human.ask`
 
@@ -45,7 +45,7 @@ let user = human.ask({
 })
 ```
 
-Resolve: `hwfl reply <workspace> <run-id> --text "hello"`.
+Resolve: `hwfl reply <workspace> [run-id] --text "hello"`.
 
 `detail` is what UIs / `--interactive` can show without reading the
 snapshot (for example the previous assistant reply).

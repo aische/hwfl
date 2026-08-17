@@ -30,6 +30,7 @@ module Hwfl.Driver
 
     -- * Run store (lab / control-plane queries)
     driverListRuns,
+    driverResolveRunId,
     driverReadMeta,
     driverReadSpans,
     driverReadSnapshot,
@@ -56,6 +57,7 @@ module Hwfl.Driver
     emptySpanFilter,
     RunRef (..),
     runRef,
+    latestRunAlias,
     RunStore,
     storeRunId,
     SpanRecord (..),
@@ -116,10 +118,12 @@ import Hwfl.Runtime.Store
     emptySpanFilter,
     fsRunStoreBackend,
     listRuns,
+    latestRunAlias,
     openRun,
     readMeta,
     readSnapshot,
     readSpans,
+    resolveRunId,
     runRef,
     storeRunId,
   )
@@ -256,6 +260,10 @@ driverShow = showRun
 -- | List runs under a workspace (@.hwfl/runs@ for the FS backend).
 driverListRuns :: FilePath -> IO [RunMeta]
 driverListRuns = listRuns
+
+-- | Resolve an omitted / @latest@ run id to the newest @started_at@.
+driverResolveRunId :: FilePath -> Maybe Text -> IO (Either Text Text)
+driverResolveRunId = resolveRunId
 
 driverOpenRun :: RunRef -> IO (Maybe RunStore)
 driverOpenRun = openRun

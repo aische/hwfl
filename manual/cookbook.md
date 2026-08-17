@@ -41,7 +41,7 @@ fun main(_): { greeting: String, ok: Bool } =
 
 ```bash
 hwfl run . --llm-provider mock
-hwfl approve . <run-id> --yes
+hwfl approve . --yes
 ```
 
 ## Summarise a file
@@ -360,7 +360,7 @@ fun main(_): { env: String } =
 ```
 
 ```bash
-hwfl choose . <run-id> --select staging
+hwfl choose . --select staging
 ```
 
 ## Patch a file

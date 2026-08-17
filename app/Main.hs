@@ -35,17 +35,19 @@ import Hwfl.Driver
     DriverRunRequest (..),
     Observer,
     RunOutcome (..),
-    ShowMode (..),
+    ShowOptions (..),
     defaultDriverRunRequest,
     driverApprove,
     driverCheck,
     driverChoose,
     driverExtendAgent,
     driverReply,
+    driverResolveRunId,
     driverResume,
     driverRun,
     driverShow,
     driverStep,
+    latestRunAlias,
     noopObserver,
     renderDriverError,
     stderrDebugObserver,
@@ -56,7 +58,7 @@ import Hwfl.Eval.Value (renderValue)
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Simple (mkSimpleProvider)
-import Hwfl.Obs.Show (showStore)
+import Hwfl.Obs.Show (ShowMode (..), showStore)
 import Hwfl.Parse.Load (loadModule)
 import Hwfl.Runtime.Error (RuntimeError, renderRuntimeError, runtimeExitCode)
 import Hwfl.Runtime.Eval (StepMode (..))
@@ -118,22 +120,22 @@ usage = do
     "usage: hwfl init [dir] | hwfl parse|check <project|module.md> | hwfl run <project|module.md> [options]"
   hPutStrLn
     stderr
-    "       hwfl step|resume <workspace> <run-id> [--llm-provider mock|simple] [--dump]"
+    "       hwfl step|resume <workspace> [run-id] [--llm-provider mock|simple] [--dump]"
   hPutStrLn
     stderr
-    "       hwfl approve <workspace> <run-id> --yes|--no [--llm-provider mock|simple] [--dump]"
+    "       hwfl approve <workspace> [run-id] --yes|--no [--llm-provider mock|simple] [--dump]"
   hPutStrLn
     stderr
-    "       hwfl choose <workspace> <run-id> --select <option> [--llm-provider mock|simple] [--dump]"
+    "       hwfl choose <workspace> [run-id] --select <option> [--llm-provider mock|simple] [--dump]"
   hPutStrLn
     stderr
-    "       hwfl reply <workspace> <run-id> --text <string> [--llm-provider mock|simple] [--dump]"
+    "       hwfl reply <workspace> [run-id] --text <string> [--llm-provider mock|simple] [--dump]"
   hPutStrLn
     stderr
-    "       hwfl extend <workspace> <run-id> --rounds N [--llm-provider mock|simple] [--dump]"
+    "       hwfl extend <workspace> [run-id] --rounds N [--llm-provider mock|simple] [--dump]"
   hPutStrLn
     stderr
-    "       hwfl show <workspace> <run-id> [--tree|--spans|--snapshot] [--filter PREFIX]"
+    "       hwfl show <workspace> [run-id] [--tree|--spans|--snapshot] [--filter PREFIX]"
   hPutStrLn
     stderr
     "  run options: --workspace <dir> --input k=v --example <name> --llm-provider mock|simple --no-check --step -v|--verbose --debug --cost --dump --json --interactive"
@@ -175,8 +177,8 @@ cmdInit rest = case parseInitFlags rest of
         hPutStrLn
           stderr
           ("  hwfl run " <> ok.irRoot <> " --llm-provider mock")
-        hPutStrLn stderr ("  hwfl approve " <> ok.irRoot <> " <run-id> --yes")
-        hPutStrLn stderr ("  hwfl show " <> ok.irRoot <> " <run-id>")
+        hPutStrLn stderr ("  hwfl approve " <> ok.irRoot <> " --yes")
+        hPutStrLn stderr ("  hwfl show " <> ok.irRoot)
 
 cmdCheck :: [String] -> IO ()
 cmdCheck rest = case parseCheckFlags rest of
@@ -278,50 +280,64 @@ cmdRun rest = case parseRunFlags rest of
 cmdStep :: [String] -> IO ()
 cmdStep args = case parseWsRun args of
   Left msg -> dieUsage msg
-  Right (ws, runId, provName, catalog, dump) -> do
+  Right (ws, mRunId, provName, catalog, dump) -> do
+    runId <- needRunId ws mRunId
     provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverStep ws runId provider catalog noopObserver
 
 cmdResume :: [String] -> IO ()
 cmdResume args = case parseWsRun args of
   Left msg -> dieUsage msg
-  Right (ws, runId, provName, catalog, dump) -> do
+  Right (ws, mRunId, provName, catalog, dump) -> do
+    runId <- needRunId ws mRunId
     provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverResume ws runId provider catalog noopObserver
 
 cmdApprove :: [String] -> IO ()
 cmdApprove args = case parseApprove args of
   Left msg -> dieUsage msg
-  Right (ws, runId, yes, provName, catalog, dump) -> do
+  Right (ws, mRunId, yes, provName, catalog, dump) -> do
+    runId <- needRunId ws mRunId
     provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverApprove ws runId yes provider catalog noopObserver
 
 cmdChoose :: [String] -> IO ()
 cmdChoose args = case parseChoose args of
   Left msg -> dieUsage msg
-  Right (ws, runId, selected, provName, catalog, dump) -> do
+  Right (ws, mRunId, selected, provName, catalog, dump) -> do
+    runId <- needRunId ws mRunId
     provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverChoose ws runId selected provider catalog noopObserver
 
 cmdReply :: [String] -> IO ()
 cmdReply args = case parseReply args of
   Left msg -> dieUsage msg
-  Right (ws, runId, text, provName, catalog, dump) -> do
+  Right (ws, mRunId, text, provName, catalog, dump) -> do
+    runId <- needRunId ws mRunId
     provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverReply ws runId text provider catalog noopObserver
 
 cmdExtend :: [String] -> IO ()
 cmdExtend args = case parseExtend args of
   Left msg -> dieUsage msg
-  Right (ws, runId, extra, provName, catalog, dump) -> do
+  Right (ws, mRunId, extra, provName, catalog, dump) -> do
+    runId <- needRunId ws mRunId
     provider <- resolveProvider False provName catalog dump
     handleOutcome False False =<< driverExtendAgent ws runId extra provider catalog noopObserver
 
 cmdShow :: [String] -> IO ()
 cmdShow args = case parseShow args of
   Left msg -> dieUsage msg
-  Right opts -> do
-    result <- driverShow opts
+  Right (ws, mRunId, mode, filt) -> do
+    runId <- needRunId ws mRunId
+    result <-
+      driverShow
+        ShowOptions
+          { soWorkspace = ws,
+            soRunId = runId,
+            soMode = mode,
+            soFilter = filt
+          }
     case result of
       Left err -> do
         TIO.hPutStrLn stderr err
@@ -484,6 +500,24 @@ dieUsage :: String -> IO ()
 dieUsage msg = do
   hPutStrLn stderr msg
   exitWith (ExitFailure 2)
+
+-- | Omitted run-id and the token @latest@ resolve to the newest started run.
+needRunId :: FilePath -> Maybe Text -> IO Text
+needRunId ws mId = do
+  eres <- driverResolveRunId ws mId
+  case eres of
+    Left err -> do
+      TIO.hPutStrLn stderr err
+      exitWith (ExitFailure 1)
+    Right rid -> do
+      when (isLatestAlias mId) $
+        hPutStrLn stderr ("hwfl: using run_id=" <> T.unpack rid)
+      pure rid
+
+isLatestAlias :: Maybe Text -> Bool
+isLatestAlias = \case
+  Nothing -> True
+  Just rid -> rid == latestRunAlias
 
 resolveProvider :: Bool -> String -> FilePath -> Bool -> IO LlmProvider
 resolveProvider json name catalog dump = case name of

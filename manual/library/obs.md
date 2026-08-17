@@ -35,9 +35,9 @@ mixed work under a name you can filter in `hwfl show --filter`.
 ## Inspecting
 
 ```bash
-hwfl show <workspace> <run-id>
-hwfl show <workspace> <run-id> --tree
-hwfl show <workspace> <run-id> --spans --filter llm
+hwfl show <workspace>
+hwfl show <workspace> --tree
+hwfl show <workspace> --spans --filter llm
 hwfl run … --debug          # live span open/close on stderr
 hwfl run … -v               # tree after the run
 hwfl run … --cost           # running LLM spend prefix

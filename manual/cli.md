@@ -12,19 +12,21 @@ Dash-prefixed paths: `hwfl check -- -odd.md`.
 | `hwfl init [dir]` | Scaffold `project.json` + `workflows/main.md` (refuses to overwrite) |
 | `hwfl check <project\|module.md> [--json]` | Parse, types, effects, graph. No host effects |
 | `hwfl run <project\|module.md> [options]` | Check (unless `--no-check`) + execute entrypoint |
-| `hwfl step <workspace> <run-id>` | One saved host call or human gate, then pause |
-| `hwfl resume <workspace> <run-id>` | Continue until end / pause / fail |
-| `hwfl approve <workspace> <run-id> --yes\|--no` | Resolve `confirm` |
-| `hwfl choose <workspace> <run-id> --select <option>` | Resolve `choice` |
-| `hwfl reply <workspace> <run-id> --text <string>` | Resolve `human.ask` |
-| `hwfl extend <workspace> <run-id> --rounds N` | Bump agent `max_rounds` and continue |
-| `hwfl show <workspace> <run-id> [flags]` | Status / spans / snapshot |
+| `hwfl step <workspace> [run-id]` | One saved host call or human gate, then pause |
+| `hwfl resume <workspace> [run-id]` | Continue until end / pause / fail |
+| `hwfl approve <workspace> [run-id] --yes\|--no` | Resolve `confirm` |
+| `hwfl choose <workspace> [run-id] --select <option>` | Resolve `choice` |
+| `hwfl reply <workspace> [run-id] --text <string>` | Resolve `human.ask` |
+| `hwfl extend <workspace> [run-id] --rounds N` | Bump agent `max_rounds` and continue |
+| `hwfl show <workspace> [run-id] [flags]` | Status / spans / snapshot |
 | `hwfl version` | `hwfl 0.1.0.0` |
 | `hwfl parse <module.md>` | Print the parsed module (debugging) |
 
 `check` / `run` take a **project directory or module path**.
 `step` / `resume` / `approve` / `choose` / `reply` / `extend` / `show`
-take the **workspace** (where `.hwfl/runs/` lives) plus the run id.
+take the **workspace** (where `.hwfl/runs/` lives). The run id may be
+omitted or the token `latest` — that picks the newest `started_at` in
+the workspace. An explicit id still wins.
 
 ## `run` options
 
@@ -76,9 +78,9 @@ Stderr includes `hwfl run: run_id=<id>` and pause hints such as
 hwfl init /tmp/hwfl-hello
 hwfl check /tmp/hwfl-hello
 hwfl run /tmp/hwfl-hello --llm-provider mock
-# exit 3 — note run_id
-hwfl approve /tmp/hwfl-hello <run-id> --yes
-hwfl show /tmp/hwfl-hello <run-id>
+# exit 3 — omit the run id (or pass latest) for the next commands
+hwfl approve /tmp/hwfl-hello --yes
+hwfl show /tmp/hwfl-hello
 ```
 
 ## Persistence

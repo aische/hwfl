@@ -45,7 +45,6 @@ Prefer MCP clients and in-language modules (`hwfl/*` stdlib, project
 - [ ] Persistent terminals via MCP vs one-shot `exec.run`
 - [ ] Optional: real-story-writer `world_*` via `mcp.tools` (bind /
       filter commit)
-- [ ] Omit / `latest` run-id for approve / choose / reply / show
 - [ ] Opt-in LangSmith-style LLM transcripts
       ([07-observability.md](spec/07-observability.md) §10)
 - [ ] Concurrent host transitions in `par`
@@ -101,7 +100,7 @@ examples, Context L1+L2 (heuristic), bug-fix High + Medium (except
       deferred M-3 / M-16), **H-8** / **M-18** / **M-20** / **M-21**, selected Lows
 through L-18 (including L-17), **value / let polymorphism**, typed `--example`,
 and **Int/Float conversion** (`int.to_float`, `float.round` / `floor` /
-`ceil` / `trunc`) archived in
+`ceil` / `trunc`), **omit / `latest` run-id** archived in
 [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md).
 Earlier milestones in
 [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md).

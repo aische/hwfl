@@ -29,12 +29,14 @@ import Hwfl.Runtime.Store
     RunStoreError (..),
     SpanFilter (..),
     createRun,
+    latestRunAlias,
     listRuns,
     openRun,
     openRunDir,
     readMeta,
     readSnapshot,
     readSpans,
+    resolveRunId,
     validateRunId,
     writeMeta,
     writeSnapshot,
@@ -282,6 +284,51 @@ spec = describe "run-store interface (FS)" $ do
         mMeta <- driverReadMeta (runRef dir "dup")
         fmap (.rmProjectHash) mMeta `shouldBe` Just "h"
 
+    it "createRun refuses the reserved latest alias" $
+      withSystemTempDirectory "hwfl-store-latest" $ \dir -> do
+        let meta =
+              RunMeta
+                { rmRunId = latestRunAlias,
+                  rmProjectHash = "h",
+                  rmEntry = "entry.md",
+                  rmStartedAt = "2026-08-17T00:00:00Z",
+                  rmStatus = "running"
+                }
+        created <- createRun (runRef dir latestRunAlias) meta
+        case created of
+          Left err -> err `shouldBe` RseReserved latestRunAlias
+          Right _ -> expectationFailure "expected latest to be reserved"
+        doesDirectoryExist (dir </> ".hwfl") `shouldReturn` False
+
+    it "resolveRunId picks the newest started_at" $
+      withSystemTempDirectory "hwfl-store-resolve" $ \dir -> do
+        let older =
+              RunMeta
+                { rmRunId = "old",
+                  rmProjectHash = "h",
+                  rmEntry = "entry.md",
+                  rmStartedAt = "2026-08-17T10:00:00Z",
+                  rmStatus = "completed"
+                }
+            newer =
+              RunMeta
+                { rmRunId = "new",
+                  rmProjectHash = "h",
+                  rmEntry = "entry.md",
+                  rmStartedAt = "2026-08-17T11:00:00Z",
+                  rmStatus = "paused"
+                }
+        createRun (runRef dir "old") older >>= (`shouldSatisfy` isRight)
+        createRun (runRef dir "new") newer >>= (`shouldSatisfy` isRight)
+        resolveRunId dir Nothing `shouldReturn` Right "new"
+        resolveRunId dir (Just latestRunAlias) `shouldReturn` Right "new"
+        resolveRunId dir (Just "old") `shouldReturn` Right "old"
+
+    it "resolveRunId fails when the workspace has no runs" $
+      withSystemTempDirectory "hwfl-store-empty" $ \dir -> do
+        resolveRunId dir Nothing
+          `shouldReturn` Left ("no runs in workspace: " <> T.pack dir)
+
     it "generates unique collision-resistant run ids within the same second" $ do
       ids <- mapM (const newRunId) [1 .. 40 :: Int]
       length (Set.fromList ids) `shouldBe` 40
@@ -309,6 +356,21 @@ spec = describe "run-store interface (FS)" $ do
           other -> expectationFailure ("expected failure, got: " <> show other)
         doesDirectoryExist (dir </> "escape") `shouldReturn` False
         doesDirectoryExist (workspace </> ".hwfl") `shouldReturn` False
+
+    it "driverRun refuses to create a run named latest" $
+      withSystemTempDirectory "hwfl-run-latest" $ \dir -> do
+        let path = dir </> "pure.md"
+        writeFile path (T.unpack pureModule)
+        let req =
+              (defaultDriverRunRequest path dir mockProvider)
+                { drrRunId = Just latestRunAlias
+                }
+        result <- driverRun req
+        case result of
+          Right (OutcomeFailed err _ _) ->
+            renderRuntimeError err `shouldSatisfy` T.isInfixOf "reserved"
+          other -> expectationFailure ("expected failure, got: " <> show other)
+        doesDirectoryExist (dir </> ".hwfl") `shouldReturn` False
 
     it "driverRun refuses to start a second run under the same id" $
       withSystemTempDirectory "hwfl-run-reuse" $ \dir -> do

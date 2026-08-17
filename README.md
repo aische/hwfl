@@ -23,9 +23,9 @@ cabal run exe:hwfl -- check /tmp/hwfl-hello
 cabal run exe:hwfl -- run /tmp/hwfl-hello \
   --workspace /tmp/hwfl-hello \
   --llm-provider mock
-# exit 3 — note run_id, then:
-cabal run exe:hwfl -- approve /tmp/hwfl-hello <run-id> --yes
-cabal run exe:hwfl -- show /tmp/hwfl-hello <run-id>
+# exit 3 — omit the run id (or pass latest):
+cabal run exe:hwfl -- approve /tmp/hwfl-hello --yes
+cabal run exe:hwfl -- show /tmp/hwfl-hello
 ```
 
 Full walkthrough: [docs/tutorial.md](docs/tutorial.md).
