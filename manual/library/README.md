@@ -1,16 +1,13 @@
 # Library
 
-Three layers. Do not conflate them.
+| Layer | How found | Examples |
+|-------|-----------|----------|
+| **Prelude / host** | Always in scope | `list.length`, `fs.read`, `text.trim`, `+` |
+| **Stdlib pack** | `imports: [hwfl/list]` | `hwfl/list`, `hwfl/option` |
+| **Project `lib/`** | `imports: [lib/foo]` | `lib/story_claims` |
 
-| Layer | Location | How found | Examples |
-|-------|----------|-----------|----------|
-| **Prelude / host** | Interpreter | Always in scope | `list.length`, `fs.read`, `text.trim`, `+` |
-| **Stdlib pack** | Markdown next to the install (`HWFL_STDLIB` or default) | `imports: [hwfl/list]` | `hwfl/list`, `hwfl/option` |
-| **Project `lib/`** | `<project>/lib/*.md` | `imports: [lib/foo]` | `lib/story_claims` |
-
-Host ops are privileged: filesystem sandbox, LLM provider, process spawn,
-MCP, human gates, nested runs. Everything else belongs in stdlib or
-`lib/`.
+Host ops cover the filesystem sandbox, LLM provider, process spawn, MCP,
+human gates, and nested runs.
 
 ## Pages
 
@@ -45,9 +42,8 @@ unless the docs say empty is meaningful (`fs.grep` `glob = ""`).
 
 ## Durability
 
-Each host call is one **transition** (snapshot + span) unless the page
-says otherwise. `obs.*` is not a snapshot boundary. Pure prelude and
-stdlib are not.
+Each host call is checkpointed unless the page says otherwise. `obs.*`
+is not. Pure prelude and stdlib are not.
 
 Failed host/provider/sandbox ops are catchable with `try` / `catch`.
 See [syntax](../language.md).

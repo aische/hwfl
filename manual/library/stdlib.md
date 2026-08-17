@@ -60,7 +60,8 @@ let uniq = hwfl/list.unique(["a", "b", "a"])
 ## `hwfl/string`
 
 Thin wrappers over prelude `text.*` plus `join_with`. Prefer `text.trim`
-directly when that is all you need. `join` is a kernel keyword.
+directly when that is all you need. `join` is already a keyword (`par` /
+`join`), so the stdlib name is `join_with`.
 
 | Fun | Signature |
 |-----|-----------|

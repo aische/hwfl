@@ -1,11 +1,10 @@
 # `mcp` — stdio client
 
 **Effect:** `Exec`. Durable. Requires `project.json` `mcp` with a named
-server and a command allowlist (same trust model as `exec.allow`: bare
-basenames).
+server and a command allowlist (bare basenames, like `exec.allow`).
 
-MCP children are **outside** the `fs.*` sandbox. The boundary is the
-command allowlist plus `cwd` policy.
+The MCP process is **outside** the `fs.*` sandbox. It can use whatever
+its command can; confine it with `allow` and `cwd`.
 
 ## `mcp.call`
 

@@ -1,8 +1,8 @@
 # Types
 
-The checker is bidirectional with value / let-polymorphism
-(`List<a>`, `(a) -> b`). Effect polymorphism (`forall e. …`) is not
-available — effects are inferred and checked against the module ceiling.
+Functions may be generic in their value types (`List<a>`, `(a) -> b`).
+Effects are not: a function that calls `fs.read` always needs `Read`,
+and the module `effects:` list must cover every top-level `fun`.
 
 ## Builtin types
 
@@ -23,8 +23,7 @@ available — effects are inferred and checked against the module ceiling.
 | `Secret<T>` | — | Not interpolable; redacted in spans; not comparable |
 | `Schema` | `schema(T)` | JSON Schema for structured LLM / MCP decode |
 | `ToolSpec` | `tool(f)` | Agent tool registration |
-| `Turn` | from `llm.agent` `history` | Opaque-ish transcript; do not construct by hand |
-| `Error` | — | Primitive name reserved; catch uses `String` |
+| `Turn` | from `llm.agent` `history` | Pass it through; do not construct by hand |
 
 ## Records
 
@@ -32,9 +31,8 @@ Type: `{ name: String, n: Int }`
 Value: `{ name = "x", n = 1 }` or pun `{ name, n }`.
 
 Field access `e.n`. Missing field is a check error. Extra fields at a
-known record type are a check error. Host ops with optional fields
-(`detail?`, `overwrite?`) are special-cased — omit the field rather than
-passing a dummy.
+known record type are a check error. For optional host fields (`detail?`,
+`overwrite?`), omit the field rather than passing a dummy.
 
 ## Functions
 
@@ -100,7 +98,7 @@ skill should be agent-eligible.
 ## Schema reflection
 
 `schema(T)` yields a JSON Schema used by `llm.object`,
-`llm.agent_object`’s synthetic `submit` tool, and optional `mcp.call`
+`llm.agent_object`’s `submit` tool, and optional `mcp.call`
 decoding. `Option` fields become optional JSON properties. Markdown
 `## schema TypeName` sections with `- field: description` bullets attach
 descriptions to that schema.
@@ -133,5 +131,4 @@ fun head(xs: List<a>): Option<a> =
   if list.length(xs) == 0 then None else Some(xs[0])
 ```
 
-Effect sets are monomorphic. A function that calls `fs.read` always
-requires `Read`; you cannot write `forall e. …`.
+A function that calls `fs.read` always requires `Read`.

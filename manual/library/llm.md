@@ -1,6 +1,6 @@
 # `llm` — models
 
-**Effect:** `Net`. Every call is a durable transition. `model` is a
+**Effect:** `Net`. Every call is checkpointed. `model` is a
 `modelConfigName` from `model-catalog.json` (not a raw vendor id).
 
 Provider failures (auth, rate limit, timeout) are catchable.
@@ -70,7 +70,7 @@ Attach field descriptions with a `## schema Out` markdown section
   model: String,
   max_rounds?: Int,                 -- default 8
   history?: List<Turn>,             -- seed; prompt appends as a user turn
-  context_window?: Int,             -- L1; see agent context
+  context_window?: Int,             -- see agent context
   max_tool_result_chars?: Int,      -- default 16000 when windowing
   consolidate?: String,             -- omit / "off" / "heuristic" / "manual"
   max_pins?: Int,                   -- default 32
@@ -79,7 +79,7 @@ Attach field descriptions with a `## schema Out` markdown section
 ```
 
 Named arguments required. `text` is the final assistant reply. `history`
-includes this call’s assistant and tool turns (durable snapshot truth).
+includes this call’s assistant and tool turns (pass it into a later call).
 
 ```hwfl
 let result = llm.agent(
@@ -112,9 +112,9 @@ Same optional fields as `llm.agent`, plus required `schema`.
 **Returns:** `{ value: T, rounds: Int, history: List<Turn> }` when
 `schema = schema(T)`.
 
-The host injects a synthetic **`submit`** tool. The model must call
-`submit` alone (not mixed with other tools in the same round) with a
-payload matching the schema.
+A **`submit`** tool is added. The model must call `submit` alone (not
+mixed with other tools in the same round) with a payload matching the
+schema.
 
 ```hwfl
 type Result = {

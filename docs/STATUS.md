@@ -1,33 +1,30 @@
 # Status
-Last updated: 2026-08-12
+Last updated: 2026-08-17
 
 ## Current focus
-**Polish + low-hanging fixes** — three remaining items (L-20 ignore negation,
-L-26 `confirmOf` fail-closed, and the related promotion helpers). See
-TASKS.md §Now.
+**User manual** — author-facing `manual/` book. Spec/backlog voice stripped
+from the worst pages; remaining editorial nits are optional.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
-- **M-18 structural project hash** — `projectHashForModules` now SHA-256
-  over `lmFrontmatter` + `lmBody` only; `lmProseBody`/`lmSections` excluded;
-  `cryptohash-sha256` added; prose edits no longer brick resume
-- **L-17 curried `obs.span` typing** — the checker now returns the thunk body
-  type for both curried and two-argument forms
-- **Default `--workspace`** — target project dir auto-derives workspace
-- **Short hello path** — `hwfl init` scaffolds LLM + confirm project
-- **Factored large examples** — `semantic-check` / `real-story-writer` into
-  `lib/*` + `types/main`; `VLibFun` for library exports (snapshot-safe)
-- **Shipped `hwfl/*` stdlib**; **Value / let polymorphism**; **M-21** / **M-20** / **H-8**
+- **User manual pass** — dropped implementation/spec leaks (`agHistory`,
+  L1/L2, kernel AST, `forall e`, Docker, `on_error`, prelude stub, “what
+  this book is not”) and a few unclear bits (`try`/`catch`, resume, MCP
+  sandbox)
+- **M-18 structural project hash** — prose edits no longer brick resume
+- **L-17 curried `obs.span` typing**
+- **Default `--workspace`**; **short hello path**; factored large examples
+- **Shipped `hwfl/*` stdlib**; **Value / let polymorphism**; **M-21** /
+  **M-20** / **H-8**; **L-20** / **L-26**
 
 ## Blockers
 None.
 
 ## Next up
-1. Three Now items (see TASKS.md §Now)
-2. Prefer MCP / stdlib for domain tools (git, terminals, …)
-3. Optional: shell completions; omit / `latest` run-id
+1. Prefer MCP / stdlib for domain tools (git, terminals, …)
+2. Optional: shell completions; omit / `latest` run-id
 
 ## Deferred
 - Git / persistent terminals (MCP first)

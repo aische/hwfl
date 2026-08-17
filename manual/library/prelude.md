@@ -33,7 +33,7 @@ Curried; two-argument calls `text.contains(hay, needle)` work.
 **Signature:** `String -> { chars: Int, tokens: Int, lines: Int, entropy: Float, uniqueness: Float }`
 
 Whitespace-aware token/line counts plus simple entropy / uniqueness
-scores. Used by review-style workflows.
+scores.
 
 ### `text.similarity`
 
@@ -97,8 +97,7 @@ json.encode({ ok = true, n = 1 })
 
 ## `tool` / `schema`
 
-See [syntax](../language.md). `tool` is special-cased: any function or
-host op, not the placeholder `Json -> Json` in the prelude stub.
+See [syntax](../language.md). `tool` accepts any function or host op.
 
 ## `ctx.run`
 
@@ -107,8 +106,8 @@ ctx.run.id            -- String, current run id
 ctx.run.started_at    -- String
 ```
 
-Injected at runtime. Reading it does not require `Read` in the current
-checker (it is a pure record). There is no `ctx.env`.
+Available on every run. Reading it does not require `Read`. There is no
+`ctx.env`.
 
 ## Operators
 

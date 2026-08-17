@@ -57,7 +57,7 @@ a module. Hidden directories are skipped.
 | `name` | yes | Project name |
 | `version` | yes | Free-form string |
 | `entrypoint` | yes | Qname of `main` (`workflows/main`) |
-| `env` | no | Reserved allowlist of process env keys. **Not** exposed to scripts yet |
+| `env` | no | Not available to programs |
 | `effects.default` | no | Ceiling when a module omits `effects` |
 | `effects.deny` | no | Always subtracted |
 | `exec` | no | Absent ⇒ `Exec` unavailable and `exec.run` rejected at check |
@@ -78,7 +78,6 @@ a module. Hidden directories are skipped.
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `name` | yes | Must equal the file qname |
-| `kind` | no | Parsed, unused by the checker |
 | `inputs` | entry | `name: Type` mapping. `{}` for none |
 | `outputs` | entry | `name: Type` mapping |
 | `effects` | no | Ceiling; else project default |
@@ -166,8 +165,8 @@ lone `.md`, pass `--workspace` explicitly.
 
 ## Resume and project hash
 
-Snapshots hash **frontmatter + code fence**, not prose. Editing a prompt
-section does not brick resume. Changing `fun main` or frontmatter does
+Resume uses **frontmatter + code fence**, not prose. Editing a prompt
+section does not prevent resume. Changing `fun main` or frontmatter does
 (exit `4`). Start a new run after code changes.
 
 ## `model-catalog.json`

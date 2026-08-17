@@ -12,7 +12,7 @@ Dash-prefixed paths: `hwfl check -- -odd.md`.
 | `hwfl init [dir]` | Scaffold `project.json` + `workflows/main.md` (refuses to overwrite) |
 | `hwfl check <project\|module.md> [--json]` | Parse, types, effects, graph. No host effects |
 | `hwfl run <project\|module.md> [options]` | Check (unless `--no-check`) + execute entrypoint |
-| `hwfl step <workspace> <run-id>` | One durable transition, then pause |
+| `hwfl step <workspace> <run-id>` | One saved host call or human gate, then pause |
 | `hwfl resume <workspace> <run-id>` | Continue until end / pause / fail |
 | `hwfl approve <workspace> <run-id> --yes\|--no` | Resolve `confirm` |
 | `hwfl choose <workspace> <run-id> --select <option>` | Resolve `choice` |
@@ -20,7 +20,7 @@ Dash-prefixed paths: `hwfl check -- -odd.md`.
 | `hwfl extend <workspace> <run-id> --rounds N` | Bump agent `max_rounds` and continue |
 | `hwfl show <workspace> <run-id> [flags]` | Status / spans / snapshot |
 | `hwfl version` | `hwfl 0.1.0.0` |
-| `hwfl parse <module.md>` | Debug: print the parsed kernel AST |
+| `hwfl parse <module.md>` | Print the parsed module (debugging) |
 
 `check` / `run` take a **project directory or module path**.
 `step` / `resume` / `approve` / `choose` / `reply` / `extend` / `show`
@@ -36,11 +36,11 @@ take the **workspace** (where `.hwfl/runs/` lives) plus the run id.
 | `--llm-provider mock\|simple` | Default `simple` |
 | `--model-catalog <path>` | Default `model-catalog.json` |
 | `--no-check` | Skip check (not recommended) |
-| `--step` | One transition then pause |
+| `--step` | One saved host call or human gate, then pause |
 | `-v` / `--verbose` | Span tree on stderr after the run |
 | `--debug` | Live span open/close (implies verbose) |
 | `--cost` | Prefix host lines with running LLM spend |
-| `--dump` | Write llm-simple request/response JSON under `./dumps` |
+| `--dump` | Write raw LLM request/response JSON under `./dumps` |
 | `--json` | Machine-readable diagnostics on failure |
 | `--interactive` | TTY only: prompt for human gates in-process. Not with `--json` |
 
@@ -55,7 +55,7 @@ values belong in `--example` YAML/JSON, not `--input`.
 | (default) / `--tree` | Summary + nested spans |
 | `--spans` | Flat span lines |
 | `--spans --filter PREFIX` | Name prefix (`llm`, `fs`, …) |
-| `--snapshot` | Redacted machine snapshot |
+| `--snapshot` | Saved run state (secrets stripped) |
 
 ## Exit codes
 
@@ -92,10 +92,10 @@ hwfl show /tmp/hwfl-hello <run-id>
 ```
 
 `resume` continues a paused or interrupted run. `step` / `run --step`
-advances one host/control transition.
+advances one saved host call or human gate, then pauses.
 
 ## Providers
 
 `mock` — no network, no catalog, deterministic stubs.  
-`simple` — `llm-simple` adapter; needs catalog + credentials (`.env` /
-process env). `--dump` writes raw request/response JSON for debugging.
+`simple` — needs catalog + credentials (`.env` / process env). `--dump`
+writes raw request/response JSON for debugging.

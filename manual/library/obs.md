@@ -1,6 +1,6 @@
 # `obs` — observability
 
-Not a snapshot boundary. No residual effect.
+Does not checkpoint the run. Does not need an effect in `effects:`.
 
 ## `obs.log`
 

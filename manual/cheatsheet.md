@@ -1,8 +1,7 @@
 # Cheatsheet
 
 Every name in the language. `?` means the field may be omitted. Effects
-column is empty for pure ops. Host calls are durable (snapshot + span)
-unless noted.
+column is empty for pure ops. Host calls are checkpointed unless noted.
 
 Jump: [keywords](#keywords) · [types](#types) · [operators](#operators) ·
 [prelude](#prelude) · [fs](#fs) · [llm](#llm) · [exec](#exec) ·
@@ -65,7 +64,7 @@ Ambient: `ctx.run.id : String`, `ctx.run.started_at : String`.
 | `+` `-` `*` `/` | Same sort: `Int` or `Float` (no mix, no `String +`) | Same numeric type |
 | `==` `!=` | Comparable: bases, `List<T>`, records; `String` ≅ `FileRef` | `Bool` |
 | `<` `<=` `>` `>=` | Same sort among `Int` \| `Float` \| `String` \| `FileRef` | `Bool` |
-| `&&` `\|\|` | `Bool` (short-circuit → `if`) | `Bool` |
+| `&&` `\|\|` | `Bool` (short-circuit) | `Bool` |
 | `not` | `Bool -> Bool` | `Bool` |
 
 Spaced `a / b` divides. Tight `a/b` is a module qname. Bare operators
@@ -135,7 +134,7 @@ Effect `Net`. `model` is a `model-catalog.json` name. Details:
 | `llm.agent_object` | same as agent + required `schema` → `{ value: T, rounds: Int, history: List<Turn> }` |
 
 Defaults: `max_rounds = 8`. `consolidate = "heuristic"` requires
-`context_window`. `"llm"` is rejected until implemented.
+`context_window`.
 
 ## exec
 
@@ -164,7 +163,7 @@ Resolve with `hwfl approve --yes\|--no`, `hwfl choose --select`, `hwfl reply --t
 
 ## obs
 
-Not a snapshot boundary. Details: [obs](library/obs.md).
+Not a checkpoint. Details: [obs](library/obs.md).
 
 | Op | Signature |
 |----|-----------|
@@ -208,8 +207,8 @@ Effect `Exec`. Requires `project.json` `mcp`. Details: [mcp](library/mcp.md).
 
 ## Stdlib
 
-Import first. Call `hwfl/list.map(…)`. Helpers named `*_go` are private
-implementation — do not call them. Details: [stdlib](library/stdlib.md).
+Import first. Call `hwfl/list.map(…)`. Do not call helpers named `*_go`.
+Details: [stdlib](library/stdlib.md).
 
 ### `hwfl/list`
 

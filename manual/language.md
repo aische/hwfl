@@ -92,7 +92,7 @@ fun main(_): { n: Int } =
 `let` is not recursive. Recursive functions must be **top-level** `fun`
 declarations (the name is in scope in every top-level body).
 
-Polymorphism: a `let`-bound lambda is generalised.
+A `let`-bound lambda can be used at more than one type:
 
 ```hwfl
 let id = fun (x) => x
@@ -187,7 +187,7 @@ if n > 0 then n else 0
 ```
 
 `else` is required. Both branches must have the same type.
-`&&` / `||` desugar to `if` and short-circuit.
+`&&` / `||` short-circuit.
 
 ## `match`
 
@@ -306,9 +306,9 @@ sanitised names: `fs.read` → `fs_read`, `lib/foo.bar` → `lib_foo_bar`.
 try fs.read("missing.txt").text catch (err) => err
 ```
 
-`err` is `String`. Catchable: host I/O, provider, sandbox. **Not**
-catchable: type/check errors (never reach runtime), traps (bugs),
-internal errors (partial effect), config / stale-project.
+`err` is `String`. Catchable: missing files, provider failures, sandbox
+errors. Not catchable: type/check errors, out-of-range index, and resume
+refused after a code change.
 
 The handler must have the same type as the `try` body.
 
@@ -331,12 +331,10 @@ written one after another — no commas or semicolons between them.
 
 Options: `max = N` caps active branches (default **4**). On a branch
 failure the pool fails (the result type is always `List` of the body
-type). There is an `on_error = "collect"` runtime switch; it is **not**
-modelled by the checker — do not use it.
+type).
 
-Requires effect `Parallel`. The runtime steps **one branch transition at
-a time** (cooperative). Overlapping blocking host IO across branches is
-not supported.
+Requires effect `Parallel`. Branches do not run blocking host calls at
+the same time.
 
 `confirm` / `choice` / `human.ask` inside `par` **freezes the pool**.
 Completed iterations are not re-run on resume. Resolve the gate with the
@@ -364,8 +362,7 @@ let env = choice {
 
 ## Evaluation
 
-Call-by-value. Record fields and list elements left-to-right. Host ops
-are transitions (snapshot + span) unless noted (`obs.*`).
+Call-by-value. Record fields and list elements left-to-right.
 
 ## Not in the language
 
@@ -375,8 +372,7 @@ are transitions (snapshot + span) unless noted (`obs.*`).
 - User-defined variants (`A | B`)
 - `null` (JSON interop only, not surface syntax)
 - `async` / `await` (use `par` / `join`)
-- Macros, higher-kinded user types, `Map<K,V>`
+- Macros, `Map<K,V>`
 - Local recursive `let`
 - Bare overloaded operators
-- Reading process env from the script (`project.json` `env` is not
-  exposed as `env.get`)
+- Reading process environment variables from the script

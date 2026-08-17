@@ -1,6 +1,6 @@
 # `exec` — processes
 
-**Effect:** `Exec`. Durable transition. Requires a non-empty
+**Effect:** `Exec`. Checkpointed. Requires a non-empty
 `project.json` `exec` allowlist; otherwise check fails.
 
 ## `exec.run`
@@ -54,8 +54,7 @@ r.stdout
 | `max_output_bytes` | runtime default | Combined output cap; `0` allowed |
 | `confirm` | `true` | Pause for `hwfl approve` before spawn |
 
-Set `confirm` to `false` for CI. Spawn is host-local (no Docker runtime
-in this version).
+Set `confirm` to `false` for CI.
 
 Non-zero `exit_code` is a normal result, not a thrown error. Timeouts set
 `timed_out = true`.

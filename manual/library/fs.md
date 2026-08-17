@@ -1,8 +1,7 @@
 # `fs` — workspace files
 
-**Effects:** `Read` or `Write` as noted. Every call is a durable
-transition. Paths are workspace-relative `FileRef`s (string literals
-coerce).
+**Effects:** `Read` or `Write` as noted. Every call is checkpointed.
+Paths are workspace-relative `FileRef`s (string literals coerce).
 
 ## `fs.read`
 

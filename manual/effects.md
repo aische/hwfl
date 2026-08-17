@@ -8,7 +8,7 @@ Project `effects.deny` always wins. Omitting `effects` uses
 There is no `Pure` keyword. An empty list (`effects: []`) means no host
 ops.
 
-## Lattice
+## Effect kinds
 
 | Effect | Meaning | Typical ops |
 |--------|---------|-------------|
@@ -20,7 +20,8 @@ ops.
 | `Parallel` | Structured concurrency | `par`, `join` |
 | `Meta` | Other projects / runs | `meta.*`, `skill.*` |
 
-`obs.log` and `obs.span` add **no** residual effect (still emit spans).
+`obs.log` and `obs.span` do not need an effect in `effects:` (they still
+show up in `hwfl show`).
 
 ## Extra policy
 
@@ -33,9 +34,9 @@ ops.
 
 ## Inference
 
-Effects of a `fun` are the union of host ops, `par`/`join`/`confirm`,
-and called functions (fixpoint for mutual recursion). If inferred ⊈
-declared ceiling, check fails.
+Effects of a `fun` are those of the host ops, `par`/`join`/`confirm`,
+and functions it calls. If that set is wider than the module `effects:`
+list, check fails.
 
 Function types may mention effects (`(FileRef) -[Read]-> { text: String }`),
 but top-level `fun`s usually omit that and let inference plus the module
