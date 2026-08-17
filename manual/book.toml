@@ -1,0 +1,9 @@
+[book]
+title = "hwfl manual"
+description = "Language, library, and CLI reference for writing hwfl programs"
+src = "."
+language = "en"
+
+[output.html]
+no-section-label = true
+git-repository-url = "https://github.com/aische/hwfl"
