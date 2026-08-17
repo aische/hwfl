@@ -1,4 +1,4 @@
--- | Skill kinds and frontmatter metadata (skills-plan §3–§4).
+-- | Skill kinds and frontmatter metadata (spec/01-modules.md).
 module Hwfl.Ast.Skill
   ( SkillKind (..),
     SkillMeta (..),

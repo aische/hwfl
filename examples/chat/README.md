@@ -14,4 +14,4 @@ cabal run hwfl -- run examples/chat \
 ```
 
 Without `--interactive`, each ask pauses (exit `3`); resume with
-`hwfl reply <ws> <run-id> --text "…"`.
+`hwfl reply <ws> --text "…"`.

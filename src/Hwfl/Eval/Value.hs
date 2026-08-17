@@ -77,6 +77,11 @@ data Builtin
   | BTextIsQname
   | BMdSections
   | BJsonEncode
+  | BIntToFloat
+  | BFloatTrunc
+  | BFloatFloor
+  | BFloatCeil
+  | BFloatRound
   deriving stock (Eq, Show, Read)
 
 -- | Host operation identity (runtime only). Typed stubs stay in Check.Prelude;

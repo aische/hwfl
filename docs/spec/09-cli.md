@@ -9,13 +9,13 @@ Executable name provisional: **`hwfl`**.
 | `hwfl init [dir]`                                       | Scaffold `project.json` + hello `workflows/main.md` |
 | `hwfl check <project> [--json]`                                  | Load + type + effects + graph; exit ≠0 on error  |
 | `hwfl run <project> [--workspace <dir>] [--input k=v…] [--example <name>] [--debug] [--cost] [--dump] [--json] [--interactive]` | Check (unless `--no-check`) + execute entrypoint |
-| `hwfl step <workspace> <run-id>`                        | One transition, then pause                       |
-| `hwfl resume <workspace> <run-id>`                      | Continue until end / pause / fail                |
-| `hwfl approve <workspace> <run-id> [--yes\|--no]`       | Resolve confirm gate                             |
-| `hwfl choose <workspace> <run-id> --select <option>`   | Resolve multiple-choice gate                     |
-| `hwfl reply <workspace> <run-id> --text <string>`      | Resolve free-text ask gate                       |
-| `hwfl extend <workspace> <run-id> --rounds N`          | Bump agent `max_rounds` budget and continue      |
-| `hwfl show <workspace> <run-id> [flags]`                | Spans / status / redacted snapshot               |
+| `hwfl step <workspace> [run-id]`                        | One transition, then pause                       |
+| `hwfl resume <workspace> [run-id]`                      | Continue until end / pause / fail                |
+| `hwfl approve <workspace> [run-id] [--yes\|--no]`       | Resolve confirm gate                             |
+| `hwfl choose <workspace> [run-id] --select <option>`   | Resolve multiple-choice gate                     |
+| `hwfl reply <workspace> [run-id] --text <string>`      | Resolve free-text ask gate                       |
+| `hwfl extend <workspace> [run-id] --rounds N`          | Bump agent `max_rounds` budget and continue      |
+| `hwfl show <workspace> [run-id] [flags]`                | Spans / status / redacted snapshot               |
 | `hwfl version`                                          |                                                  |
 
 ### Flags (common)
@@ -74,12 +74,12 @@ JSON Schema path (same as tool-arg decode), not the CLI string heuristics.
 | 3    | paused awaiting confirm (optional convention) |
 | 4    | stale project / resume refused                |
 
-Exact codes may adjust in M4; stay stable after first release tag.
+Exact codes are stable for v0.
 
 ## 4. Output
 
 - Human logs on stderr
-- Primary result JSON on stdout for `run` when `--output json` **[recommend]**
+- Primary result JSON on stdout for a completed `run`
 - Spans always on disk under `.hwfl/runs/…`
 
 ## 5. Completions / UX
@@ -87,10 +87,16 @@ Exact codes may adjust in M4; stay stable after first release tag.
 Nice-to-have **[defer]**:
 
 - Shell completions
-- Optional omit / `latest` run-id for continue commands
+
+### Latest run
+
+Omit the run-id, or pass the token `latest`, to continue the newest run
+in the workspace (newest `started_at` in `meta.json`). An explicit id
+still wins. `latest` cannot be used as a created run id. When the alias
+is used, stderr prints `hwfl: using run_id=…`.
 
 `hwfl init` ships a minimal hello project (LLM + confirm) for the
-check → run (mock) → approve → show path; see [tutorial.md](../tutorial.md).
+check → run (mock) → approve → show path; see [manual/tutorial.md](../../manual/tutorial.md).
 
 **Workspace default:** without `--workspace`, `run` derives the workspace
 from the project root when the target is a project directory; otherwise it

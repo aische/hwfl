@@ -1,4 +1,4 @@
--- | Check-time skill catalog (skills-plan §4). Built from @skills/*.md@ and
+-- | Check-time skill catalog (spec/01-modules.md). Built from @skills/*.md@ and
 -- consumed by @skill.discover@ / @skill.load@.
 module Hwfl.SkillCatalog
   ( SkillEntry (..),
@@ -36,7 +36,7 @@ import Hwfl.Ast.Skill
   )
 import Hwfl.Ast.Type (Effect (..), TypeExpr (..))
 
--- | Optional @project.json@ @skills@ stanza limits (skills-plan §4.2).
+-- | Optional @project.json@ @skills@ stanza limits (spec/01-modules.md).
 data SkillPolicy = SkillPolicy
   { spMaxCallableLoads :: Int,
     spMaxInstructionLoads :: Int,

@@ -60,9 +60,9 @@ We want language-level ergonomics **and** document-shaped authoring.
 9. **Stdlib in-language** — prefer shipped `hwfl/…` modules, project
    `lib/`, and MCP clients over growing the Haskell host-op set. Value
    polymorphism unblocks a real stdlib; new host ops only when the
-   language cannot express the need ([stdlib.md](stdlib.md)).
+   language cannot express the need ([architecture.md](architecture.md)).
 10. **Teachable surface** — a short path from install → tiny program →
-    check / run / resume / show.
+    check / run / resume / show ([manual/tutorial.md](../manual/tutorial.md)).
 
 ## Non-goals (this repo)
 

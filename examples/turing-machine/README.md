@@ -51,4 +51,4 @@ cabal run hwfl -- run examples/turing-machine \
 ```
 
 Inspect the tape anytime under `$WS/machine/`. On `max_rounds`
-exhaustion: `hwfl extend $WS <run-id> --rounds 20`.
+exhaustion: `hwfl extend $WS --rounds 20`.

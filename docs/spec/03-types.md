@@ -117,6 +117,23 @@ by operand sort (`Hwfl.Check.Overload`):
 
 Bare overloaded operators (not applied) are check errors.
 
+### 5.3 Numeric conversion
+
+Same-sort arithmetic does not mix `Int` and `Float`. Convert explicitly
+with pure prelude ops (not host ops, not stdlib — the language cannot
+express these):
+
+| Op | Signature | Notes |
+| -- | --------- | ----- |
+| `int.to_float` | `Int -> Float` | Trap if the result is non-finite |
+| `float.trunc` | `Float -> Int` | Toward zero |
+| `float.floor` | `Float -> Int` | Toward −∞ |
+| `float.ceil` | `Float -> Int` | Toward +∞ |
+| `float.round` | `Float -> Int` | Nearest; ties to even |
+
+`Int` is unbounded; `Float` is finite IEEE-ish. Integers past ~2⁵³ are
+finite as `Float` but not exact.
+
 ## 6. Null vs Option
 
 Interop with JSON `null`:
@@ -143,7 +160,7 @@ In scope:
   schemes for top-level / let-bound functions.
 - Instantiation at use sites (HM-style schemes + unification).
 - Enough for stdlib list / option / result combinators
-  ([stdlib.md](../stdlib.md)).
+  ([architecture.md](../architecture.md)).
 
 Still deferred: effect polymorphism (`forall e. …`), higher-kinded user
 types beyond existing `List` / `Option` / `Result`, first-class

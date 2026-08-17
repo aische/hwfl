@@ -1,33 +1,32 @@
 # Status
-Last updated: 2026-08-12
+Last updated: 2026-08-17
 
 ## Current focus
-**Polish + low-hanging fixes** — three remaining items (L-20 ignore negation,
-L-26 `confirmOf` fail-closed, and the related promotion helpers). See
-TASKS.md §Now.
+Working title **hwfl** remains provisional (rename next). User book is
+`manual/`; `docs/` is maintainer internals.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
-- **M-18 structural project hash** — `projectHashForModules` now SHA-256
-  over `lmFrontmatter` + `lmBody` only; `lmProseBody`/`lmSections` excluded;
-  `cryptohash-sha256` added; prose edits no longer brick resume
-- **L-17 curried `obs.span` typing** — the checker now returns the thunk body
-  type for both curried and two-argument forms
-- **Default `--workspace`** — target project dir auto-derives workspace
-- **Short hello path** — `hwfl init` scaffolds LLM + confirm project
-- **Factored large examples** — `semantic-check` / `real-story-writer` into
-  `lib/*` + `types/main`; `VLibFun` for library exports (snapshot-safe)
-- **Shipped `hwfl/*` stdlib**; **Value / let polymorphism**; **M-21** / **M-20** / **H-8**
+- **CI** — GitHub Actions `cabal test` on GHC 9.6 / Ubuntu; mock LLM
+  only. macOS runner deferred
+- **Maintainer docs pass** — deleted `language-reference.md` and
+  `docs/examples/`; tutorial moved to `manual/tutorial.md`; stdlib policy
+  folded into [architecture.md](architecture.md); skills / semantic-check
+  plans archived
+- **Omit / `latest` run-id** — continue commands take an optional id;
+  missing or `latest` is newest `started_at`
+- **`int.to_float` / `float.round`** — explicit same-sort conversions
+- **User manual** — author book under `manual/`
 
 ## Blockers
 None.
 
 ## Next up
-1. Three Now items (see TASKS.md §Now)
+1. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
 2. Prefer MCP / stdlib for domain tools (git, terminals, …)
-3. Optional: shell completions; omit / `latest` run-id
+3. Optional: shell completions
 
 ## Deferred
 - Git / persistent terminals (MCP first)
@@ -36,6 +35,7 @@ None.
 - Lab fitness / coding-agent Tier B / Docker `exec.runtime`
 - **M-3** / **M-16**; remaining Lows
 - Effect polymorphism (`forall e. …`)
+- macOS CI runner
 
 ## Open naming
 Working title **hwfl** / CLI `hwfl` / fence `hwfl` is provisional.

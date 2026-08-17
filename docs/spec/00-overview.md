@@ -1,79 +1,55 @@
 # 00 — Overview
 
-Normative product summary for **hwfl** (provisional name). Other `spec/*`
-files refine this. Conflicts: newer dated decision-log entries win until
-specs are updated.
+Index for the numbered specs. Product intent: [idea.md](../idea.md).
+Layers and stdlib policy: [architecture.md](../architecture.md). Author
+surface: [manual](../../manual/README.md).
 
-## 1. Product summary
+Conflicts: newer dated [log](../log/) entries win until specs are
+updated. Code and tests own behaviour.
 
-**hwfl is a small programming language + durable interpreter** (Haskell
-library + CLI, GHC2021):
+## 1. What this spec suite covers
 
-1. Loads a **project** of markdown modules (+ small JSON config).
-2. **Checks** the project (parse, types, effects, reference graph) before
-   any host side effect.
-3. **Evaluates** module entrypoints in a frame/stack interpreter.
-4. Treats LLM, filesystem, process, human confirm, and parallelism as
-   **host effects** with span instrumentation.
-5. **Persists** machine snapshots so runs are resumable after crash/abort.
-6. Exposes richer **observability** than a flat event list (span trees).
-
-The CLI is one frontend over a driver façade (check / run / step /
-resume / approve / show + run-store). Other frontends (for example a
-remote control plane) can use the same library. See [idea.md](../idea.md).
+hwfl is a small programming language + durable interpreter (Haskell
+library + CLI). Specs `01`–`09` and `13` are **normative for v0**. They
+define modules, kernel, types, effects, host ops, runtime, observability,
+provider boundary, CLI, and the MCP client.
 
 Non-goals for this repo: GUI/IDE shell, Servant/HTTP in-tree, distributed
 multi-tenant runtime, package registry, embedding JS/Python/Lua VMs.
+See [idea.md](../idea.md).
 
-## 2. Design principles
+## 2. Glossary
 
-1. **Prose is data.** Markdown sections bind as strings for prompts/docs.
-2. **Code is a real language.** Locals, functions, match, and collections
-   are not optional — they are why we left the step DSL.
-3. **Effects are explicit.** Modules declare allowed capabilities; host
-   ops require them.
-4. **Resume at effects.** Pure reduction is ephemeral; host ops are
-   transitions.
-5. **Stdlib in-language.** Shipped `hwfl/…` modules and project `lib/`;
-   host ops stay rare and privileged. Pack root from `HWFL_STDLIB` or a
-   default ([stdlib.md](../stdlib.md)). Value polymorphism is a
-   prerequisite for a useful polymorphic stdlib.
-6. **Providers are adapters.** Workflows never depend on a vendor SDK.
-7. **Check before bill.** Static failure beats runtime surprise.
+| Term | Meaning |
+| ---- | ------- |
+| **Module** | One markdown file declaring an interface + script / types |
+| **Project** | Directory with `project.json` + modules |
+| **Kernel** | The ML expression language inside ` ```hwfl ` fences |
+| **Host op** | Runtime-provided effectful primitive |
+| **Effect / capability** | Element of the effect lattice (`Read`, `Net`, …) |
+| **Transition** | Atomic durable step (usually one host op or control event) |
+| **Frame** | Continuation / stack frame in the machine |
+| **Snapshot** | Serializable machine state for resume |
+| **Span** | Timed, nested observation unit for a region or host op |
+| **Provider** | Implementation of `LlmProvider` (default: llm-simple) |
+| **Skill** | Project `skills/*` module: callable tool or instruction guide |
 
-## 3. Glossary
+## 3. Document status
 
-| Term                    | Meaning                                                    |
-| ----------------------- | ---------------------------------------------------------- |
-| **Module**              | One markdown file declaring an interface + script / types  |
-| **Project**             | Directory with `project.json` + modules                    |
-| **Kernel**              | The ML expression language inside ` ```hwfl ` fences       |
-| **Host op**             | Runtime-provided effectful primitive                       |
-| **Effect / capability** | Element of the effect lattice (`Read`, `Net`, …)           |
-| **Transition**          | Atomic durable step (usually one host op or control event) |
-| **Frame**               | Continuation / stack frame in the machine                  |
-| **Snapshot**            | Serializable machine state for resume                      |
-| **Span**                | Timed, nested observation unit for a region or host op     |
-| **Provider**            | Implementation of `LlmProvider` (default: llm-simple)      |
-| **Skill**               | Project `skills/*` module: callable tool or instruction guide ([skills-plan.md](../skills-plan.md)) |
+| Doc | Normative? |
+| --- | ---------- |
+| `01`–`09`, `13-mcp` | Yes for v0 |
+| `10-acceptance` | Fitness metrics + explicit non-acceptance |
+| `11-grammar` | **No** — sketch; parser is source of truth |
+| `12-example-suite` | Contracts (E01–E25); syntax may drift |
+| `idea.md`, `architecture.md` | Guiding; defer to numbered specs on conflict |
 
+Author catalog of names and signatures: [manual/cheatsheet.md](../../manual/cheatsheet.md).
+When an op changes, patch **this spec suite** and the matching manual
+page in the same change.
 
-## 4. Document status
+## 4. Versioning
 
-| Doc                          | Normative?                                           |
-| ---------------------------- | ---------------------------------------------------- |
-| `00`–`10`, `11-grammar`      | Yes for v0 intent                                    |
-| `12-example-suite`           | Design oracle; syntax may evolve but contracts stick |
-| `13-mcp`                     | MCP **client** (stdio) — shipped; dogfood examples    |
-| `idea.md`, `architecture.md` | Guiding; defer to numbered specs on conflict         |
-| `skills-plan.md`             | Design + acceptance for skills (A–C shipped; phase D optional) |
-| `semantic-check-plan.md`     | Research backlog for semantic-check (S1–S3 + S5 shipped; S4/S6 later) |
-
-
-## 5. Versioning
-
-- Spec targets **v0** implementation milestones in
-  [10-acceptance.md](10-acceptance.md).
 - Features marked **[defer]** are intentionally out of v0.
 - Breaking changes to snapshot JSON require a format version bump and a
-  logged decision.
+  logged decision (`snapshot_format` is `1` today).

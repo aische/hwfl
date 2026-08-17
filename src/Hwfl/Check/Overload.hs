@@ -5,7 +5,8 @@
 -- 1. __Applications__ of overloaded ops are typed here by operand sorts,
 --    not by the Int stubs in 'Hwfl.Check.Prelude'.
 -- 2. __Arithmetic__ (@+ - * /@): same numeric sort only — @Int@ or @Float@.
---    No @String@ concatenation; no Int/Float mixing.
+--    No @String@ concatenation; no Int/Float mixing. Convert with
+--    @int.to_float@ / @float.round@ (and @floor@ / @ceil@ / @trunc@).
 -- 3. __Ordered comparison__ (@\< \<= \> \>=@): same sort among
 --    @Int@ | @Float@ | @String@ | @FileRef@ (paths order as strings).
 -- 4. __Equality__ (@== !=@): same comparable sort — bases above plus

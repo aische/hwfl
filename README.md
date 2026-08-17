@@ -1,5 +1,7 @@
 # hwfl
 
+[![CI](https://github.com/aische/hwfl/actions/workflows/ci.yml/badge.svg)](https://github.com/aische/hwfl/actions/workflows/ci.yml)
+
 A small **programming language** + durable **interpreter** (Haskell
 library + CLI). Programs are typed markdown modules: prose and an ML-ish
 kernel share one file. LLM calls, filesystem, `exec`, parallelism, and
@@ -17,18 +19,19 @@ module, then runs it durably and observably.
 ## Quick start
 
 ```bash
+cabal test
 cabal build exe:hwfl
 cabal run exe:hwfl -- init /tmp/hwfl-hello
 cabal run exe:hwfl -- check /tmp/hwfl-hello
 cabal run exe:hwfl -- run /tmp/hwfl-hello \
   --workspace /tmp/hwfl-hello \
   --llm-provider mock
-# exit 3 — note run_id, then:
-cabal run exe:hwfl -- approve /tmp/hwfl-hello <run-id> --yes
-cabal run exe:hwfl -- show /tmp/hwfl-hello <run-id>
+# exit 3 — omit the run id (or pass latest):
+cabal run exe:hwfl -- approve /tmp/hwfl-hello --yes
+cabal run exe:hwfl -- show /tmp/hwfl-hello
 ```
 
-Full walkthrough: [docs/tutorial.md](docs/tutorial.md).
+Full walkthrough: [manual/tutorial.md](manual/tutorial.md).
 
 ## Example
 
@@ -186,7 +189,7 @@ Needs a configured `model-catalog.json` and provider credentials (see
 `.env`). Run state lands under the workspace `.hwfl/runs/<run-id>/`.
 More: [examples/simple-coding-agent/README.md](examples/simple-coding-agent/README.md),
 [examples/coding-agent/README.md](examples/coding-agent/README.md),
-[docs/tutorial.md](docs/tutorial.md).
+[manual/tutorial.md](manual/tutorial.md).
 
 ## Layout
 
@@ -195,13 +198,12 @@ More: [examples/simple-coding-agent/README.md](examples/simple-coding-agent/READ
 | `src/Hwfl/` | Library: parse, check, eval, durable runtime, LLM, observability |
 | `app/` | CLI wrapping the driver façade |
 | `examples/` | Example programs and projects |
-| `docs/` | Spec, architecture, language reference |
+| `docs/` | Spec, architecture, maintainer internals |
+| `manual/` | Author manual |
 
 ## Docs
 
+- [manual/](manual/README.md) — author book (tutorial, cheatsheet, library)
 - [docs/idea.md](docs/idea.md) — vision and goals
-- [docs/tutorial.md](docs/tutorial.md) — `hwfl init` → check → run → approve → show
-- [docs/language-reference.md](docs/language-reference.md) — surface language
-- [docs/stdlib.md](docs/stdlib.md) — `hwfl/*` stdlib (`HWFL_STDLIB`) vs host ops
 - [docs/architecture.md](docs/architecture.md) — layers and boundaries
 - [examples/](examples/) — example programs (agents, story, compare, …)

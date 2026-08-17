@@ -12,5 +12,5 @@ Without `--interactive`, resume after pause:
 
 ```bash
 cabal run hwfl -- run examples/choose --workspace /tmp/hwfl-choose
-cabal run hwfl -- choose /tmp/hwfl-choose <run-id> --select staging
+cabal run hwfl -- choose /tmp/hwfl-choose --select staging
 ```

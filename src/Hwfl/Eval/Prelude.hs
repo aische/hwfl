@@ -2,6 +2,7 @@
 --
 -- Overload rules mirror 'Hwfl.Check.Overload':
 -- * arith: Int+Int or Float+Float only (no String @+@, no mixed sorts)
+-- * convert: int.to_float, float.round / floor / ceil / trunc (explicit)
 -- * ord: matching Int, Float, or String (FileRef is a path string at runtime)
 -- * eq: structural for comparable values; traps on closures / host / secrets
 module Hwfl.Eval.Prelude
@@ -57,6 +58,19 @@ preludeEnv =
         VRecord
           [ (Ident "length", VBuiltin BListLength),
             (Ident "concat", VBuiltin BListConcat)
+          ]
+      ),
+      ( Ident "int",
+        VRecord
+          [ (Ident "to_float", VBuiltin BIntToFloat)
+          ]
+      ),
+      ( Ident "float",
+        VRecord
+          [ (Ident "trunc", VBuiltin BFloatTrunc),
+            (Ident "floor", VBuiltin BFloatFloor),
+            (Ident "ceil", VBuiltin BFloatCeil),
+            (Ident "round", VBuiltin BFloatRound)
           ]
       ),
       ( Ident "text",
@@ -125,6 +139,11 @@ applyBuiltin b args = case (b, args) of
   (BJsonEncode, [v]) -> case valueToJsonText v of
     Left err -> Left (Trap ("json.encode: " <> err))
     Right json -> Right (VString json)
+  (BIntToFloat, [VInt n]) -> checkedFloat "int.to_float" (fromInteger n)
+  (BFloatTrunc, [VFloat d]) -> Right (VInt (truncate d))
+  (BFloatFloor, [VFloat d]) -> Right (VInt (floor d))
+  (BFloatCeil, [VFloat d]) -> Right (VInt (ceiling d))
+  (BFloatRound, [VFloat d]) -> Right (VInt (round d))
   (BAnd, _) -> arityOrType "&&" 2 args
   (BOr, _) -> arityOrType "||" 2 args
   (BNot, _) -> arityOrType "not" 1 args
@@ -142,6 +161,11 @@ applyBuiltin b args = case (b, args) of
   (BTextStripSuffix, _) -> arityOrType "text.strip_suffix" 2 args
   (BMdSections, _) -> arityOrType "md.sections" 1 args
   (BJsonEncode, _) -> arityOrType "json.encode" 1 args
+  (BIntToFloat, _) -> arityOrType "int.to_float" 1 args
+  (BFloatTrunc, _) -> arityOrType "float.trunc" 1 args
+  (BFloatFloor, _) -> arityOrType "float.floor" 1 args
+  (BFloatCeil, _) -> arityOrType "float.ceil" 1 args
+  (BFloatRound, _) -> arityOrType "float.round" 1 args
   (_, _) -> Left (Trap ("wrong arity for builtin: " <> T.pack (show b)))
 
 metricsValue :: TextMetrics -> Value

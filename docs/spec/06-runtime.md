@@ -93,7 +93,7 @@ This is **not** `meta.invoke` (separate child run).
 **Deferred for first cut:** aliased imports; calling non-`main` exports on
 entry modules; concurrent FrInvoke inside `par` (serial nest first).
 Stdlib pack injection (`hwfl/…` via `HWFL_STDLIB` / default) follows
-value polymorphism — [stdlib.md](../stdlib.md).
+value polymorphism — [architecture.md](../architecture.md).
 
 ## 4. Snapshots
 
@@ -142,7 +142,7 @@ A run id is a store key, and callers (control plane, workflow code via
 ## 5. `par` policy
 
 ```text
-par(max = N, on_error = fail|collect) for x in xs { body }
+par(max = N) for x in xs { body }
 ```
 
 Semantics:
@@ -156,11 +156,12 @@ at a time. Blocking host ops (LLM HTTP, `fs.read`, …) therefore do not
 overlap across branches. Confirm freeze, ordered slots, and resume of
 `FrPar` / `BranchMachine` are implemented and tested.
 
-**Future (§10):** overlap blocking host work without changing surface
+**[defer]** `on_error = fail | collect` (fail-fast after drain vs
+per-index `Result` envelopes). Parser may still accept `on_error`;
+behaviour is not a v0 contract.
+
+**Future:** overlap blocking host work without changing surface
 semantics.
-- `on_error = fail`: abort at lowest index failure after drain? Prefer:
-  fail-fast after cooperative drain of in-flight — document.
-- `on_error = collect`: per-index `Result` envelopes.
 
 ### 5.1 Confirm inside `par`
 
@@ -196,14 +197,13 @@ host ops under the agent frame.
 **Wire context:** optional `context_window` / `consolidate` bound what the
 provider sees; full `agHistory` stays snapshot / resume truth. Helpers and
 injected tools live in `Hwfl.Runtime.Context`. See
-[05-host-ops.md](05-host-ops.md) and
-[language-reference.md](../language-reference.md).
+[05-host-ops.md](05-host-ops.md).
 
 **Skills:** mid-loop `skill.load` may expand the active tool set (callable)
 or append instruction context (rebuild-from-ids on resume). Checkpoints
 persist `active_tool_ids` / `loaded_instruction_ids`. Agent tool spans
 appear as `tool:skill_discover` / `tool:skill_load` under the enclosing
-agent round. See [skills-plan.md](../skills-plan.md).
+agent round. See [05-host-ops.md](05-host-ops.md) §6.1.
 
 **`max_rounds`:** Hitting the round budget pauses the agent
 (`PauseAwaitingAgent`, status `awaiting_extend`) so the operator can

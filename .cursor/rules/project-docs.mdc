@@ -8,6 +8,9 @@ alwaysApply: true
 Paths assume this scaffold was installed at the **repo root** as `.cursor/`
 and the spec pack lives in `docs/`.
 
+**Authors** use `manual/`. **`docs/`** is maintainer/agent internals
+(STATUS, TASKS, spec, architecture, log).
+
 ## At session start
 
 When the user asks to implement, continue, or review work:
@@ -16,6 +19,8 @@ When the user asks to implement, continue, or review work:
 2. Read files under `docs/spec/` only if the task needs requirements
 3. Read `docs/idea.md` / `docs/architecture.md` if scope or boundaries are unclear
 4. Read `docs/hwfi-reference.md` before copying behaviour from the hwfi repo
+5. For author-facing names and signatures, use `manual/` (cheatsheet +
+   library pages), not a third catalog in `docs/`
 
 ## During implementation
 
@@ -29,6 +34,8 @@ When the user asks to implement, continue, or review work:
 1. Rewrite `docs/STATUS.md` (keep under 80 lines)
 2. Update `docs/TASKS.md` (active items only; archive done work)
 3. Append to `docs/log/YYYY-MM.md` only for decisions, blockers resolved, or milestones
+4. If a host op or kernel rule changed, patch the matching `docs/spec/`
+   file **and** the matching `manual/` page in the same change
 
 ## Do not
 
@@ -37,3 +44,5 @@ When the user asks to implement, continue, or review work:
 - Leave long lists of completed tasks in `TASKS.md` — archive to
   `docs/log/archive/tasks-YYYY-MM.md`
 - Reintroduce a step-DSL alongside the ML kernel
+- Add a second user-facing catalog under `docs/` (no language-reference
+  card beside the manual)

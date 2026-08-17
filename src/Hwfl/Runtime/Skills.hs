@@ -1,4 +1,4 @@
--- | Shared skill discover/load result construction (skills-plan §5).
+-- | Shared skill discover/load result construction (spec/05-host-ops.md §6.1).
 module Hwfl.Runtime.Skills
   ( discoverSkillsResult,
     loadSkillScripted,
@@ -73,7 +73,7 @@ loadSkillScripted cat skillId =
             (fromMaybe "" (seBody e))
             ""
         SkillCallable ->
-          -- Interim shape (skills-plan §13): ok + empty content; no global tool install.
+          -- Callable load: ok + empty content; no global tool install.
           loadSkillResultRecord True (skillKindText SkillCallable) False "" ""
 
 loadSkillResultRecord :: Bool -> Text -> Bool -> Text -> Text -> Value

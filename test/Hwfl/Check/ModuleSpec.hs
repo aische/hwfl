@@ -66,6 +66,16 @@ spec = describe "type checker" $ do
     it "rejects mixed Int/Float arithmetic" $
       inferE "1 + 2.0" `shouldSatisfy` isLeft
 
+    it "converts Int to Float and Float to Int" $ do
+      inferE "int.to_float(1)" `shouldBe` Right (TName (TypeName "Float"))
+      inferE "float.round(1.5)" `shouldBe` Right (TName (TypeName "Int"))
+      inferE "int.to_float(2) * 1.5" `shouldBe` Right (TName (TypeName "Float"))
+      inferE "float.floor(1.1) + 1" `shouldBe` Right (TName (TypeName "Int"))
+
+    it "rejects conversion on the wrong sort" $ do
+      inferE "int.to_float(1.0)" `shouldSatisfy` isLeft
+      inferE "float.round(1)" `shouldSatisfy` isLeft
+
     it "rejects String +" $
       inferE "\"a\" + \"b\"" `shouldSatisfy` isLeft
 

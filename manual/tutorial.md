@@ -1,9 +1,8 @@
 # Tutorial: run lifecycle
 
 Walk through the durable CLI loop: **init → check → run (mock) →
-approve → show**. Language surface:
-[language-reference.md](language-reference.md). More programs live under
-`examples/`.
+approve → show**. Language surface: [cheatsheet](cheatsheet.md). More
+programs live under `examples/` in the repository.
 
 ## Prerequisites
 
@@ -71,7 +70,8 @@ cabal run hwfl -- run /tmp/hwfl-hello \
 
 Stderr includes `hwfl run: run_id=<id>` and a pause line such as
 `awaiting confirm: Accept this greeting?`. Exit code is `3` (paused).
-Note the run id for the next commands.
+Continue commands can omit the run id (or pass `latest`) to pick the
+newest run in the workspace.
 
 The mock provider needs no network or catalog. Persistence lands in:
 
@@ -88,17 +88,18 @@ The mock provider needs no network or catalog. Persistence lands in:
 ## 5. Approve and show
 
 Approve the confirm gate (injects `true` and resumes). Approve / show /
-resume take the **workspace** (here the same directory):
+resume take the **workspace** (here the same directory). Omit the run id
+(or pass `latest`) to continue the newest run:
 
 ```bash
-cabal run hwfl -- approve /tmp/hwfl-hello <run-id> --yes
+cabal run hwfl -- approve /tmp/hwfl-hello --yes
 # stdout: {greeting:"SUMMARY: Say hello…",ok:true}
 ```
 
 Use `--no` to inject `false`. Inspect status and the span tree:
 
 ```bash
-cabal run hwfl -- show /tmp/hwfl-hello <run-id>
+cabal run hwfl -- show /tmp/hwfl-hello
 ```
 
 You should see a module span, an `llm.chat` span, and the confirm pause
@@ -129,7 +130,7 @@ If a run is paused and you only want to continue after an external fix
 (or after resolving a gate another way):
 
 ```bash
-cabal run hwfl -- resume /tmp/hwfl-hello <run-id>
+cabal run hwfl -- resume /tmp/hwfl-hello
 ```
 
 `show` while paused reports `status: awaiting_confirm` (or `paused`) and
@@ -139,9 +140,9 @@ Related gates (same exit-`3` pause model):
 
 | Gate | Resolve |
 | ---- | ------- |
-| `confirm` / `human.confirm` | `hwfl approve <ws> <run-id> --yes\|--no` |
-| `choice` / `human.choice` | `hwfl choose <ws> <run-id> --select <option>` |
-| `human.ask` | `hwfl reply <ws> <run-id> --text "…"` |
+| `confirm` / `human.confirm` | `hwfl approve <ws> [run-id] --yes\|--no` |
+| `choice` / `human.choice` | `hwfl choose <ws> [run-id] --select <option>` |
+| `human.ask` | `hwfl reply <ws> [run-id] --text "…"` |
 
 With `--interactive` on a TTY, `run` prompts on stdin and resolves gates
 in-process (no exit-`3` between turns):
@@ -160,8 +161,8 @@ cabal run hwfl -- run /tmp/hwfl-hello \
   --workspace /tmp/hwfl-hello \
   --llm-provider mock \
   --step
-cabal run hwfl -- step /tmp/hwfl-hello <run-id>
-cabal run hwfl -- resume /tmp/hwfl-hello <run-id>
+cabal run hwfl -- step /tmp/hwfl-hello
+cabal run hwfl -- resume /tmp/hwfl-hello
 ```
 
 `--step` / `step` advance one durable transition, then pause (exit `3`).
@@ -198,8 +199,9 @@ cabal run hwfl -- run examples/summarise.md \
 
 | Doc / example | When |
 | ------------- | ---- |
-| [language-reference.md](language-reference.md) | Keywords, types, prelude, host ops |
-| [stdlib.md](stdlib.md) | `hwfl/*` stdlib + `HWFL_STDLIB` vs host |
+| [Cheatsheet](cheatsheet.md) | Keywords, types, prelude, host ops |
+| [Stdlib](library/stdlib.md) | `hwfl/list`, `hwfl/string`, `hwfl/option`, `hwfl/result` |
+| [Cookbook](cookbook.md) | Copyable program shapes |
 | `examples/coding-agent` | Chat → coding session → serial task/verify |
 | `examples/simple-coding-agent` | Flat `llm.agent_object` + stack skills |
 | `examples/skills` | Minimal `skill.discover` / `skill.load` |
