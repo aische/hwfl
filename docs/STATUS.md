@@ -36,6 +36,3 @@ None.
 - **M-3** / **M-16**; remaining Lows
 - Effect polymorphism (`forall e. …`)
 - macOS CI runner
-
-## Open naming
-Working title **hwfl** / CLI `hwfl` / fence `hwfl` is provisional.

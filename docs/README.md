@@ -41,20 +41,3 @@ Code and tests own behaviour.
 When a host op or kernel rule changes, update **spec §05 (or the matching
 numbered spec)** and the matching [manual](../manual/README.md) page — not
 a third catalog.
-
-## Workflow
-
-- Start sessions from `STATUS.md` + `TASKS.md`
-- Read `spec/` only when the task needs requirements
-- Read `idea.md` / `architecture.md` if scope or boundaries are unclear
-- Read `hwfi-reference.md` before copying behaviour from the hwfi repo
-- On meaningful finish: rewrite STATUS, trim TASKS, log decisions
-- Archive finished plans and long Done lists under `log/archive/`
-
-## Constraints (sticky)
-
-- Implemented in **Haskell** (GHC2021)
-- Default LLM backend: **`llm-simple`**, behind a replaceable provider
-  interface ([spec/08-llm-provider.md](spec/08-llm-provider.md))
-- No GUI in v0; no Servant/multi-tenant runtime **in this repo**
-- Do not reintroduce hwfi’s step DSL as the computation substrate

@@ -2,21 +2,33 @@
 
 [![CI](https://github.com/aische/hwfl/actions/workflows/ci.yml/badge.svg)](https://github.com/aische/hwfl/actions/workflows/ci.yml)
 
-A small **programming language** + durable **interpreter** (Haskell
-library + CLI). Programs are typed markdown modules: prose and an ML-ish
-kernel share one file. LLM calls, filesystem, `exec`, parallelism, and
-human confirm are first-class host effects with checkpointed resume.
+**hwfl** is a small programming language for writing AI workflows as
+**typed markdown modules** — prose and code in one file, the way PHP
+once mixed HTML and logic for the web. The ML-ish kernel gives you real
+expressions (`let`, functions, records, `match`, `par`) so you never
+reach for a micro-tool to work around a missing form. LLM calls,
+filesystem, `exec`, human confirm, and MCP clients are first-class host
+effects with automatic checkpointing: pause, resume after crash, or
+approve a confirm gate from the CLI.
 
-Vision and goals: [docs/idea.md](docs/idea.md).
+The same interpreter is available as a **Haskell library** for frontends
+that want programmatic check/run/step/resume without the CLI.
 
-## Why
+**Vision and goals:** [docs/idea.md](docs/idea.md)
 
-Agentic systems usually bury prompts in host-language glue, or use a thin
-step DSL that falls over when real computation shows up. hwfl keeps
-document-shaped authoring and a small general-purpose language in one
-module, then runs it durably and observably.
+## Why not just use Python?
+
+Agentic systems written in general-purpose languages end up splitting
+work awkwardly: orchestration logic in the host language, prompts as
+string constants buried in that code, and a step DSL bolted on top that
+collapses the moment you need a conditional. hwfl puts prompts and prose
+**in the file as first-class sections** (bindable as `@slug`), type-checks
+the whole project before the first billed token, and resumes from the
+last checkpoint after any crash or human pause.
 
 ## Quick start
+
+Run the test suite, build the CLI, and try the bundled hello-world project:
 
 ```bash
 cabal test
@@ -33,12 +45,14 @@ cabal run exe:hwfl -- show /tmp/hwfl-hello
 
 Full walkthrough: [manual/tutorial.md](manual/tutorial.md).
 
-## Example
+## Examples
 
 ### One-shot coding agent
 
-`examples/simple-coding-agent` is a flat `llm.agent_object` loop: skills +
-filesystem + `exec.run`, then a typed `submit`. Full main module:
+`examples/simple-coding-agent` is a flat `llm.agent_object` loop — skills,
+filesystem, `exec.run`, then a typed `submit`. The full main module fits in one
+markdown file; here it is unabridged so you can see what a real hwfl program
+looks like:
 
 ````markdown
 ---
@@ -162,9 +176,10 @@ cabal run hwfl -- run examples/simple-coding-agent \
 
 ### Skill-driven coding agent
 
-`examples/coding-agent` is the credible shape: chat (`human.ask`)
-delegates edits via a `coding_session` tool (`FrInvoke` → typed plan →
-serial implement/verify).
+`examples/coding-agent` is the fuller shape: a chat loop (`human.ask`)
+delegates implementation to a `coding_session` tool (typed plan → serial
+implement/verify). Skills are discovered and loaded mid-loop so the agent
+context stays small until a specific stack is identified.
 
 ```bash
 cabal run hwfl -- check examples/coding-agent
@@ -185,9 +200,12 @@ cabal run hwfl -- run examples/coding-agent/workflows/coding.md \
   --llm-provider simple
 ```
 
-Needs a configured `model-catalog.json` and provider credentials (see
-`.env`). Run state lands under the workspace `.hwfl/runs/<run-id>/`.
-More: [examples/simple-coding-agent/README.md](examples/simple-coding-agent/README.md),
+Needs a configured `model-catalog.json` and provider credentials (see `.env`).
+Run state lands under the workspace at `.hwfl/runs/<run-id>/` — inspect it with
+`hwfl show` or read the `spans.jsonl` / `events.jsonl` directly.
+
+More:
+[examples/simple-coding-agent/README.md](examples/simple-coding-agent/README.md),
 [examples/coding-agent/README.md](examples/coding-agent/README.md),
 [manual/tutorial.md](manual/tutorial.md).
 
@@ -197,13 +215,16 @@ More: [examples/simple-coding-agent/README.md](examples/simple-coding-agent/READ
 | ---- | ---- |
 | `src/Hwfl/` | Library: parse, check, eval, durable runtime, LLM, observability |
 | `app/` | CLI wrapping the driver façade |
-| `examples/` | Example programs and projects |
+| `examples/` | Example programs (agents, story pipelines, compare/evolve, …) |
+| `manual/` | Author manual: tutorial, cheatsheet, library reference |
 | `docs/` | Spec, architecture, maintainer internals |
-| `manual/` | Author manual |
 
-## Docs
+## Further reading
 
-- [manual/](manual/README.md) — author book (tutorial, cheatsheet, library)
-- [docs/idea.md](docs/idea.md) — vision and goals
-- [docs/architecture.md](docs/architecture.md) — layers and boundaries
-- [examples/](examples/) — example programs (agents, story, compare, …)
+| | |
+|---|---|
+| [manual/tutorial.md](manual/tutorial.md) | Step-by-step: write, check, run, resume, show |
+| [manual/](manual/README.md) | Full author book (cheatsheet, library reference) |
+| [docs/idea.md](docs/idea.md) | Vision, goals, non-goals, constraints |
+| [docs/architecture.md](docs/architecture.md) | Layers, stdlib policy, package layout |
+| [examples/](examples/) | Runnable example projects |
