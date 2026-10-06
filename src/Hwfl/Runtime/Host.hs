@@ -30,10 +30,11 @@ import Hwfl.Json.Validate (validateAgainstSchema)
 import Hwfl.Llm.Pricing (ModelPricing, providerCloseAttrs)
 import Hwfl.Llm.Provider (LlmProvider (..), safeLlmChat)
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     Message (..),
-    ProviderResult (..),
     Role (..),
+    ProviderResult (..),
     StreamDelta,
     emptyChatRequest,
     renderProviderError,

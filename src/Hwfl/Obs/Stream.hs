@@ -14,7 +14,10 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime)
-import Hwfl.Llm.Types (StreamDelta (..), ToolCall (..))
+import Hwfl.Llm.Types (
+    StreamDelta (..),
+    ToolCall (..),
+  )
 import Hwfl.Obs.Redact (redactJson, redactText)
 import Hwfl.Obs.Trace (SpanState, appendEvent, debugLog)
 import Hwfl.Runtime.Store (RunStore)

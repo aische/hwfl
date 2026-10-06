@@ -47,15 +47,17 @@ import Hwfl.Limits (maxMachineFrames, maxPureCrunchSteps)
 import Hwfl.Llm.Pricing (providerRoundCloseAttrs)
 import Hwfl.Llm.Provider (safeLlmChat)
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
-    ProviderResult (..),
     ToolCall (..),
     ToolResult (..),
     ToolSpec (..),
     Turn (..),
+    ProviderResult (..),
     emptyChatRequest,
     renderProviderError,
+    turnAssistantText,
   )
 import Hwfl.Obs.Redact (hostOpenAttrs, toolCallOpenAttrs)
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
@@ -826,7 +828,7 @@ stepAgentModel ctx mode m ag
                     ag'
                       { agHistory =
                           ag.agHistory
-                            <> [TurnAssistant pr.prContent pr.prToolCalls],
+                            <> [TurnAssistant pr.prParts],
                         agToolRound = Just tr,
                         agRoundCloseAttrs = Just roundAttrs
                       }
@@ -864,7 +866,7 @@ finishAgentText ctx mode m ag pr = case ag.agSubmitSchema of
             Nothing
       )
       ag.agRoundSpanId
-    let finalHistory = ag.agHistory <> [TurnAssistant pr.prContent []]
+    let finalHistory = ag.agHistory <> [turnAssistantText pr.prContent]
         result =
           VRecord
             [ (Ident "text", VString pr.prContent),

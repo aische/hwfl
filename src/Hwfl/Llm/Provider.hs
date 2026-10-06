@@ -6,7 +6,11 @@ module Hwfl.Llm.Provider
 where
 
 import Hwfl.Exception (describeException, trySync)
-import Hwfl.Llm.Types (ChatRequest, ProviderError (..), ProviderResult)
+import Hwfl.Llm.Types (
+    ProviderError (..),
+    ChatRequest,
+    ProviderResult (..),
+  )
 
 -- | Record-of-functions so adapters (mock, llm-simple, …) stay swappable
 -- without changing host or workflow code. Configured once at run start.

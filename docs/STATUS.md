@@ -1,32 +1,32 @@
 # Status
-Last updated: 2026-08-17
+Last updated: 2026-10-06
 
 ## Current focus
-Working title **hwfl** remains provisional (rename next). User book is
-`manual/`; `docs/` is maintainer internals.
+Upgrade hwfl to **llm-simple 0.2** (`task.md`): ordered assistant
+content, opaque replay state, cache usage/pricing. Working title
+**hwfl** remains provisional (rename next). User book is `manual/`;
+`docs/` is maintainer internals.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
+- **llm-simple 0.2 Phase 1–2** — engine-owned `AssistantPart` /
+  `ProviderOpaque` / thinking; `TurnAssistant` holds ordered parts;
+  parts-authoritative `ProviderResult`; cache fields on `TokenUsage`;
+  `Hwfl.Llm.Simple` maps `ContentPart`/`PartBody` and opaque state
 - **CI** — GitHub Actions `cabal test` on GHC 9.6 / Ubuntu; mock LLM
   only. macOS runner deferred
-- **Maintainer docs pass** — deleted `language-reference.md` and
-  `docs/examples/`; tutorial moved to `manual/tutorial.md`; stdlib policy
-  folded into [architecture.md](architecture.md); skills / semantic-check
-  plans archived
-- **Omit / `latest` run-id** — continue commands take an optional id;
-  missing or `latest` is newest `started_at`
-- **`int.to_float` / `float.round`** — explicit same-sort conversions
 - **User manual** — author book under `manual/`
 
 ## Blockers
 None.
 
 ## Next up
-1. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
-2. Prefer MCP / stdlib for domain tools (git, terminals, …)
-3. Optional: shell completions
+1. llm-simple 0.2 Phases 3–8 — runtime projections, snapshot codec,
+   cache pricing, catalog capabilities, ordered-replay tests, docs
+2. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
+3. Prefer MCP / stdlib for domain tools (git, terminals, …)
 
 ## Deferred
 - Git / persistent terminals (MCP first)

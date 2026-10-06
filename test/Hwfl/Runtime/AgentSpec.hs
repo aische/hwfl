@@ -14,12 +14,16 @@ import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Obs.Span (SpanRecord (..), SpanStatus (..))
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
-    ProviderResult (..),
-    TokenUsage (..),
     ToolCall (..),
     Turn (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    mkToolCall,
+    providerResultText,
+    providerResultTextTools,
   )
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Parse.Load (loadModuleText)
@@ -84,30 +88,11 @@ agentMock = mockProviderWith agentMockReply
 agentMockReply :: ChatRequest -> Either a ProviderResult
 agentMockReply req
   | any isToolTurn req.chatTurns =
-      Right
-        ProviderResult
-          { prContent = "done with tools",
-            prToolCalls = [],
-            prUsage = Just (TokenUsage 1 1),
-            prFinishReason = FinishStop
-          }
+      Right (providerResultText ("done with tools") (Just (mkTokenUsage 1 1)) FinishStop)
   | otherwise =
-      Right
-        ProviderResult
-          { prContent = "need tools",
-            prToolCalls =
-              [ ToolCall
-                  "c1"
-                  "fs_read"
-                  (object ["path" .= ("note.txt" :: Text)]),
-                ToolCall
-                  "c2"
-                  "search"
-                  (object ["q" .= ("note" :: Text)])
-              ],
-            prUsage = Just (TokenUsage 1 1),
-            prFinishReason = FinishToolCalls
-          }
+      Right (providerResultTextTools ("need tools") ([ mkToolCall "c1" "fs_read" (object ["path" .= ("note.txt" :: Text)]),
+                mkToolCall "c2" "search" (object ["q" .= ("note" :: Text)])
+              ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
   where
     isToolTurn = \case
       TurnTool _ -> True
@@ -367,13 +352,7 @@ spec = describe "runtime agent (M7)" $ do
             mockProviderWith $ \req ->
               if length (userTurns req) >= 2
                 then
-                  Right
-                    ProviderResult
-                      { prContent = "continued",
-                        prToolCalls = [],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishStop
-                      }
+                  Right (providerResultText ("continued") (Just (mkTokenUsage 1 1)) FinishStop)
                 else agentMockReply req
       writeFile path (T.unpack src)
       case loadModuleText path src of
@@ -447,30 +426,14 @@ spec = describe "runtime agent (M7)" $ do
             mockProviderWith $ \req ->
               if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
                 then
-                  Right
-                    ProviderResult
-                      { prContent = "selected via tool",
-                        prToolCalls = [],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishStop
-                      }
+                  Right (providerResultText ("selected via tool") (Just (mkTokenUsage 1 1)) FinishStop)
                 else
-                  Right
-                    ProviderResult
-                      { prContent = "need human",
-                        prToolCalls =
-                          [ ToolCall
-                              "c1"
-                              "ask_user"
-                              ( object
+                  Right (providerResultTextTools ("need human") ([ mkToolCall "c1" "ask_user" ( object
                                   [ "question" .= ("Deploy where?" :: Text),
                                     "options" .= (["staging", "prod"] :: [Text])
                                   ]
                               )
-                          ],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishToolCalls
-                      }
+                          ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
       writeFile path (T.unpack src)
       case loadModuleText path src of
         Left diags -> expectationFailure (show diags)
@@ -541,26 +504,10 @@ spec = describe "runtime agent (M7)" $ do
             mockProviderWith $ \req ->
               if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
                 then
-                  Right
-                    ProviderResult
-                      { prContent = "done after extend",
-                        prToolCalls = [],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishStop
-                      }
+                  Right (providerResultText ("done after extend") (Just (mkTokenUsage 1 1)) FinishStop)
                 else
-                  Right
-                    ProviderResult
-                      { prContent = "need read",
-                        prToolCalls =
-                          [ ToolCall
-                              "c1"
-                              "fs_read"
-                              (object ["path" .= ("note.txt" :: Text)])
-                          ],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishToolCalls
-                      }
+                  Right (providerResultTextTools ("need read") ([ mkToolCall "c1" "fs_read" (object ["path" .= ("note.txt" :: Text)])
+                          ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
           opts =
             RunOptions
               { roWorkspace = dir,
@@ -711,26 +658,10 @@ spec = describe "runtime agent (M7)" $ do
               mockProviderWith $ \req ->
                 if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
                   then
-                    Right
-                      ProviderResult
-                        { prContent = "done",
-                          prToolCalls = [],
-                          prUsage = Just (TokenUsage 1 1),
-                          prFinishReason = FinishStop
-                        }
+                    Right (providerResultText ("done") (Just (mkTokenUsage 1 1)) FinishStop)
                   else
-                    Right
-                      ProviderResult
-                        { prContent = "call echo",
-                          prToolCalls =
-                            [ ToolCall
-                                "c1"
-                                "echo"
-                                (object ["q" .= ("x" :: Text)])
-                            ],
-                          prUsage = Just (TokenUsage 1 1),
-                          prFinishReason = FinishToolCalls
-                        }
+                    Right (providerResultTextTools ("call echo") ([ mkToolCall "c1" "echo" (object ["q" .= ("x" :: Text)])
+                            ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
         writeFile path (T.unpack src)
         case loadModuleText path src of
           Left diags -> expectationFailure (show diags)
@@ -813,26 +744,10 @@ spec = describe "runtime agent (M7)" $ do
               mockProviderWith $ \req ->
                 if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
                   then
-                    Right
-                      ProviderResult
-                        { prContent = "recovered",
-                          prToolCalls = [],
-                          prUsage = Just (TokenUsage 1 1),
-                          prFinishReason = FinishStop
-                        }
+                    Right (providerResultText ("recovered") (Just (mkTokenUsage 1 1)) FinishStop)
                   else
-                    Right
-                      ProviderResult
-                        { prContent = "bad tool",
-                          prToolCalls =
-                            [ ToolCall
-                                "c1"
-                                "no_such_tool"
-                                (object [])
-                            ],
-                          prUsage = Just (TokenUsage 1 1),
-                          prFinishReason = FinishToolCalls
-                        }
+                    Right (providerResultTextTools ("bad tool") ([ mkToolCall "c1" "no_such_tool" (object [])
+                            ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
         writeFile path (T.unpack src)
         case loadModuleText path src of
           Left diags -> expectationFailure (show diags)
@@ -910,13 +825,7 @@ spec = describe "runtime agent (M7)" $ do
                 ]
             mock =
               mockProviderWith $ \_ ->
-                Right
-                  ProviderResult
-                    { prContent = "truncat",
-                      prToolCalls = [],
-                      prUsage = Just (TokenUsage 1 1),
-                      prFinishReason = FinishLength
-                    }
+                Right (providerResultText ("truncat") (Just (mkTokenUsage 1 1)) FinishLength)
         writeFile path (T.unpack src)
         case loadModuleText path src of
           Left diags -> expectationFailure (show diags)

@@ -7,7 +7,9 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
-import Hwfl.Llm.Types (ProviderError (..))
+import Hwfl.Llm.Types (
+    ProviderError (..),
+  )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Obs.Span (SpanRecord (..), SpanStatus (..))
 import Hwfl.Parse.Load (loadModuleText)

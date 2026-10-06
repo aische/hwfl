@@ -12,7 +12,11 @@ import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Observer (noopObserver)
-import Hwfl.Llm.Types (StreamDelta (..), ToolCall (..))
+import Hwfl.Llm.Types (
+    StreamDelta (..),
+    ToolCall (..),
+    mkToolCall,
+  )
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
 import Hwfl.Obs.Stream (StreamSink (..), newStreamSink)
 import Hwfl.Obs.Trace
@@ -89,12 +93,7 @@ spec = describe "streaming LLM spans" $ do
       sink <- newStreamSink store st
       sink.ssOnChunk (DeltaText "hi")
       sink.ssOnChunk
-        ( DeltaToolCall
-            ToolCall
-              { tcId = "c1",
-                tcName = "fs_read",
-                tcArguments = object []
-              }
+        ( DeltaToolCall (mkToolCall ("c1") ("fs_read") (object []))
         )
       sink.ssFlush
       events <- decodeEvents <$> readEventValues store

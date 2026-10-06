@@ -23,7 +23,11 @@ import Data.Scientific (toBoundedInteger, toRealFloat)
 import Data.Text (Text)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
-import Hwfl.Llm.Types (ProviderResult (..), TokenUsage (..), finishReasonText)
+import Hwfl.Llm.Types (
+    TokenUsage (..),
+    ProviderResult (..),
+    finishReasonText,
+  )
 import Hwfl.SafeIO (ReadError (..), readBytesFile, renderReadError)
 import Text.Printf (printf)
 

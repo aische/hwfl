@@ -19,7 +19,16 @@ import Data.Aeson.Types (Parser, (.:))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Eval.Value qualified as V
-import Hwfl.Llm.Types (ToolCall (..), ToolResult (..), Turn (..))
+import Hwfl.Llm.Types
+  (
+    ToolCall (..),
+    ToolResult (..),
+    Turn (..),
+    assistantText,
+    assistantToolCalls,
+    mkToolCall,
+    turnAssistantTextTools,
+  )
 import Hwfl.Runtime.Error (RuntimeError (..))
 
 turnToValue :: Turn -> V.Value
@@ -41,11 +50,13 @@ valueToTurns = \case
 turnToJson :: Turn -> Aeson.Value
 turnToJson = \case
   TurnUser t -> object ["tag" .= Aeson.String "user", "text" .= t]
-  TurnAssistant t calls ->
+  TurnAssistant parts ->
+    -- Legacy shape until Phase 4 adds ordered-parts encoding. Thinking and
+    -- opaque metadata are not preserved here yet.
     object
       [ "tag" .= Aeson.String "assistant",
-        "text" .= t,
-        "calls" .= map toolCallToJson calls
+        "text" .= assistantText parts,
+        "calls" .= map toolCallToJson (assistantToolCalls parts)
       ]
   TurnTool results ->
     object ["tag" .= Aeson.String "tool", "results" .= map toolResultToJson results]
@@ -56,7 +67,9 @@ parseTurn = withObject "Turn" $ \o -> do
   case tag :: Text of
     "user" -> TurnUser <$> o .: "text"
     "assistant" ->
-      TurnAssistant <$> o .: "text" <*> (o .: "calls" >>= mapM parseToolCall)
+      turnAssistantTextTools
+        <$> o .: "text"
+        <*> (o .: "calls" >>= mapM parseToolCall)
     "tool" -> TurnTool <$> (o .: "results" >>= mapM parseToolResult)
     other -> fail ("unknown turn: " <> T.unpack other)
 
@@ -70,7 +83,7 @@ toolCallToJson tc =
 
 parseToolCall :: Aeson.Value -> Parser ToolCall
 parseToolCall = withObject "ToolCall" $ \o ->
-  ToolCall <$> o .: "id" <*> o .: "name" <*> o .: "arguments"
+  mkToolCall <$> o .: "id" <*> o .: "name" <*> o .: "arguments"
 
 toolResultToJson :: ToolResult -> Aeson.Value
 toolResultToJson tr =

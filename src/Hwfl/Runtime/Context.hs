@@ -49,7 +49,14 @@ import Data.Maybe (catMaybes, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
-import Hwfl.Llm.Types (ToolCall (..), ToolResult (..), Turn (..))
+import Hwfl.Llm.Types
+  (
+    ToolCall (..),
+    ToolResult (..),
+    Turn (..),
+    assistantText,
+    assistantToolCalls,
+  )
 
 -------------------------------------------------------------------------------
 -- L1 defaults / history tool
@@ -302,11 +309,12 @@ extractPins turns =
          in [ Pin "" "user" (T.take 200 trimmed)
               | not (T.null trimmed)
             ]
-      TurnAssistant _ calls ->
-        [ Pin "" "tool" ("called " <> tc.tcName)
-          | tc <- calls
-        ]
-          ++ concatMap (pathsFromJson . tcArguments) calls
+      TurnAssistant parts ->
+        let calls = assistantToolCalls parts
+         in [ Pin "" "tool" ("called " <> tc.tcName)
+              | tc <- calls
+            ]
+              ++ concatMap (pathsFromJson . tcArguments) calls
       TurnTool results ->
         concatMap
           ( \r ->
@@ -361,8 +369,10 @@ heuristicSummary turns =
       TurnUser t ->
         let u = T.strip t
          in if T.null u then Nothing else Just ("- user: " <> T.take 120 u)
-      TurnAssistant t calls ->
-        let bits =
+      TurnAssistant parts ->
+        let t = assistantText parts
+            calls = assistantToolCalls parts
+            bits =
               filter
                 (not . T.null)
                 [ if T.null (T.strip t) then "" else T.take 80 (T.strip t),
@@ -484,12 +494,14 @@ formatChunk = T.intercalate "\n" . map formatTurn
 
 formatTurn :: Turn -> Text
 formatTurn (TurnUser t) = "[User] " <> t
-formatTurn (TurnAssistant t calls) =
-  "[Assistant] "
-    <> t
-    <> if null calls
-      then ""
-      else " [called: " <> T.intercalate ", " (map (.tcName) calls) <> "]"
+formatTurn (TurnAssistant parts) =
+  let t = assistantText parts
+      calls = assistantToolCalls parts
+   in "[Assistant] "
+        <> t
+        <> if null calls
+          then ""
+          else " [called: " <> T.intercalate ", " (map (.tcName) calls) <> "]"
 formatTurn (TurnTool results) =
   "[Tool results] "
     <> T.intercalate

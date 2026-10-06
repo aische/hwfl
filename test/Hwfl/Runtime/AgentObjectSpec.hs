@@ -11,13 +11,17 @@ import Hwfl.Llm.Mock (mockProviderWith)
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
-    ProviderResult (..),
-    TokenUsage (..),
     ToolCall (..),
     ToolResult (..),
     Turn (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    mkToolCall,
+    providerResultText,
+    providerResultTextTools,
   )
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Eval (StepMode (..))
@@ -75,52 +79,23 @@ agentObjectMock = mockProviderWith reply
     reply :: ChatRequest -> Either a ProviderResult
     reply req
       | any isToolTurn req.chatTurns =
-          Right
-            ProviderResult
-              { prContent = "done",
-                prToolCalls =
-                  [ ToolCall
-                      "c3"
-                      "submit"
-                      ( object
+          Right (providerResultTextTools ("done") ([ mkToolCall "c3" "submit" ( object
                           [ "summary" .= ("SUMMARY: scored" :: Text),
                             "score" .= (7 :: Int)
                           ]
                       )
-                  ],
-                prUsage = Just (TokenUsage 1 1),
-                prFinishReason = FinishToolCalls
-              }
+                  ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
       | otherwise =
-          Right
-            ProviderResult
-              { prContent = "need tools",
-                prToolCalls =
-                  [ ToolCall
-                      "c1"
-                      "fs_read"
-                      (object ["path" .= ("note.txt" :: Text)]),
-                    ToolCall
-                      "c2"
-                      "search"
-                      (object ["q" .= ("note" :: Text)])
-                  ],
-                prUsage = Just (TokenUsage 1 1),
-                prFinishReason = FinishToolCalls
-              }
+          Right (providerResultTextTools ("need tools") ([ mkToolCall "c1" "fs_read" (object ["path" .= ("note.txt" :: Text)]),
+                    mkToolCall "c2" "search" (object ["q" .= ("note" :: Text)])
+                  ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
     isToolTurn = \case
       TurnTool _ -> True
       _ -> False
 
 plainTextMock :: LlmProvider
 plainTextMock = mockProviderWith $ \_ ->
-  Right
-    ProviderResult
-      { prContent = "I forgot to submit",
-        prToolCalls = [],
-        prUsage = Just (TokenUsage 1 1),
-        prFinishReason = FinishStop
-      }
+  Right (providerResultText ("I forgot to submit") (Just (mkTokenUsage 1 1)) FinishStop)
 
 spec :: Spec
 spec = describe "runtime llm.agent_object" $ do
@@ -239,39 +214,19 @@ badThenGoodSubmitMock = mockProviderWith reply
     reply :: ChatRequest -> Either a ProviderResult
     reply req
       | any isDecodeError req.chatTurns =
-          Right
-            ProviderResult
-              { prContent = "retrying",
-                prToolCalls =
-                  [ ToolCall
-                      "c2"
-                      "submit"
-                      ( object
+          Right (providerResultTextTools ("retrying") ([ mkToolCall "c2" "submit" ( object
                           [ "summary" .= ("ok" :: Text),
                             "score" .= (1 :: Int)
                           ]
                       )
-                  ],
-                prUsage = Just (TokenUsage 1 1),
-                prFinishReason = FinishToolCalls
-              }
+                  ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
       | otherwise =
-          Right
-            ProviderResult
-              { prContent = "bad submit",
-                prToolCalls =
-                  [ ToolCall
-                      "c1"
-                      "submit"
-                      ( object
+          Right (providerResultTextTools ("bad submit") ([ mkToolCall "c1" "submit" ( object
                           [ "summary" .= ("ok" :: Text),
                             "score" .= ("not-an-int" :: Text)
                           ]
                       )
-                  ],
-                prUsage = Just (TokenUsage 1 1),
-                prFinishReason = FinishToolCalls
-              }
+                  ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
     isDecodeError = \case
       TurnTool results ->
         any (\r -> "submit decode error" `T.isInfixOf` r.trContent) results

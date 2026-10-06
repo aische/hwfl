@@ -14,12 +14,16 @@ import Hwfl.Driver
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
-    ProviderResult (..),
-    TokenUsage (..),
     ToolCall (..),
     Turn (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    mkToolCall,
+    providerResultText,
+    providerResultTextTools,
   )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
@@ -500,26 +504,10 @@ spec = describe "runtime par/confirm/step (M5)" $ do
             mockProviderWith $ \req ->
               if any (\case TurnTool _ -> True; _ -> False) req.chatTurns
                 then
-                  Right
-                    ProviderResult
-                      { prContent = "done after extend",
-                        prToolCalls = [],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishStop
-                      }
+                  Right (providerResultText ("done after extend") (Just (mkTokenUsage 1 1)) FinishStop)
                 else
-                  Right
-                    ProviderResult
-                      { prContent = "need read",
-                        prToolCalls =
-                          [ ToolCall
-                              "c1"
-                              "fs_read"
-                              (object ["path" .= ("note.txt" :: Text)])
-                          ],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishToolCalls
-                      }
+                  Right (providerResultTextTools ("need read") ([ mkToolCall "c1" "fs_read" (object ["path" .= ("note.txt" :: Text)])
+                          ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
       case loadModuleText path parAgentSrc of
         Left diags -> expectationFailure (show diags)
         Right loaded -> do

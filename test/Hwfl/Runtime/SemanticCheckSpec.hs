@@ -18,14 +18,16 @@ import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
 import Hwfl.Llm.Provider (LlmProvider)
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
     Message (..),
+    Role (..),
+    Turn (..),
     ProviderError,
     ProviderResult (..),
-    Role (..),
-    TokenUsage (..),
-    Turn (..),
+    mkTokenUsage,
+    providerResultText,
   )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Project (LoadedProject (..), loadProject)
@@ -175,13 +177,7 @@ chattyObligationsReply _req =
           V.empty
           "Policy"
           V.empty
-   in Right
-        ProviderResult
-          { prContent = TE.decodeUtf8 (BL.toStrict (encode body)),
-            prToolCalls = [],
-            prUsage = Just (TokenUsage 1 1),
-            prFinishReason = FinishStop
-          }
+   in Right (providerResultText (TE.decodeUtf8 (BL.toStrict (encode body))) (Just (mkTokenUsage 1 1)) FinishStop)
 
 -- | Planted conflicts / obligations / role mismatches / propositions; else empty.
 conflictAwareReply :: ChatRequest -> Either ProviderError ProviderResult
@@ -302,13 +298,7 @@ conflictAwareReply req =
               "Policy"
               V.empty
         | otherwise = emptyPragmatic
-   in Right
-        ProviderResult
-          { prContent = TE.decodeUtf8 (BL.toStrict (encode body)),
-            prToolCalls = [],
-            prUsage = Just (TokenUsage 1 1),
-            prFinishReason = FinishStop
-          }
+   in Right (providerResultText (TE.decodeUtf8 (BL.toStrict (encode body))) (Just (mkTokenUsage 1 1)) FinishStop)
 
 lastUserText :: ChatRequest -> Text
 lastUserText req

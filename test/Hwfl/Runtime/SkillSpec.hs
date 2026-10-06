@@ -13,13 +13,17 @@ import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
-    ProviderResult (..),
-    TokenUsage (..),
     ToolCall (..),
     ToolSpec (..),
     Turn (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    mkToolCall,
+    providerResultText,
+    providerResultTextTools,
   )
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Project (LoadedProject (..), loadProject)
@@ -227,56 +231,25 @@ agentSkillsMock = mockProviderWith reply
       let assistants = length (filter isAssistant req.chatTurns)
        in case assistants of
             0 ->
-              Right
-                ProviderResult
-                  { prContent = "",
-                    prToolCalls =
-                      [ ToolCall
-                          "c0"
-                          "skill_discover"
-                          ( object
+              Right (providerResultTextTools ("") ([ mkToolCall "c0" "skill_discover" ( object
                               [ "query" .= ("shell" :: Text),
                                 "kinds" .= ([] :: [Text]),
                                 "limit" .= (5 :: Int)
                               ]
                           ),
-                        ToolCall "c1" "skill_load" (object ["id" .= ("skills/shell-repair-guide" :: Text)])
-                      ],
-                    prUsage = Just (TokenUsage 1 1),
-                    prFinishReason = FinishToolCalls
-                  }
+                        mkToolCall "c1" "skill_load" (object ["id" .= ("skills/shell-repair-guide" :: Text)])
+                      ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
             1 ->
-              Right
-                ProviderResult
-                  { prContent = "",
-                    prToolCalls =
-                      [ ToolCall "c2" "skill_load" (object ["id" .= ("skills/echo-tool" :: Text)])
-                      ],
-                    prUsage = Just (TokenUsage 1 1),
-                    prFinishReason = FinishToolCalls
-                  }
+              Right (providerResultTextTools ("") ([ mkToolCall "c2" "skill_load" (object ["id" .= ("skills/echo-tool" :: Text)])
+                      ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
             2 ->
-              Right
-                ProviderResult
-                  { prContent = "",
-                    prToolCalls =
-                      [ ToolCall "c3" "skill_load" (object ["id" .= ("skills/echo-tool" :: Text)])
-                      ],
-                    prUsage = Just (TokenUsage 1 1),
-                    prFinishReason = FinishToolCalls
-                  }
+              Right (providerResultTextTools ("") ([ mkToolCall "c3" "skill_load" (object ["id" .= ("skills/echo-tool" :: Text)])
+                      ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
             _ ->
-              Right
-                ProviderResult
-                  { prContent =
-                      if maybe False (T.isInfixOf "Loaded skill: skills/shell-repair-guide") req.chatSystem
+              Right (providerResultText (if maybe False (T.isInfixOf "Loaded skill: skills/shell-repair-guide") req.chatSystem
                         && any (\t -> t.tsName == "skills_echo_tool") req.chatTools
                         then "used skills"
-                        else "missing skill effects",
-                    prToolCalls = [],
-                    prUsage = Just (TokenUsage 1 1),
-                    prFinishReason = FinishStop
-                  }
+                        else "missing skill effects") (Just (mkTokenUsage 1 1)) FinishStop)
 
     isAssistant = \case
       TurnAssistant {} -> True

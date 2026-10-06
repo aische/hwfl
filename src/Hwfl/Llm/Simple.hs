@@ -16,7 +16,12 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types as Hwfl
-import LLM.Core.Types (ChatResponse (..), ContentBlock (..), ToolDef (..))
+import LLM.Core.Types
+  ( ChatResponse (..),
+    ContentPart (..),
+    PartBody (..),
+    ToolDef (..),
+  )
 import LLM.Core.Types qualified as LLM
 import LLM.Core.Usage qualified as LLMUsage
 import LLM.Generate
@@ -86,18 +91,12 @@ chatWithCatalog dump catalogPath req = do
           pure $ case result of
             Left genErr -> Left (mapGenerateError genErr)
             Right resp ->
-              let toolCalls = [fromLLMToolCall tc | ToolCallBlock tc <- resp.respContent]
+              let parts = mapMaybe fromLLMAssistantPart resp.respContent
                   finish =
-                    if null toolCalls
+                    if null (assistantToolCalls parts)
                       then FinishStop
                       else FinishToolCalls
-               in Right
-                    ProviderResult
-                      { prContent = resp.respText,
-                        prToolCalls = toolCalls,
-                        prUsage = fmap mapUsage resp.respUsage,
-                        prFinishReason = finish
-                      }
+               in Right (mkProviderResult parts (fmap mapUsage resp.respUsage) finish)
         Just schema -> do
           -- Structured object path: tools must stay empty (llm-simple contract).
           -- Object mode stays on the non-stream generate path (spec §08 §2.2).
@@ -106,13 +105,11 @@ chatWithCatalog dump catalogPath req = do
           pure $ case result of
             Left ger -> Left (mapGenerateError ger.gerError)
             Right (val, usage) ->
-              Right
-                ProviderResult
-                  { prContent = TE.decodeUtf8 (BL.toStrict (Aeson.encode val)),
-                    prToolCalls = [],
-                    prUsage = Just (mapUsage usage),
-                    prFinishReason = FinishStop
-                  }
+              Right $
+                providerResultText
+                  (TE.decodeUtf8 (BL.toStrict (Aeson.encode val)))
+                  (Just (mapUsage usage))
+                  FinishStop
 
 -- | Map llm-simple stream chunks onto engine 'StreamDelta's. Role-commit
 -- signals are internal and dropped; tool calls are complete only.
@@ -151,7 +148,7 @@ requestToTurns req
             mapMaybe
               ( \m -> case m.msgRole of
                   RoleUser -> Just (TurnUser m.msgContent)
-                  RoleAssistant -> Just (TurnAssistant m.msgContent [])
+                  RoleAssistant -> Just (turnAssistantText m.msgContent)
                   RoleSystem -> Nothing
               )
               req.chatMessages
@@ -160,13 +157,38 @@ requestToTurns req
 toLLMTurn :: Turn -> LLM.Turn
 toLLMTurn = \case
   TurnUser t -> LLM.UserTurn t
-  TurnAssistant t calls ->
-    LLM.AssistantTurn t Nothing (map toLLMToolCall calls)
+  TurnAssistant parts ->
+    LLM.AssistantMessage (map toLLMContentPart parts)
   TurnTool results ->
     LLM.ToolTurn
       [ LLM.ToolResult r.trCallId r.trName r.trContent
         | r <- results
       ]
+
+toLLMContentPart :: AssistantPart -> LLM.ContentPart
+toLLMContentPart = \case
+  AssistantText t -> LLM.textPart t
+  AssistantThinking tc ->
+    LLM.thinkingPart
+      ( LLM.ThinkingContent
+          { LLM.thinkingText = tc.thinkingText,
+            LLM.thinkingOpaque = fmap toLLMOpaque tc.thinkingOpaque
+          }
+      )
+  AssistantToolCall tc -> LLM.toolCallPart (toLLMToolCall tc)
+
+fromLLMAssistantPart :: ContentPart -> Maybe AssistantPart
+fromLLMAssistantPart (ContentPart body _) = case body of
+  TextPart t -> Just (AssistantText t)
+  ThinkingPart tc ->
+    Just $
+      AssistantThinking
+        ThinkingContent
+          { thinkingText = tc.thinkingText,
+            thinkingOpaque = fmap fromLLMOpaque tc.thinkingOpaque
+          }
+  ToolCallPart tc -> Just (AssistantToolCall (fromLLMToolCall tc))
+  ImagePart _ -> Nothing
 
 toLLMTool :: ToolSpec -> LLM.ToolDef
 toLLMTool ts =
@@ -179,21 +201,45 @@ toLLMTool ts =
 
 toLLMToolCall :: ToolCall -> LLM.ToolCall
 toLLMToolCall tc =
-  LLM.mkToolCall tc.tcId tc.tcName tc.tcArguments
+  LLM.ToolCall
+    { LLM.tcId = tc.tcId,
+      LLM.tcName = tc.tcName,
+      LLM.tcArguments = tc.tcArguments,
+      LLM.tcProviderMeta = fmap toLLMOpaque tc.tcProviderMeta
+    }
 
 fromLLMToolCall :: LLM.ToolCall -> ToolCall
 fromLLMToolCall tc =
   ToolCall
     { tcId = tc.tcId,
       tcName = tc.tcName,
-      tcArguments = tc.tcArguments
+      tcArguments = tc.tcArguments,
+      tcProviderMeta = fmap fromLLMOpaque tc.tcProviderMeta
+    }
+
+toLLMOpaque :: ProviderOpaque -> LLM.ProviderOpaque
+toLLMOpaque po =
+  LLM.ProviderOpaque
+    { LLM.poProvider = po.poProvider,
+      LLM.poModel = po.poModel,
+      LLM.poPayload = po.poPayload
+    }
+
+fromLLMOpaque :: LLM.ProviderOpaque -> ProviderOpaque
+fromLLMOpaque po =
+  ProviderOpaque
+    { poProvider = po.poProvider,
+      poModel = po.poModel,
+      poPayload = po.poPayload
     }
 
 mapUsage :: LLMUsage.Usage -> TokenUsage
 mapUsage u =
   TokenUsage
     { usageInputTokens = u.usageInputTokens,
-      usageOutputTokens = u.usageOutputTokens
+      usageOutputTokens = u.usageOutputTokens,
+      usageCacheReadTokens = u.usageCacheReadTokens,
+      usageCacheCreationTokens = u.usageCacheCreationTokens
     }
 
 mapGenerateError :: GenerateError -> ProviderError
@@ -216,3 +262,4 @@ mapLLMError = \case
   LLM.EmptyResponse -> OtherProviderError "empty response"
   LLM.ToolLoopExceeded n -> OtherProviderError ("tool loop exceeded: " <> T.pack (show n))
   LLM.Aborted -> Hwfl.TimeoutError "aborted"
+  LLM.UnsupportedCapability msg -> InvalidRequestError msg

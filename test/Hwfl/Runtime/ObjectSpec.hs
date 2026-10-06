@@ -9,9 +9,11 @@ import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
 import Hwfl.Llm.Provider (LlmProvider)
 import Hwfl.Llm.Types
-  ( FinishReason (..),
+  (
+    FinishReason (..),
     ProviderResult (..),
-    TokenUsage (..),
+    mkTokenUsage,
+    providerResultText,
   )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
@@ -218,32 +220,14 @@ spec = describe "runtime llm.object (E14)" $ do
 invalidObjectMock :: LlmProvider
 invalidObjectMock =
   mockProviderWith $ \_ ->
-    Right
-      ProviderResult
-        { prContent = "{\"summary\":\"scored\",\"score\":\"high\"}",
-          prToolCalls = [],
-          prUsage = Just (TokenUsage 1 1),
-          prFinishReason = FinishStop
-        }
+    Right (providerResultText ("{\"summary\":\"scored\",\"score\":\"high\"}") (Just (mkTokenUsage 1 1)) FinishStop)
 
 optionAbsentMock :: LlmProvider
 optionAbsentMock =
   mockProviderWith $ \_ ->
-    Right
-      ProviderResult
-        { prContent = "{\"name\":\"Ada\"}",
-          prToolCalls = [],
-          prUsage = Just (TokenUsage 1 1),
-          prFinishReason = FinishStop
-        }
+    Right (providerResultText ("{\"name\":\"Ada\"}") (Just (mkTokenUsage 1 1)) FinishStop)
 
 optionSomeMock :: LlmProvider
 optionSomeMock =
   mockProviderWith $ \_ ->
-    Right
-      ProviderResult
-        { prContent = "{\"name\":\"Ada\",\"nickname\":\"Addy\"}",
-          prToolCalls = [],
-          prUsage = Just (TokenUsage 1 1),
-          prFinishReason = FinishStop
-        }
+    Right (providerResultText ("{\"name\":\"Ada\",\"nickname\":\"Addy\"}") (Just (mkTokenUsage 1 1)) FinishStop)

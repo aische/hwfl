@@ -15,12 +15,15 @@ import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
-    ProviderResult (..),
-    TokenUsage (..),
     ToolCall (..),
     Turn (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    mkToolCall,
+    providerResultTextTools,
   )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Project (LoadedProject (..), ProjectConfig (..), loadProject)
@@ -59,26 +62,17 @@ codingSessionMock = mockProviderWith reply
     planReply n = case n of
       0 ->
         needTools
-          [ ToolCall
-              "p0"
-              "skill_discover"
-              ( object
+          [ mkToolCall "p0" "skill_discover" ( object
                   [ "query" .= ("python" :: Text),
                     "kinds" .= (["instruction"] :: [Text]),
                     "limit" .= (5 :: Int)
                   ]
               ),
-            ToolCall
-              "p1"
-              "skill_load"
-              (object ["id" .= ("skills/python-pytest" :: Text)])
+            mkToolCall "p1" "skill_load" (object ["id" .= ("skills/python-pytest" :: Text)])
           ]
       _ ->
         submit
-          [ ToolCall
-              "p2"
-              "submit"
-              ( object
+          [ mkToolCall "p2" "submit" ( object
                   [ "stack" .= ("python" :: Text),
                     "summary" .= ("One-task python add helper" :: Text),
                     "tasks"
@@ -98,27 +92,18 @@ codingSessionMock = mockProviderWith reply
     doReply n sys = case n of
       0 ->
         needTools
-          [ ToolCall
-              "d0"
-              "skill_discover"
-              ( object
+          [ mkToolCall "d0" "skill_discover" ( object
                   [ "query" .= ("python" :: Text),
                     "kinds" .= (["instruction"] :: [Text]),
                     "limit" .= (3 :: Int)
                   ]
               ),
-            ToolCall
-              "d1"
-              "skill_load"
-              (object ["id" .= ("skills/python-pytest" :: Text)])
+            mkToolCall "d1" "skill_load" (object ["id" .= ("skills/python-pytest" :: Text)])
           ]
       1
         | T.isInfixOf "Loaded skill: skills/python-pytest" sys ->
             needTools
-              [ ToolCall
-                  "d2"
-                  "fs_write"
-                  ( object
+              [ mkToolCall "d2" "fs_write" ( object
                       [ "path" .= ("add.py" :: Text),
                         "text" .= ("def add(a, b):\n    return a + b\n" :: Text)
                       ]
@@ -126,10 +111,7 @@ codingSessionMock = mockProviderWith reply
               ]
         | otherwise ->
             needTools
-              [ ToolCall
-                  "d2"
-                  "fs_write"
-                  ( object
+              [ mkToolCall "d2" "fs_write" ( object
                       [ "path" .= ("add.py" :: Text),
                         "text" .= ("def add(a, b):\n    return a + b\n" :: Text)
                       ]
@@ -137,10 +119,7 @@ codingSessionMock = mockProviderWith reply
               ]
       _ ->
         submit
-          [ ToolCall
-              "d3"
-              "submit"
-              ( object
+          [ mkToolCall "d3" "submit" ( object
                   [ "summary" .= ("Wrote add.py" :: Text),
                     "files_written" .= (["add.py"] :: [Text])
                   ]
@@ -148,20 +127,10 @@ codingSessionMock = mockProviderWith reply
           ]
 
     needTools calls =
-      ProviderResult
-        { prContent = "working",
-          prToolCalls = calls,
-          prUsage = Just (TokenUsage 1 1),
-          prFinishReason = FinishToolCalls
-        }
+      providerResultTextTools ("working") calls (Just (mkTokenUsage 1 1)) FinishToolCalls
 
     submit calls =
-      ProviderResult
-        { prContent = "done",
-          prToolCalls = calls,
-          prUsage = Just (TokenUsage 1 1),
-          prFinishReason = FinishToolCalls
-        }
+      providerResultTextTools ("done") calls (Just (mkTokenUsage 1 1)) FinishToolCalls
 
     isToolTurn = \case
       TurnTool _ -> True

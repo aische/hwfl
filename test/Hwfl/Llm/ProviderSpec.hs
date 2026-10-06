@@ -8,14 +8,17 @@ import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Simple (requestToTurns)
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
     Message (..),
-    ProviderResult (..),
     Role (..),
     StreamDelta (..),
     Turn (..),
+    ProviderResult (..),
     emptyChatRequest,
+    providerResultText,
+    turnAssistantText,
   )
 import Test.Hspec
 
@@ -37,7 +40,7 @@ spec = describe "LlmProvider" $ do
       sys `shouldBe` Just "base\n\nextra\n\ntail"
       turns
         `shouldBe` [ TurnUser "u1",
-                     TurnAssistant "a1" []
+                     turnAssistantText "a1"
                    ]
 
     it "does not duplicate Host-prepended chatSystem" $ do
@@ -99,26 +102,14 @@ spec = describe "LlmProvider" $ do
   it "custom mock is selectable without workflow changes" $ do
     let alt =
           mockProviderWith $ \_ ->
-            Right
-              ProviderResult
-                { prContent = "alt",
-                  prToolCalls = [],
-                  prUsage = Nothing,
-                  prFinishReason = FinishStop
-                }
+            Right (providerResultText ("alt") Nothing FinishStop)
     result <-
       alt.llmChat
         (emptyChatRequest "m")
           { chatMessages = [Message RoleUser "x"]
           }
     result
-      `shouldBe` Right
-        ProviderResult
-          { prContent = "alt",
-            prToolCalls = [],
-            prUsage = Nothing,
-            prFinishReason = FinishStop
-          }
+      `shouldBe` Right (providerResultText ("alt") Nothing FinishStop)
 
   it "mock fills chatResponseFormat schema with JSON object" $ do
     let schema =

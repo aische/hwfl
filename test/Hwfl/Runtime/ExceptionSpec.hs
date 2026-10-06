@@ -13,7 +13,9 @@ import Hwfl.Eval.Value (Value (..))
 import Hwfl.Exception (trySync)
 import Hwfl.Llm.Mock (mockProviderWith)
 import Hwfl.Llm.Provider (LlmProvider (..))
-import Hwfl.Llm.Types (ProviderError (..))
+import Hwfl.Llm.Types (
+    ProviderError (..),
+  )
 import Hwfl.Obs.Observer (ObsEvent (..), Observer, SpanOpenInfo (..), noopObserver)
 import Hwfl.Obs.Span (SpanRecord (..), SpanStatus (..))
 import Hwfl.Parse.Load (loadModuleText)

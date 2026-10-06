@@ -23,7 +23,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Expr (Expr, Param)
 import Hwfl.Ast.Name (Ident (..), QName (..), TypeName (..), qnameToText)
-import Hwfl.Llm.Types (Turn)
+import Hwfl.Llm.Types (
+    Turn,
+  )
 
 -- | Environment: identifier → value.
 type Env = Map Ident Value

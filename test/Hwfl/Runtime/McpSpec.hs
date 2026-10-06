@@ -17,14 +17,18 @@ import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
-    ProviderResult (..),
-    TokenUsage (..),
     ToolCall (..),
     ToolResult (..),
     ToolSpec (..),
     Turn (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    mkToolCall,
+    providerResultText,
+    providerResultTextTools,
   )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
@@ -413,13 +417,7 @@ mcpAgentMock = mockProviderWith mcpAgentMockReply
 mcpAgentMockReply :: ChatRequest -> Either a ProviderResult
 mcpAgentMockReply req
   | any isToolTurn req.chatTurns =
-      Right
-        ProviderResult
-          { prContent = toolResultContent req,
-            prToolCalls = [],
-            prUsage = Just (TokenUsage 1 1),
-            prFinishReason = FinishStop
-          }
+      Right (providerResultText (toolResultContent req) (Just (mkTokenUsage 1 1)) FinishStop)
   | otherwise =
       case advertisedAddProps req of
         props
@@ -428,13 +426,7 @@ mcpAgentMockReply req
           | not (KM.member "b" props) ->
               error "mcp.tools schema is missing the unbound field 'b'"
           | otherwise ->
-              Right
-                ProviderResult
-                  { prContent = "calling add",
-                    prToolCalls = [ToolCall "c1" "echo__add" (object ["b" .= (5 :: Int)])],
-                    prUsage = Just (TokenUsage 1 1),
-                    prFinishReason = FinishToolCalls
-                  }
+              Right (providerResultTextTools ("calling add") ([mkToolCall "c1" "echo__add" (object ["b" .= (5 :: Int)])]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
   where
     isToolTurn = \case
       TurnTool _ -> True

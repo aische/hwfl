@@ -20,7 +20,9 @@ import Data.Text qualified as T
 import Data.Vector qualified as V
 import Hwfl.Ast.Name (Ident (..))
 import Hwfl.Eval.Value (HostOpId (..), ToolSpecValue (..), Value (..), hostOpName)
-import Hwfl.Llm.Types (ToolCall (..))
+import Hwfl.Llm.Types (
+    ToolCall (..),
+  )
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isAlphaNum, isAsciiLower, isAsciiUpper, isDigit, isHexDigit, isSpace)
 import Data.Text.Encoding qualified as TE

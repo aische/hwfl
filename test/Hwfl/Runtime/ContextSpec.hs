@@ -10,14 +10,20 @@ import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    AssistantPart (..),
+    ChatRequest (..),
     FinishReason (..),
-    ProviderResult (..),
-    TokenUsage (..),
     ToolCall (..),
     ToolResult (..),
     ToolSpec (..),
     Turn (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    mkToolCall,
+    providerResultText,
+    providerResultTextTools,
+    turnAssistantText,
   )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
@@ -89,12 +95,12 @@ l1Spec = do
       let big = T.replicate 100 "x"
           hist =
             [ TurnUser "q",
-              TurnAssistant "a" [],
+              turnAssistantText "a",
               TurnTool [ToolResult "c1" "fs_read" big]
             ]
           wired = wireTurns Nothing (Just 10) hist
       case wired of
-        [TurnUser "q", TurnAssistant "a" [], TurnTool [r]] -> do
+        [TurnUser "q", TurnAssistant [AssistantText "a"], TurnTool [r]] -> do
           T.length r.trContent `shouldSatisfy` (< T.length big)
           T.unpack r.trContent `shouldContain` "truncated"
         other -> expectationFailure ("unexpected wire turns: " <> show other)
@@ -335,11 +341,11 @@ l2Spec = do
 sampleConversation :: [Turn]
 sampleConversation =
   [ TurnUser "first question",
-    TurnAssistant "first answer" [],
+    turnAssistantText "first answer",
     TurnUser "second question",
-    TurnAssistant "second answer" [],
+    turnAssistantText "second answer",
     TurnUser "third question",
-    TurnAssistant "third answer" []
+    turnAssistantText "third answer"
   ]
 
 userText :: Turn -> String
@@ -467,13 +473,7 @@ recordingMock ref =
     { llmChat = \req -> do
         modifyIORef' ref (req :)
         pure $
-          Right
-            ProviderResult
-              { prContent = "ok",
-                prToolCalls = [],
-                prUsage = Just (TokenUsage 1 1),
-                prFinishReason = FinishStop
-              },
+          Right (providerResultText ("ok") (Just (mkTokenUsage 1 1)) FinishStop),
       llmProviderName = "mock-record"
     }
 
@@ -492,36 +492,14 @@ getHistoryMock =
                          ] of
                       (c : _) -> c
                       [] -> "missing"
-               in Right
-                    ProviderResult
-                      { prContent = hidden,
-                        prToolCalls = [],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishStop
-                      }
+               in Right (providerResultText hidden (Just (mkTokenUsage 1 1)) FinishStop)
             else
               if historyToolName `elem` map (.tsName) req.chatTools
                 then
-                  Right
-                    ProviderResult
-                      { prContent = "need history",
-                        prToolCalls =
-                          [ ToolCall
-                              "h1"
-                              historyToolName
-                              (object ["chunk" .= (1 :: Int)])
-                          ],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishToolCalls
-                      }
+                  Right (providerResultTextTools ("need history") ([ mkToolCall "h1" historyToolName (object ["chunk" .= (1 :: Int)])
+                          ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
                 else
-                  Right
-                    ProviderResult
-                      { prContent = "ok",
-                        prToolCalls = [],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishStop
-                      },
+                  Right (providerResultText ("ok") (Just (mkTokenUsage 1 1)) FinishStop),
       llmProviderName = "mock-get-history"
     }
 
@@ -537,40 +515,18 @@ pinThenFinishMock =
                     case [t | TurnUser t <- req.chatTurns, "## Pins" `T.isInfixOf` t] of
                       (t : _) -> t
                       [] -> "missing pins"
-               in Right
-                    ProviderResult
-                      { prContent = prefix,
-                        prToolCalls = [],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishStop
-                      }
+               in Right (providerResultText prefix (Just (mkTokenUsage 1 1)) FinishStop)
             else
               if pinToolName `elem` map (.tsName) req.chatTools
                 then
-                  Right
-                    ProviderResult
-                      { prContent = "pinning",
-                        prToolCalls =
-                          [ ToolCall
-                              "p1"
-                              pinToolName
-                              ( object
+                  Right (providerResultTextTools ("pinning") ([ mkToolCall "p1" pinToolName ( object
                                   [ "kind" .= ("path" :: Text),
                                     "text" .= ("src/secret.hs" :: Text)
                                   ]
                               )
-                          ],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishToolCalls
-                      }
+                          ]) (Just (mkTokenUsage 1 1)) FinishToolCalls)
                 else
-                  Right
-                    ProviderResult
-                      { prContent = "ok",
-                        prToolCalls = [],
-                        prUsage = Just (TokenUsage 1 1),
-                        prFinishReason = FinishStop
-                      },
+                  Right (providerResultText ("ok") (Just (mkTokenUsage 1 1)) FinishStop),
       llmProviderName = "mock-pin"
     }
 

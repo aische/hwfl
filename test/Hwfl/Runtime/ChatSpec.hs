@@ -7,7 +7,13 @@ import Hwfl.Check.Module (checkLoadedModule)
 import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
 import Hwfl.Llm.Provider (LlmProvider (..))
-import Hwfl.Llm.Types (ChatRequest (..), FinishReason (..), ProviderResult (..), TokenUsage (..))
+import Hwfl.Llm.Types (
+    ChatRequest (..),
+    FinishReason (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    providerResultText,
+  )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
 import Hwfl.Runtime.Eval (StepMode (..))
@@ -251,13 +257,7 @@ spec =
                 agentChatMock :: LlmProvider
                 agentChatMock =
                   mockProviderWith $ \req ->
-                    Right
-                      ProviderResult
-                        { prContent = "SUMMARY: ok " <> T.pack (show (length req.chatTurns)),
-                          prToolCalls = [],
-                          prUsage = Just (TokenUsage 1 1),
-                          prFinishReason = FinishStop
-                        }
+                    Right (providerResultText ("SUMMARY: ok " <> T.pack (show (length req.chatTurns))) (Just (mkTokenUsage 1 1)) FinishStop)
             writeFile path (T.unpack src)
             case loadModuleText path src of
               Left diags -> expectationFailure (show diags)

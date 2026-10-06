@@ -15,12 +15,15 @@ import Hwfl.Eval.Value (Value (..))
 import Hwfl.Llm.Mock (mockProviderWith)
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
-  ( ChatRequest (..),
+  (
+    ChatRequest (..),
     FinishReason (..),
-    ProviderResult (..),
-    TokenUsage (..),
     ToolCall (..),
     Turn (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    mkToolCall,
+    providerResultTextTools,
   )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModule)
@@ -55,43 +58,31 @@ codingAgentMock = mockProviderWith reply
        in Right $ case n of
             0 ->
               needTools
-                [ ToolCall
-                    "c0"
-                    "skill_discover"
-                    ( object
+                [ mkToolCall "c0" "skill_discover" ( object
                         [ "query" .= ("python" :: Text),
                           "kinds" .= (["instruction"] :: [Text]),
                           "limit" .= (5 :: Int)
                         ]
                     ),
-                  ToolCall
-                    "c1"
-                    "skill_load"
-                    (object ["id" .= ("skills/python-pytest" :: Text)])
+                  mkToolCall "c1" "skill_load" (object ["id" .= ("skills/python-pytest" :: Text)])
                 ]
             1
               | hasPythonSkill ->
                   needTools
-                    [ ToolCall "c2" "fs_list" (object ["path" .= ("." :: Text)])
+                    [ mkToolCall "c2" "fs_list" (object ["path" .= ("." :: Text)])
                     ]
               | otherwise ->
                   needTools
-                    [ ToolCall "c2" "fs_list" (object ["path" .= ("." :: Text)])
+                    [ mkToolCall "c2" "fs_list" (object ["path" .= ("." :: Text)])
                     ]
             2 ->
               needTools
-                [ ToolCall
-                    "c3"
-                    "fs_write"
-                    ( object
+                [ mkToolCall "c3" "fs_write" ( object
                         [ "path" .= ("add.py" :: Text),
                           "text" .= ("def add(a, b):\n    return a + b\n" :: Text)
                         ]
                     ),
-                  ToolCall
-                    "c4"
-                    "fs_write"
-                    ( object
+                  mkToolCall "c4" "fs_write" ( object
                         [ "path" .= ("test_add.py" :: Text),
                           "text"
                             .= ( "from add import add\n\ndef test_add():\n    assert add(2, 3) == 5\n"
@@ -102,10 +93,7 @@ codingAgentMock = mockProviderWith reply
                 ]
             3 ->
               needTools
-                [ ToolCall
-                    "c5"
-                    "exec_run"
-                    ( object
+                [ mkToolCall "c5" "exec_run" ( object
                         [ "program" .= ("python3" :: Text),
                           "args" .= (["-c", "from add import add; assert add(2,3)==5"] :: [Text]),
                           "stdin" .= ("" :: Text)
@@ -113,13 +101,7 @@ codingAgentMock = mockProviderWith reply
                     )
                 ]
             _ ->
-              ProviderResult
-                { prContent = "done",
-                  prToolCalls =
-                    [ ToolCall
-                        "c6"
-                        "submit"
-                        ( object
+              providerResultTextTools ("done") ([ mkToolCall "c6" "submit" ( object
                             [ "summary" .= ("Created add.py and test_add.py" :: Text),
                               "ok" .= True,
                               "stack" .= ("python" :: Text),
@@ -127,18 +109,10 @@ codingAgentMock = mockProviderWith reply
                               "verify_exit" .= (0 :: Int)
                             ]
                         )
-                    ],
-                  prUsage = Just (TokenUsage 1 1),
-                  prFinishReason = FinishToolCalls
-                }
+                    ]) (Just (mkTokenUsage 1 1)) FinishToolCalls
 
     needTools calls =
-      ProviderResult
-        { prContent = "working",
-          prToolCalls = calls,
-          prUsage = Just (TokenUsage 1 1),
-          prFinishReason = FinishToolCalls
-        }
+      providerResultTextTools ("working") calls (Just (mkTokenUsage 1 1)) FinishToolCalls
 
     isToolTurn = \case
       TurnTool _ -> True

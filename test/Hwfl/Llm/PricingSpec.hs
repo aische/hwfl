@@ -11,7 +11,12 @@ import Hwfl.Llm.Pricing
     loadModelPricing,
     providerCloseAttrs,
   )
-import Hwfl.Llm.Types (FinishReason (..), ProviderResult (..), TokenUsage (..))
+import Hwfl.Llm.Types (
+    FinishReason (..),
+    ProviderResult (..),
+    mkTokenUsage,
+    providerResultText,
+  )
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -35,12 +40,7 @@ spec = describe "LLM pricing" $ do
           ]
       pricing <- loadPricing path
       let pr =
-            ProviderResult
-              { prContent = "x",
-                prToolCalls = [],
-                prUsage = Just (TokenUsage 1_000_000 500_000),
-                prFinishReason = FinishStop
-              }
+            providerResultText ("x") (Just (mkTokenUsage 1_000_000 500_000)) FinishStop
           attrs = providerCloseAttrs pricing "demo" pr
       LBS8.unpack (encode attrs) `shouldContain` "cost_micros"
       LBS8.unpack (encode attrs) `shouldContain` "cost_usd"
@@ -66,12 +66,7 @@ spec = describe "LLM pricing" $ do
           ]
       pricing <- loadPricing path
       let pr =
-            ProviderResult
-              { prContent = "hi",
-                prToolCalls = [],
-                prUsage = Just (TokenUsage 0 1_000_000),
-                prFinishReason = FinishStop
-              }
+            providerResultText ("hi") (Just (mkTokenUsage 0 1_000_000)) FinishStop
           attrs = providerCloseAttrs pricing "gpt-5" pr
       LBS8.unpack (encode attrs) `shouldContain` "cost_usd"
       attrsCostMicros attrs `shouldBe` Just 1_000_000
@@ -96,12 +91,7 @@ spec = describe "LLM pricing" $ do
           toutPer = 186
           rounds = 14 :: Int
           mkPr =
-            ProviderResult
-              { prContent = "ok",
-                prToolCalls = [],
-                prUsage = Just (TokenUsage tinPer toutPer),
-                prFinishReason = FinishStop
-              }
+            providerResultText ("ok") (Just (mkTokenUsage tinPer toutPer)) FinishStop
           closes = replicate rounds (providerCloseAttrs pricing "deepseek4flash" mkPr)
           perMicros = fromMaybe 0 (attrsCostMicros (head closes))
           totalMicros = sum (mapMaybe attrsCostMicros closes)

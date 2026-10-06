@@ -31,7 +31,11 @@ import Data.Text (Text)
 import Hwfl.Ast.Expr (Arg, Expr, Field, MatchArm, Param, StringPart)
 import Hwfl.Ast.Name (Ident, QName, TypeName)
 import Hwfl.Eval.Value (Env, HostOpId, ToolSpecValue, Value (..))
-import Hwfl.Llm.Types (ToolCall, ToolResult, Turn)
+import Hwfl.Llm.Types (
+    ToolCall,
+    ToolResult,
+    Turn,
+  )
 import Hwfl.Runtime.Context (ConsolidateMode (..), Pin)
 import Hwfl.Runtime.Error (RuntimeError)
 

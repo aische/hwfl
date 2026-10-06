@@ -56,21 +56,17 @@ defaultReply req =
   let prompt = lastUserText req
    in case req.chatResponseFormat of
         Just schema ->
-          Right
-            ProviderResult
-              { prContent = encodeJson (fillSchema prompt schema),
-                prToolCalls = [],
-                prUsage = Just (TokenUsage 1 1),
-                prFinishReason = FinishStop
-              }
+          Right $
+            providerResultText
+              (encodeJson (fillSchema prompt schema))
+              (Just (mkTokenUsage 1 1))
+              FinishStop
         Nothing ->
-          Right
-            ProviderResult
-              { prContent = "SUMMARY: " <> T.take 200 prompt,
-                prToolCalls = [],
-                prUsage = Just (TokenUsage 1 1),
-                prFinishReason = FinishStop
-              }
+          Right $
+            providerResultText
+              ("SUMMARY: " <> T.take 200 prompt)
+              (Just (mkTokenUsage 1 1))
+              FinishStop
 
 encodeJson :: Value -> Text
 encodeJson = TE.decodeUtf8 . BL.toStrict . encode
