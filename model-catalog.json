@@ -20,14 +20,19 @@
         "modelName": "deepseek-v4-flash",
         "pricing": {
             "pricePerMillionInput": 0.14,
-            "pricePerMillionOutput": 0.28
+            "pricePerMillionOutput": 0.28,
+            "pricePerMillionCacheRead": 0.0028
         },
         "maxTokens": 10000,
         "temperature": 0.5,
         "requestTimeout": 300000,
         "throttleDelay": 3000,
         "retryCount": 3,
-        "jitterBackoff": 1000
+        "jitterBackoff": 1000,
+        "capabilities": {
+            "thinking": true,
+            "promptCaching": true
+        }
     },
     {
         "modelConfigName": "haiku_4_5",
@@ -35,13 +40,19 @@
         "modelName": "claude-haiku-4-5-20251001",
         "pricing": {
             "pricePerMillionInput": 1,
-            "pricePerMillionOutput": 5
+            "pricePerMillionOutput": 5,
+            "pricePerMillionCacheRead": 0.1,
+            "pricePerMillionCacheWrite": 1.25
         },
         "maxTokens": 1024,
-        "temperature": 0.5,
         "requestTimeout": 30000,
         "throttleDelay": 5000,
         "retryCount": 3,
-        "jitterBackoff": 5000
+        "jitterBackoff": 5000,
+        "capabilities": {
+            "thinking": true,
+            "vision": true,
+            "promptCaching": true
+        }
     }
 ]

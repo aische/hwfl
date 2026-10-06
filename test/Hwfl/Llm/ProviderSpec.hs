@@ -2,17 +2,20 @@ module Hwfl.Llm.ProviderSpec (spec) where
 
 import Data.Aeson (object, (.=))
 import Data.IORef (modifyIORef', newIORef, readIORef)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Llm.Mock (mockProvider, mockProviderWith)
+import Hwfl.Llm.Pricing (ModelPricing (..), ModelRates (..), loadModelPricing)
 import Hwfl.Llm.Provider (LlmProvider (..))
-import Hwfl.Llm.Simple (requestToTurns)
+import Hwfl.Llm.Simple (mkSimpleProviderWithCatalog, requestToTurns)
 import Hwfl.Llm.Types
   (
     AssistantPart (..),
     ChatRequest (..),
     FinishReason (..),
     Message (..),
+    ProviderError (..),
     Role (..),
     StreamDelta (..),
     ThinkingContent (..),
@@ -26,6 +29,7 @@ import Hwfl.Llm.Types
     providerResultText,
     turnAssistantText,
   )
+import System.FilePath ((</>))
 import Test.Hspec
 
 spec :: Spec
@@ -194,3 +198,81 @@ spec = describe "LlmProvider" $ do
     _ <- mockProvider.llmChat req
     n <- readIORef ref
     n `shouldBe` 0
+
+  describe "catalog capabilities" $ do
+    it "loads legacy catalogs without capabilities" $ do
+      pricingE <- loadModelPricing (catalogFixture "legacy-no-capabilities.json")
+      case pricingE of
+        Left err -> expectationFailure (T.unpack err)
+        Right (ModelPricing rates) -> do
+          Map.lookup "mistral" rates
+            `shouldBe` Just
+              ( ModelRates
+                  { mrInputPerM = 0.0,
+                    mrOutputPerM = 0.0,
+                    mrCacheReadPerM = Nothing,
+                    mrCacheWritePerM = Nothing
+                  }
+              )
+      -- Simple adapter resolves the model via llm-simple; missing capabilities
+      -- default to false and must not fail catalog load.
+      let provider = mkSimpleProviderWithCatalog False (catalogFixture "legacy-no-capabilities.json")
+          req =
+            (emptyChatRequest "mistral")
+              { chatMessages = [Message RoleUser "ping"]
+              }
+      result <- provider.llmChat req
+      case result of
+        Left (InvalidRequestError msg)
+          | "does not support" `T.isInfixOf` msg ->
+              expectationFailure $
+                "legacy catalog must load without capability validation failure: "
+                  <> T.unpack msg
+        Left (OtherProviderError msg)
+          | "Model not found" `T.isInfixOf` msg
+              || "invalid model catalog" `T.isInfixOf` T.toLower msg ->
+              expectationFailure (T.unpack msg)
+        _ -> pure ()
+
+    it "maps unsupported thinking capability to InvalidRequestError" $ do
+      let provider =
+            mkSimpleProviderWithCatalog False (catalogFixture "thinking-without-capability.json")
+          req =
+            (emptyChatRequest "think_no_cap")
+              { chatMessages = [Message RoleUser "ping"]
+              }
+      result <- provider.llmChat req
+      case result of
+        Left (InvalidRequestError msg) -> do
+          msg `shouldSatisfy` T.isInfixOf "does not support thinking"
+          msg `shouldSatisfy` T.isInfixOf "mistral:latest"
+        other ->
+          expectationFailure $
+            "expected InvalidRequestError for unsupported thinking, got: " <> show other
+
+    it "parses checked-in catalog cache rates and capabilities-side pricing" $ do
+      pricingE <- loadModelPricing "model-catalog.json"
+      case pricingE of
+        Left err -> expectationFailure (T.unpack err)
+        Right (ModelPricing rates) -> do
+          Map.lookup "haiku_4_5" rates
+            `shouldBe` Just
+              ( ModelRates
+                  { mrInputPerM = 1.0,
+                    mrOutputPerM = 5.0,
+                    mrCacheReadPerM = Just 0.1,
+                    mrCacheWritePerM = Just 1.25
+                  }
+              )
+          Map.lookup "deepseek4flash" rates
+            `shouldBe` Just
+              ( ModelRates
+                  { mrInputPerM = 0.14,
+                    mrOutputPerM = 0.28,
+                    mrCacheReadPerM = Just 0.0028,
+                    mrCacheWritePerM = Nothing
+                  }
+              )
+
+catalogFixture :: FilePath -> FilePath
+catalogFixture name = "test" </> "fixtures" </> "catalogs" </> name

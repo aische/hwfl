@@ -1,0 +1,18 @@
+[
+    {
+        "modelConfigName": "think_no_cap",
+        "providerName": "ollama",
+        "modelName": "mistral:latest",
+        "pricing": {
+            "pricePerMillionInput": 0.0,
+            "pricePerMillionOutput": 0.0
+        },
+        "maxTokens": 1024,
+        "temperature": 0.5,
+        "thinking": "high",
+        "requestTimeout": 3000,
+        "throttleDelay": 0,
+        "retryCount": 0,
+        "jitterBackoff": 0
+    }
+]

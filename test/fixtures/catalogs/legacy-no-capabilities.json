@@ -1,0 +1,17 @@
+[
+    {
+        "modelConfigName": "mistral",
+        "providerName": "ollama",
+        "modelName": "mistral:latest",
+        "pricing": {
+            "pricePerMillionInput": 0.0,
+            "pricePerMillionOutput": 0.0
+        },
+        "maxTokens": 1024,
+        "temperature": 0.5,
+        "requestTimeout": 3000,
+        "throttleDelay": 1000,
+        "retryCount": 1,
+        "jitterBackoff": 100
+    }
+]
