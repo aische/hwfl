@@ -11,12 +11,12 @@ content, opaque replay state, cache usage/pricing. Working title
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
-- **llm-simple 0.2 Phase 1–6** — ordered `AssistantPart` / opaque
+- **llm-simple 0.2 Phase 1–7** — ordered `AssistantPart` / opaque
   thinking; Simple adapter; runtime stores exact `prParts`; snapshot
   codec writes canonical `parts` (legacy `text`/`calls` still decode);
-  author-facing `turnToPublicJson` omits opaque / `provider_meta`;
-  cache-aware `ModelRates` + span attrs (`token_cache_*`); catalog
-  `capabilities` + Haiku/DeepSeek cache prices (Claude temp removed)
+  cache-aware pricing + catalog `capabilities`; Phase 7 ordered-replay
+  tests (PartBody conversion, opaque round-trip, streaming vs final
+  parts, agent replay, legacy→canonical rewrite, offline fixture gateway)
 - **CI** — GitHub Actions `cabal test` on GHC 9.6 / Ubuntu; mock LLM
   only. macOS runner deferred
 - **User manual** — author book under `manual/`
@@ -25,7 +25,7 @@ Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 None.
 
 ## Next up
-1. llm-simple 0.2 Phases 7–8 — ordered-replay tests, docs
+1. llm-simple 0.2 Phase 8 — docs + dependency cleanup
 2. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
 3. Prefer MCP / stdlib for domain tools (git, terminals, …)
 

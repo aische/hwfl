@@ -5,6 +5,7 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.Aeson.Types (parseEither)
 import Data.Either (isLeft)
 import Data.Text (Text)
+import Data.Vector qualified as Vec
 import Hwfl.Eval.Value qualified as V
 import Hwfl.Json.Encode (valueToAeson)
 import Hwfl.Llm.Types
@@ -257,3 +258,85 @@ spec = describe "turn JSON migration (phase 4)" $ do
           KM.member "text" km `shouldBe` False
           KM.member "calls" km `shouldBe` False
         other -> expectationFailure ("expected object, got " <> show other)
+
+    it "resumes legacy assistant history and rewrites it in the new parts format" $ do
+      loaded <- loadTurn (fixture "old-text-plus-tools.json")
+      let expected =
+            turnAssistantTextTools
+              "I will read the file"
+              [mkToolCall "call_1" "fs_read" (object ["path" .= ("note.txt" :: Text)])]
+      loaded `shouldBe` Right expected
+      let ag =
+            initAgentState
+              "sys"
+              "prompt"
+              []
+              "model"
+              4
+              "span"
+              Nothing
+              [expected]
+              Nothing
+              Nothing
+              ConsolidateOff
+              32
+              2000
+          machine =
+            (initialMachine "project" (CurAgent ag))
+              { mStatus = MsPaused PauseExplicit
+              }
+          -- Simulate an on-disk snapshot that still uses the legacy
+          -- assistant JSON shape inside agent history.
+          legacyHistoryJson =
+            [ object
+                [ "tag" .= ("assistant" :: Text),
+                  "text" .= ("I will read the file" :: Text),
+                  "calls"
+                    .= [ object
+                           [ "id" .= ("call_1" :: Text),
+                             "name" .= ("fs_read" :: Text),
+                             "arguments" .= object ["path" .= ("note.txt" :: Text)]
+                           ]
+                       ]
+                ],
+              object ["tag" .= ("user" :: Text), "text" .= ("prompt" :: Text)]
+            ]
+      case machineToJson machine of
+        Object mkm ->
+          case KM.lookup "current" mkm of
+            Just (Object ckm) ->
+              case KM.lookup "agent" ckm of
+                Just (Object akm) -> do
+                  let patchedAgent = Object (KM.insert "history" (Array (Vec.fromList legacyHistoryJson)) akm)
+                      patchedCurrent = Object (KM.insert "agent" patchedAgent ckm)
+                      patchedMachine = Object (KM.insert "current" patchedCurrent mkm)
+                  case machineFromJson patchedMachine of
+                    Left err -> expectationFailure err
+                    Right machine' -> do
+                      case machine'.mCurrent of
+                        CurAgent ag' ->
+                          ag'.agHistory `shouldBe` [expected, TurnUser "prompt"]
+                        other -> expectationFailure ("expected CurAgent, got " <> show other)
+                      case machineToJson machine' of
+                        Object mkm' ->
+                          case KM.lookup "current" mkm' of
+                            Just (Object ckm') ->
+                              case KM.lookup "agent" ckm' of
+                                Just (Object akm') ->
+                                  case KM.lookup "history" akm' of
+                                    Just (Array hist) -> do
+                                      length hist `shouldBe` 2
+                                      case hist Vec.! 0 of
+                                        Object turnKm -> do
+                                          KM.member "parts" turnKm `shouldBe` True
+                                          KM.member "text" turnKm `shouldBe` False
+                                          KM.member "calls" turnKm `shouldBe` False
+                                        other ->
+                                          expectationFailure ("expected assistant object, got " <> show other)
+                                    other -> expectationFailure ("expected history array, got " <> show other)
+                                _ -> expectationFailure "expected agent object after rewrite"
+                            _ -> expectationFailure "expected current object after rewrite"
+                        _ -> expectationFailure "expected machine object after rewrite"
+                _ -> expectationFailure "expected agent object"
+            _ -> expectationFailure "expected current object"
+        _ -> expectationFailure "expected machine object"

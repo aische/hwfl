@@ -4,6 +4,7 @@ import Data.Aeson (object, (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.KeyMap qualified as KM
 import Data.Either (isLeft, isRight)
+import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hwfl.Ast.Name (Ident (..))
@@ -14,9 +15,11 @@ import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Obs.Span (SpanRecord (..), SpanStatus (..))
 import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Types
-  (
+  ( AssistantPart (..),
     ChatRequest (..),
     FinishReason (..),
+    ProviderOpaque (..),
+    ThinkingContent (..),
     ToolCall (..),
     Turn (..),
     ProviderResult (..),
@@ -24,6 +27,7 @@ import Hwfl.Llm.Types
     mkToolCall,
     providerResultText,
     providerResultTextTools,
+    mkProviderResult,
   )
 import Hwfl.Obs.Show (ShowMode (..), ShowOptions (..), showRun)
 import Hwfl.Parse.Load (loadModuleText)
@@ -872,3 +876,101 @@ spec = describe "runtime agent (M7)" $ do
                 let attrs = map (.srAttrs) roundCloses
                 any (T.isInfixOf "finish_reason" . T.pack . show) attrs `shouldBe` True
               other -> expectationFailure (show other)
+
+  it "tool round sends exact prior assistant parts back to the provider" $
+    withSystemTempDirectory "hwfl-agent-ordered-replay" $ \dir -> do
+      writeFile (dir </> "note.txt") "opaque replay"
+      let path = dir </> "agent.md"
+          orderedParts =
+            [ AssistantThinking
+                ThinkingContent
+                  { thinkingText = Just "need the file",
+                    thinkingOpaque =
+                      Just
+                        ProviderOpaque
+                          { poProvider = "anthropic",
+                            poModel = Just "claude-test",
+                            poPayload =
+                              object
+                                [ "signature" .= ("EpABopaque-bytes==" :: Text),
+                                  "n" .= (3 :: Int)
+                                ]
+                          }
+                  },
+              AssistantText "reading",
+              AssistantToolCall
+                ToolCall
+                  { tcId = "c1",
+                    tcName = "fs_read",
+                    tcArguments = object ["path" .= ("note.txt" :: Text)],
+                    tcProviderMeta =
+                      Just
+                        ProviderOpaque
+                          { poProvider = "google",
+                            poModel = Nothing,
+                            poPayload = object ["thoughtSignature" .= ("wire-sig" :: Text)]
+                          }
+                  }
+            ]
+      writeFile path (T.unpack agentSrc)
+      reqsRef <- newIORef ([] :: [ChatRequest])
+      let provider =
+            LlmProvider
+              { llmProviderName = "ordered-replay",
+                llmChat = \req -> do
+                  modifyIORef' reqsRef (req :)
+                  pure $
+                    if any isToolTurn req.chatTurns
+                      then
+                        Right
+                          ( providerResultText
+                              ("done with tools")
+                              (Just (mkTokenUsage 1 1))
+                              FinishStop
+                          )
+                      else
+                        Right
+                          ( mkProviderResult
+                              orderedParts
+                              (Just (mkTokenUsage 1 1))
+                              FinishToolCalls
+                          )
+              }
+          isToolTurn = \case
+            TurnTool _ -> True
+            _ -> False
+      case loadModuleText path agentSrc of
+        Left diags -> expectationFailure (show diags)
+        Right loaded -> do
+          checkLoadedModule loaded `shouldSatisfy` isRight
+          outcome <-
+            runLoadedModule
+              RunOptions
+                { roWorkspace = dir,
+                  roProvider = provider,
+                  roInputs = [],
+                  roRunId = Just "ordered-replay",
+                  roEntry = path,
+                  roMode = StepRun,
+                  roProjectHash = Nothing,
+                  roExec = Nothing,
+                  roMcp = mempty,
+                  roProjectRoot = "",
+                  roObserver = noopObserver,
+                  roCost = False,
+                  roModelCatalog = "model-catalog.json",
+                  roSkillCatalog = fst emptySkillRuntime,
+                  roSkillModules = snd emptySkillRuntime,
+                  roEntryModules = mempty
+                }
+              loaded
+          case outcome of
+            OutcomeCompleted (VRecord fs) _ _ -> do
+              lookup (Ident "text") fs `shouldBe` Just (VString "done with tools")
+              reqs <- reverse <$> readIORef reqsRef
+              length reqs `shouldSatisfy` (>= 2)
+              let followUp = reqs !! 1
+              case [parts | TurnAssistant parts <- followUp.chatTurns] of
+                (parts : _) -> parts `shouldBe` orderedParts
+                [] -> expectationFailure "expected prior assistant turn in follow-up request"
+            other -> expectationFailure (show other)

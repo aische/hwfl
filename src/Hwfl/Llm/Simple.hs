@@ -3,7 +3,13 @@
 module Hwfl.Llm.Simple
   ( mkSimpleProvider,
     mkSimpleProviderWithCatalog,
+    mkSimpleProviderFromModel,
     requestToTurns,
+    toLLMTurn,
+    toLLMContentPart,
+    fromLLMAssistantPart,
+    toLLMOpaque,
+    fromLLMOpaque,
   )
 where
 
@@ -28,6 +34,7 @@ import LLM.Generate
   ( GenRequest (..),
     GenerateError (..),
     GenerateErrorResult (..),
+    ModelConfig,
     ModelWithFallbacks (..),
     StreamChunk (..),
     defaultDebugHooks,
@@ -63,53 +70,68 @@ mkSimpleProviderWithCatalog dump catalogPath =
       llmProviderName = "simple"
     }
 
+-- | Provider wired to a pre-built 'ModelConfig' (fixture gateways / offline tests).
+--
+-- Skips catalog load; uses the same generate/stream/object paths as the
+-- catalog-backed adapter so ordered parts and opaque metadata round-trip
+-- through the real llm-simple generate layer.
+mkSimpleProviderFromModel :: Bool -> ModelConfig -> LlmProvider
+mkSimpleProviderFromModel dump model =
+  LlmProvider
+    { llmChat = chatWithModels dump (ModelWithFallbacks model []),
+      llmProviderName = "simple"
+    }
+
 chatWithCatalog :: Bool -> FilePath -> ChatRequest -> IO (Either ProviderError ProviderResult)
 chatWithCatalog dump catalogPath req = do
   loaded <- try (loadModelOrThrow catalogPath req.chatModel)
   case loaded of
     Left (ex :: SomeException) ->
       pure (Left (OtherProviderError (T.pack (show ex))))
-    Right model -> do
-      let hooks = if dump then defaultDebugHooks else noHooks
-          (systemMsg, turns) = requestToTurns req
-          gr =
-            GenRequest
-              { grSystemPrompt = systemMsg,
-                grMessages = map toLLMTurn turns,
-                grTools = map toLLMTool req.chatTools,
-                grAbortSignal = Nothing,
-                grLLMHooks = llmHooks hooks,
-                grHooks = noHooks
-              }
-          models = ModelWithFallbacks model []
-      case req.chatResponseFormat of
-        Nothing -> do
-          result <- case req.chatOnChunk of
-            Nothing -> generateTextWithFallbacks gr models
-            Just onChunk ->
-              streamTextWithFallbacks (mapStreamChunk onChunk) gr models
-          pure $ case result of
-            Left genErr -> Left (mapGenerateError genErr)
-            Right resp ->
-              let parts = mapMaybe fromLLMAssistantPart resp.respContent
-                  finish =
-                    if null (assistantToolCalls parts)
-                      then FinishStop
-                      else FinishToolCalls
-               in Right (mkProviderResult parts (fmap mapUsage resp.respUsage) finish)
-        Just schema -> do
-          -- Structured object path: tools must stay empty (llm-simple contract).
-          -- Object mode stays on the non-stream generate path (spec §08 §2.2).
-          let grObj = gr {grTools = []}
-          result <- genObjectUntyped grObj models schema
-          pure $ case result of
-            Left ger -> Left (mapGenerateError ger.gerError)
-            Right (val, usage) ->
-              Right $
-                providerResultText
-                  (TE.decodeUtf8 (BL.toStrict (Aeson.encode val)))
-                  (Just (mapUsage usage))
-                  FinishStop
+    Right model ->
+      chatWithModels dump (ModelWithFallbacks model []) req
+
+chatWithModels :: Bool -> ModelWithFallbacks -> ChatRequest -> IO (Either ProviderError ProviderResult)
+chatWithModels dump models req = do
+  let hooks = if dump then defaultDebugHooks else noHooks
+      (systemMsg, turns) = requestToTurns req
+      gr =
+        GenRequest
+          { grSystemPrompt = systemMsg,
+            grMessages = map toLLMTurn turns,
+            grTools = map toLLMTool req.chatTools,
+            grAbortSignal = Nothing,
+            grLLMHooks = llmHooks hooks,
+            grHooks = noHooks
+          }
+  case req.chatResponseFormat of
+    Nothing -> do
+      result <- case req.chatOnChunk of
+        Nothing -> generateTextWithFallbacks gr models
+        Just onChunk ->
+          streamTextWithFallbacks (mapStreamChunk onChunk) gr models
+      pure $ case result of
+        Left genErr -> Left (mapGenerateError genErr)
+        Right resp ->
+          let parts = mapMaybe fromLLMAssistantPart resp.respContent
+              finish =
+                if null (assistantToolCalls parts)
+                  then FinishStop
+                  else FinishToolCalls
+           in Right (mkProviderResult parts (fmap mapUsage resp.respUsage) finish)
+    Just schema -> do
+      -- Structured object path: tools must stay empty (llm-simple contract).
+      -- Object mode stays on the non-stream generate path (spec §08 §2.2).
+      let grObj = gr {grTools = []}
+      result <- genObjectUntyped grObj models schema
+      pure $ case result of
+        Left ger -> Left (mapGenerateError ger.gerError)
+        Right (val, usage) ->
+          Right $
+            providerResultText
+              (TE.decodeUtf8 (BL.toStrict (Aeson.encode val)))
+              (Just (mapUsage usage))
+              FinishStop
 
 -- | Map llm-simple stream chunks onto engine 'StreamDelta's. Role-commit
 -- signals are internal and dropped; tool calls are complete only.
