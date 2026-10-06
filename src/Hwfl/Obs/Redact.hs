@@ -64,7 +64,13 @@ sensitiveKey k =
   let n = T.filter isAlphaNum (T.toLower k)
    in -- Allow observability counters (token_in / token_out) while scrubbing
       -- credential-shaped keys.
-      n `notElem` ["tokenin", "tokenout", "tokens", "costusd", "costmicros"]
+      n
+        `notElem` [ "tokenin",
+                    "tokenout",
+                    "tokens",
+                    "costusd",
+                    "costmicros"
+                  ]
         && ( n
                `elem` [ "secret",
                         "password",
@@ -78,7 +84,12 @@ sensitiveKey k =
                         "token",
                         "credential",
                         "accesstoken",
-                        "refreshtoken"
+                        "refreshtoken",
+                        -- Provider replay state must not appear in obs attrs.
+                        "thinkingopaque",
+                        "providermeta",
+                        "tcprovidermeta",
+                        "provideropaque"
                       ]
                || any
                  (`T.isInfixOf` n)

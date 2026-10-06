@@ -14,6 +14,8 @@ import Hwfl.Llm.Types
     AssistantPart (..),
     ChatRequest (..),
     FinishReason (..),
+    ProviderOpaque (..),
+    ThinkingContent (..),
     ToolCall (..),
     ToolResult (..),
     ToolSpec (..),
@@ -24,6 +26,7 @@ import Hwfl.Llm.Types
     providerResultText,
     providerResultTextTools,
     turnAssistantText,
+    turnVisibleChars,
   )
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Parse.Load (loadModuleText)
@@ -107,6 +110,77 @@ l1Spec = do
 
     it "capToolResult leaves short text alone" $
       capToolResult 100 "hello" `shouldBe` "hello"
+
+    it "preserves ordered assistant parts when capping tool results" $ do
+      let parts =
+            [ AssistantThinking
+                ThinkingContent
+                  { thinkingText = Just "plan",
+                    thinkingOpaque =
+                      Just
+                        ProviderOpaque
+                          { poProvider = "claude",
+                            poModel = Just "m",
+                            poPayload = object ["sig" .= ("secret-opaque" :: Text)]
+                          }
+                  },
+              AssistantText "answer",
+              AssistantToolCall (mkToolCall "c1" "fs_read" (object ["path" .= ("a.md" :: Text)]))
+            ]
+          hist = [TurnUser "q", TurnAssistant parts, TurnTool [ToolResult "c1" "fs_read" (T.replicate 50 "x")]]
+          wired = wireTurns Nothing (Just 10) hist
+      case wired of
+        [TurnUser "q", TurnAssistant parts', TurnTool _] ->
+          parts' `shouldBe` parts
+        other -> expectationFailure ("unexpected wire turns: " <> show other)
+
+  describe "transcript formatting / visible sizing" $ do
+    it "includes visible thinking text but not opaque payloads" $ do
+      let hist =
+            [ TurnUser "q",
+              TurnAssistant
+                [ AssistantThinking
+                    ThinkingContent
+                      { thinkingText = Just "step one",
+                        thinkingOpaque =
+                          Just
+                            ProviderOpaque
+                              { poProvider = "claude",
+                                poModel = Nothing,
+                                poPayload = object ["blob" .= ("OPAQUE_PAYLOAD_XYZ" :: Text)]
+                              }
+                      },
+                  AssistantText "final"
+                ],
+              TurnUser "later",
+              turnAssistantText "later-a"
+            ]
+          -- Window of 1 user turn hides the first exchange; chunk 0 formats it.
+          hiddenChunk = getHistoryChunk (Just 1) hist 0
+      T.unpack hiddenChunk `shouldContain` "step one"
+      T.unpack hiddenChunk `shouldContain` "final"
+      T.unpack hiddenChunk `shouldNotContain` "OPAQUE_PAYLOAD_XYZ"
+
+    it "counts visible thinking and tool args, not opaque payloads" $ do
+      let opaque =
+            ProviderOpaque
+              { poProvider = "gemini",
+                poModel = Nothing,
+                poPayload = object ["huge" .= T.replicate 1000 "z"]
+              }
+          turn =
+            TurnAssistant
+              [ AssistantThinking
+                  ThinkingContent
+                    { thinkingText = Just "abcd",
+                      thinkingOpaque = Just opaque
+                    },
+                AssistantText "ef",
+                AssistantToolCall (mkToolCall "1" "t" (object ["k" .= ("v" :: Text)]))
+              ]
+          n = turnVisibleChars turn
+      n `shouldSatisfy` (>= 4 + 2)
+      n `shouldSatisfy` (< 500)
 
   describe "parseAgentArgs context knobs" $ do
     it "defaults max_tool_result_chars when context_window is set" $ do

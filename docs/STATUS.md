@@ -11,10 +11,10 @@ content, opaque replay state, cache usage/pricing. Working title
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
-- **llm-simple 0.2 Phase 1–2** — engine-owned `AssistantPart` /
-  `ProviderOpaque` / thinking; `TurnAssistant` holds ordered parts;
-  parts-authoritative `ProviderResult`; cache fields on `TokenUsage`;
-  `Hwfl.Llm.Simple` maps `ContentPart`/`PartBody` and opaque state
+- **llm-simple 0.2 Phase 1–3** — engine-owned ordered `AssistantPart` /
+  opaque thinking; parts-authoritative `ProviderResult`; Simple adapter
+  maps `ContentPart`/`PartBody`; runtime stores exact `prParts`,
+  projections for tools/final text; transcript/sizing omit opaque
 - **CI** — GitHub Actions `cabal test` on GHC 9.6 / Ubuntu; mock LLM
   only. macOS runner deferred
 - **User manual** — author book under `manual/`
@@ -23,8 +23,8 @@ Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 None.
 
 ## Next up
-1. llm-simple 0.2 Phases 3–8 — runtime projections, snapshot codec,
-   cache pricing, catalog capabilities, ordered-replay tests, docs
+1. llm-simple 0.2 Phases 4–8 — snapshot codec, cache pricing, catalog
+   capabilities, ordered-replay tests, docs
 2. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
 3. Prefer MCP / stdlib for domain tools (git, terminals, …)
 

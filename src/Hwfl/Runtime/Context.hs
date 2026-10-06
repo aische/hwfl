@@ -55,6 +55,7 @@ import Hwfl.Llm.Types
     ToolResult (..),
     Turn (..),
     assistantText,
+    assistantThinkingTexts,
     assistantToolCalls,
   )
 
@@ -370,12 +371,16 @@ heuristicSummary turns =
         let u = T.strip t
          in if T.null u then Nothing else Just ("- user: " <> T.take 120 u)
       TurnAssistant parts ->
-        let t = assistantText parts
+        let thinking = assistantThinkingTexts parts
+            t = assistantText parts
             calls = assistantToolCalls parts
             bits =
               filter
                 (not . T.null)
-                [ if T.null (T.strip t) then "" else T.take 80 (T.strip t),
+                [ case thinking of
+                    [] -> ""
+                    ts -> "thinking=" <> T.take 40 (T.intercalate " " ts),
+                  if T.null (T.strip t) then "" else T.take 80 (T.strip t),
                   if null calls
                     then ""
                     else "tools=" <> T.intercalate "," (map (.tcName) calls)
@@ -495,9 +500,16 @@ formatChunk = T.intercalate "\n" . map formatTurn
 formatTurn :: Turn -> Text
 formatTurn (TurnUser t) = "[User] " <> t
 formatTurn (TurnAssistant parts) =
-  let t = assistantText parts
+  -- Visible text and thinking only — never opaque provider payloads.
+  let thinking = assistantThinkingTexts parts
+      t = assistantText parts
       calls = assistantToolCalls parts
+      thinkingPrefix =
+        case thinking of
+          [] -> ""
+          ts -> "[thinking: " <> T.intercalate " | " ts <> "] "
    in "[Assistant] "
+        <> thinkingPrefix
         <> t
         <> if null calls
           then ""

@@ -57,7 +57,6 @@ import Hwfl.Llm.Types
     ProviderResult (..),
     emptyChatRequest,
     renderProviderError,
-    turnAssistantText,
   )
 import Hwfl.Obs.Redact (hostOpenAttrs, toolCallOpenAttrs)
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
@@ -866,7 +865,8 @@ finishAgentText ctx mode m ag pr = case ag.agSubmitSchema of
             Nothing
       )
       ag.agRoundSpanId
-    let finalHistory = ag.agHistory <> [turnAssistantText pr.prContent]
+    -- Keep authoritative parts (thinking / opaque / order), not a text rebuild.
+    let finalHistory = ag.agHistory <> [TurnAssistant pr.prParts]
         result =
           VRecord
             [ (Ident "text", VString pr.prContent),

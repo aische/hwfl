@@ -9,14 +9,20 @@ import Hwfl.Llm.Provider (LlmProvider (..))
 import Hwfl.Llm.Simple (requestToTurns)
 import Hwfl.Llm.Types
   (
+    AssistantPart (..),
     ChatRequest (..),
     FinishReason (..),
     Message (..),
     Role (..),
     StreamDelta (..),
+    ThinkingContent (..),
+    ToolCall (..),
     Turn (..),
     ProviderResult (..),
     emptyChatRequest,
+    mkProviderResult,
+    mkTokenUsage,
+    mkToolCall,
     providerResultText,
     turnAssistantText,
   )
@@ -148,6 +154,33 @@ spec = describe "LlmProvider" $ do
         length chunks `shouldSatisfy` (>= 2)
         mconcat [t | DeltaText t <- chunks] `shouldBe` pr.prContent
         pr.prContent `shouldBe` "SUMMARY: abcdefghijklmnop"
+
+  it "mock streams thinking and tool parts in order" $ do
+    ref <- newIORef ([] :: [StreamDelta])
+    let parts =
+          [ AssistantThinking
+              ThinkingContent
+                { thinkingText = Just "reason12",
+                  thinkingOpaque = Nothing
+                },
+            AssistantText "answer12",
+            AssistantToolCall (mkToolCall "c1" "fs_read" (object []))
+          ]
+        reply _ =
+          Right (mkProviderResult parts (Just (mkTokenUsage 1 1)) FinishToolCalls)
+        req =
+          (emptyChatRequest "gpt-5")
+            { chatMessages = [Message RoleUser "x"],
+              chatOnChunk = Just (\d -> modifyIORef' ref (d :))
+            }
+    result <- (mockProviderWith reply).llmChat req
+    case result of
+      Left err -> expectationFailure (show err)
+      Right _ -> do
+        chunks <- reverse <$> readIORef ref
+        mconcat [t | DeltaReasoning t <- chunks] `shouldBe` "reason12"
+        mconcat [t | DeltaText t <- chunks] `shouldBe` "answer12"
+        [n | DeltaToolCall tc <- chunks, let n = tc.tcName] `shouldBe` ["fs_read"]
 
   it "mock does not emit chunks for object-mode requests" $ do
     ref <- newIORef (0 :: Int)

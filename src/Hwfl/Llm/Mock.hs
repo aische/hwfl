@@ -34,15 +34,22 @@ mockProviderWith reply =
       llmProviderName = "mock"
     }
 
--- | Split the final reply into small text chunks (and complete tool-call
--- deltas) so streaming-span tests need no network.
+-- | Split the final reply into small deltas in part order so streaming-span
+-- tests need no network. Opaque thinking payloads are not streamed.
 emitFakeChunks :: ChatRequest -> ProviderResult -> IO ()
 emitFakeChunks req pr =
   case (req.chatOnChunk, req.chatResponseFormat) of
-    (Just onChunk, Nothing) -> do
-      mapM_ (onChunk . DeltaText) (chunkText 8 pr.prContent)
-      mapM_ (onChunk . DeltaToolCall) pr.prToolCalls
+    (Just onChunk, Nothing) -> mapM_ (emitPart onChunk) pr.prParts
     _ -> pure ()
+
+emitPart :: (StreamDelta -> IO ()) -> AssistantPart -> IO ()
+emitPart onChunk = \case
+  AssistantText t -> mapM_ (onChunk . DeltaText) (chunkText 8 t)
+  AssistantThinking tc ->
+    case tc.thinkingText of
+      Just t | not (T.null t) -> mapM_ (onChunk . DeltaReasoning) (chunkText 8 t)
+      _ -> pure ()
+  AssistantToolCall tc -> onChunk (DeltaToolCall tc)
 
 chunkText :: Int -> Text -> [Text]
 chunkText n t

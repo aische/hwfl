@@ -14,7 +14,9 @@ module Hwfl.Llm.Types
     turnAssistantTextTools,
     assistantText,
     assistantReasoning,
+    assistantThinkingTexts,
     assistantToolCalls,
+    turnVisibleChars,
     StreamDelta (..),
     ChatRequest (..),
     TokenUsage (..),
@@ -31,7 +33,8 @@ module Hwfl.Llm.Types
   )
 where
 
-import Data.Aeson (Value)
+import Data.Aeson (Value, encode)
+import Data.ByteString.Lazy.Char8 qualified as BL
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -137,14 +140,21 @@ assistantText = T.concat . mapMaybe go
 
 -- | First non-empty thinking text, if any.
 assistantReasoning :: [AssistantPart] -> Maybe Text
-assistantReasoning = go
+assistantReasoning parts =
+  case assistantThinkingTexts parts of
+    [] -> Nothing
+    (t : _) -> Just t
+
+-- | Visible thinking texts in part order (opaque payloads omitted).
+assistantThinkingTexts :: [AssistantPart] -> [Text]
+assistantThinkingTexts = mapMaybe go
   where
-    go [] = Nothing
-    go (AssistantThinking tc : rest) =
-      case tc.thinkingText of
-        Just t | not (T.null t) -> Just t
-        _ -> go rest
-    go (_ : rest) = go rest
+    go = \case
+      AssistantThinking tc ->
+        case tc.thinkingText of
+          Just t | not (T.null t) -> Just t
+          _ -> Nothing
+      _ -> Nothing
 
 -- | Tool calls in part order.
 assistantToolCalls :: [AssistantPart] -> [ToolCall]
@@ -153,6 +163,24 @@ assistantToolCalls = mapMaybe go
     go = \case
       AssistantToolCall tc -> Just tc
       _ -> Nothing
+
+-- | Visible character budget for context sizing / digests.
+--
+-- Counts user text, assistant text, visible thinking text, tool-call names and
+-- JSON arguments, and tool-result bodies. Opaque provider payloads are excluded.
+turnVisibleChars :: Turn -> Int
+turnVisibleChars = \case
+  TurnUser t -> T.length t
+  TurnAssistant parts -> sum (map partVisibleChars parts)
+  TurnTool results -> sum [T.length r.trContent | r <- results]
+
+partVisibleChars :: AssistantPart -> Int
+partVisibleChars = \case
+  AssistantText t -> T.length t
+  AssistantThinking tc -> maybe 0 T.length tc.thinkingText
+  AssistantToolCall tc ->
+    T.length tc.tcName
+      + fromIntegral (BL.length (encode tc.tcArguments))
 
 canonicalTextParts :: Text -> [AssistantPart]
 canonicalTextParts t
