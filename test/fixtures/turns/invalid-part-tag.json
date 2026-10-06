@@ -1,0 +1,9 @@
+{
+  "tag": "assistant",
+  "parts": [
+    {
+      "tag": "image",
+      "url": "https://example.com/x.png"
+    }
+  ]
+}

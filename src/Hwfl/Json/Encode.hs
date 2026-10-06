@@ -22,7 +22,7 @@ import Data.Vector qualified as V
 import Hwfl.Ast.Name (Ident (..), TypeName (..), qnameToText)
 import Hwfl.Eval.Value (ToolSpecValue (..), Value (..), hostOpName)
 import Hwfl.Json.Validate (validateAgainstSchema)
-import Hwfl.Runtime.Turn (turnToJson)
+import Hwfl.Runtime.Turn (turnToPublicJson)
 
 valueToJsonText :: Value -> Either Text Text
 valueToJsonText v = do
@@ -198,7 +198,7 @@ valueToAeson = \case
   VSkillMain q -> Right (Aeson.String ("<skill:" <> qnameToText q <> ">"))
   VEntryMain q -> Right (Aeson.String ("<entry:" <> qnameToText q <> ">"))
   VSchema schema -> Right schema
-  VTurn t -> Right (turnToJson t)
+  VTurn t -> Right (turnToPublicJson t)
   VMcpTool server name _ -> Right (Aeson.String ("<mcp_tool:" <> server <> "/" <> name <> ">"))
   where
     encodeField (Ident name, value) =

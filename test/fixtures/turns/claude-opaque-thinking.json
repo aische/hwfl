@@ -1,0 +1,25 @@
+{
+  "tag": "assistant",
+  "parts": [
+    {
+      "tag": "thinking",
+      "text": "visible reasoning",
+      "thinking_opaque": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-20250514",
+        "payload": {
+          "type": "thinking",
+          "signature": "EpABCkYICxgCKkD8opaque-signature-bytes-must-roundtrip==",
+          "nested": {
+            "keep": [1, 2, 3],
+            "flag": true
+          }
+        }
+      }
+    },
+    {
+      "tag": "text",
+      "text": "done"
+    }
+  ]
+}

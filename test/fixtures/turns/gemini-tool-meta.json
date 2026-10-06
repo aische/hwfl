@@ -1,0 +1,24 @@
+{
+  "tag": "assistant",
+  "parts": [
+    {
+      "tag": "text",
+      "text": "calling a tool"
+    },
+    {
+      "tag": "tool_call",
+      "id": "gemini-call-9",
+      "name": "fs_read",
+      "arguments": {
+        "path": "a.md"
+      },
+      "provider_meta": {
+        "provider": "google",
+        "model": "gemini-2.5-pro",
+        "payload": {
+          "thoughtSignature": "CiYBAGFzZGZnaGprbG1ub3BxcnN0dXZ3eHl6MTIzNDU2Nzg5MA=="
+        }
+      }
+    }
+  ]
+}

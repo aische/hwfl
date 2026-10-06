@@ -7,9 +7,9 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 ## Now
 
-- [ ] **llm-simple 0.2 upgrade** — Phases 4–8 in repo-root `task.md`
-      (snapshot migration, cache pricing, catalog capabilities,
-      ordered-replay tests, docs). Phases 1–3 done.
+- [ ] **llm-simple 0.2 upgrade** — Phases 5–8 in repo-root `task.md`
+      (cache pricing, catalog capabilities, ordered-replay tests,
+      docs). Phases 1–4 done.
 - [ ] **Name freeze or rename** — CLI, fence info-string, `hwfl/` stdlib
       qnames, `.hwfl/` run dir. Do this before a public tag.
 

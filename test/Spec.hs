@@ -44,6 +44,7 @@ import Hwfl.Runtime.ObjectSpec
 import Hwfl.Runtime.RunSpec
 import Hwfl.Runtime.SnapshotSpec
 import Hwfl.Runtime.StoreSpec
+import Hwfl.Runtime.TurnSpec
 import Hwfl.Runtime.TrySpec
 import Hwfl.Runtime.SkillSpec
 import Hwfl.Runtime.SemanticCheckSpec
@@ -83,6 +84,7 @@ main = hspec $ do
   Hwfl.Runtime.RunSpec.spec
   Hwfl.Runtime.SnapshotSpec.spec
   Hwfl.Runtime.StoreSpec.spec
+  Hwfl.Runtime.TurnSpec.spec
   Hwfl.Runtime.TrySpec.spec
   Hwfl.Runtime.ExceptionSpec.spec
   Hwfl.Runtime.ExecSpec.spec

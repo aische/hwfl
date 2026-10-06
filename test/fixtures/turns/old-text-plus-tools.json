@@ -1,0 +1,13 @@
+{
+  "tag": "assistant",
+  "text": "I will read the file",
+  "calls": [
+    {
+      "id": "call_1",
+      "name": "fs_read",
+      "arguments": {
+        "path": "note.txt"
+      }
+    }
+  ]
+}

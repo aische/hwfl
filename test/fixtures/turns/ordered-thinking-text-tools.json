@@ -1,0 +1,21 @@
+{
+  "tag": "assistant",
+  "parts": [
+    {
+      "tag": "thinking",
+      "text": "plan the steps"
+    },
+    {
+      "tag": "text",
+      "text": "reading note.txt"
+    },
+    {
+      "tag": "tool_call",
+      "id": "c1",
+      "name": "fs_read",
+      "arguments": {
+        "path": "note.txt"
+      }
+    }
+  ]
+}
