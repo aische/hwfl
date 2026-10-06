@@ -80,6 +80,7 @@ We want language-level ergonomics **and** document-shaped authoring.
 
 - Haskell, GHC2021
 - Default LLM: [llm-simple](https://hackage.haskell.org/package/llm-simple)
+  (`^>=0.2.0.0`)
   behind an internal `LlmProvider` interface so production backends can
   replace it without rewriting workflows
 - Security defaults: workspace sandbox, opt-in `exec`, secret redaction

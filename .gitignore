@@ -2,6 +2,7 @@ dist-newstyle/
 *.hi
 *.o
 .ghc.environment.*
+cabal.project.local
 .DS_Store
 .env
 dumps/

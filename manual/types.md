@@ -23,7 +23,7 @@ and the module `effects:` list must cover every top-level `fun`.
 | `Secret<T>` | — | Not interpolable; redacted in spans; not comparable |
 | `Schema` | `schema(T)` | JSON Schema for structured LLM / MCP decode |
 | `ToolSpec` | `tool(f)` | Agent tool registration |
-| `Turn` | from `llm.agent` `history` | Pass it through; do not construct by hand |
+| `Turn` | from `llm.agent` `history` | Opaque transcript token — pass through; do not construct or pattern-match by hand |
 
 `Int` and `Float` do not mix in `+` `-` `*` `/` or ordered comparison.
 Convert with [`int.to_float`](library/prelude.md) and `float.round` /

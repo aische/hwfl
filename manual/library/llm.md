@@ -80,6 +80,11 @@ Attach field descriptions with a `## schema Out` markdown section
 
 Named arguments required. `text` is the final assistant reply. `history`
 includes this call’s assistant and tool turns (pass it into a later call).
+Treat `List<Turn>` as an opaque transcript: pass it through; do not build
+turns by hand. Assistant turns keep provider part order (text, thinking,
+tool calls) for correct multi-round replay. Provider-private replay
+metadata is stored in the run snapshot but is not part of author-facing
+JSON.
 
 ```hwfl
 let result = llm.agent(
@@ -156,7 +161,11 @@ the same sanitising (`lib/foo.bar` → `lib_foo_bar`).
 ## Catalog and credentials
 
 `model-catalog.json` lists named configs (`modelConfigName`, provider,
-pricing, `maxTokens`, timeouts). Default path is `./model-catalog.json`;
+pricing, `maxTokens`, timeouts). Optional `capabilities` declare
+thinking, vision, and prompt caching; optional
+`pricePerMillionCacheRead` / `pricePerMillionCacheWrite` refine cost
+when the provider reports cache tokens (missing cache rates fall back to
+the ordinary input price). Default path is `./model-catalog.json`;
 override with `--model-catalog`. The `simple` provider reads API keys
 from the environment / `.env` (not from `project.json` `env`).
 

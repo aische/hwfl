@@ -47,6 +47,34 @@ Rules:
   (`ObsSpanOpen` / `ObsSpanClose` / `ObsPaused` / `ObsFinished` /
   `ObsProgress`). Control-plane WS/SSE maps onto the same callback.
 
+### 3.1 LLM close attributes (usage and cost)
+
+On `llm.chat` / `llm.object` / `agent_round` span **close**, attrs include:
+
+| Attr | Meaning |
+| ---- | ------- |
+| `token_in` | Total input tokens (includes cache-read and cache-creation) |
+| `token_out` | Output tokens |
+| `token_cache_read` | Prompt-cache read tokens (0 when unused / unknown) |
+| `token_cache_creation` | Prompt-cache creation tokens (0 when unused / unknown) |
+| `cost_micros` | Estimated spend in micro-USD for this call |
+| `cost_usd` | Same spend as a decimal USD convenience field |
+
+Pricing (catalog `pricing`):
+
+- Ordinary input tokens =
+  `max 0 (token_in - token_cache_read - token_cache_creation)`,
+  billed at `pricePerMillionInput`.
+- Cache-read tokens bill at `pricePerMillionCacheRead` when set;
+  otherwise fall back to `pricePerMillionInput`.
+- Cache-creation tokens bill at `pricePerMillionCacheWrite` when set;
+  otherwise fall back to `pricePerMillionInput`.
+- Output tokens bill at `pricePerMillionOutput`.
+
+Redaction allowlists the token and cost counters. Opaque provider
+payloads (thinking / tool-call replay state) must **not** appear in span
+attrs or progressive events.
+
 ## 4. Redaction
 
 Same intent as hwfi:

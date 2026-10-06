@@ -195,9 +195,13 @@ Each model/tool call is snapshotted. Tools invoke ordinary functions /
 host ops under the agent frame.
 
 **Wire context:** optional `context_window` / `consolidate` bound what the
-provider sees; full `agHistory` stays snapshot / resume truth. Helpers and
-injected tools live in `Hwfl.Runtime.Context`. See
-[05-host-ops.md](05-host-ops.md).
+provider sees; full `agHistory` stays snapshot / resume truth. Assistant
+turns keep ordered parts (including opaque provider replay state) byte-
+stable across pause/resume; wire sizing and transcripts count visible
+thinking text + tool args/results and never render opaque payloads.
+Helpers and injected tools live in `Hwfl.Runtime.Context`. See
+[05-host-ops.md](05-host-ops.md) and [08-llm-provider.md](08-llm-provider.md)
+§6.
 
 **Skills:** mid-loop `skill.load` may expand the active tool set (callable)
 or append instruction context (rebuild-from-ids on resume). Checkpoints

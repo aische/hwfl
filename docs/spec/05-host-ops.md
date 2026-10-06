@@ -54,9 +54,14 @@ See also [08-llm-provider.md](08-llm-provider.md).
 
 Notes:
 
-- `model` resolves through `model-catalog.json`.
-- Token usage recorded on the span.
-- Failures are catchable (rate limit, provider error) unless marked trap.
+- `model` resolves through `model-catalog.json` (optional
+  `capabilities`, cache prices — see [08-llm-provider.md](08-llm-provider.md)).
+- Token usage and cost recorded on the span close attrs
+  (`token_in` / `token_out` / `token_cache_read` /
+  `token_cache_creation` / `cost_micros` — see
+  [07-observability.md](07-observability.md) §3.1).
+- Failures are catchable (rate limit, provider error, unsupported
+  capability) unless marked trap.
 - Streaming (locked): host ops stay **atomic** (one transition, full
   return value). Progressive token / partial text is an **observability
   side channel** only — see [07-observability.md](07-observability.md) §9
@@ -68,13 +73,16 @@ Notes:
   no `-`).
 
 **Agent history (`Turn`):** `llm.agent` / `llm.agent_object` accept
-optional prior `history` (list of turns: user text, assistant text +
-tool calls, tool results — same algebra as host `Turn` / snapshot agent
-`agHistory`) and return the updated `history` with the usual result
-fields. New `prompt` appends as `TurnUser`. Workflows can own a
-multi-turn `human.ask` loop that replays tool-inclusive transcripts
-across calls. Do **not** encode tool turns as fake `{ role, content }`
-strings; `llm.chat_messages` stays the thin text-only path. Example:
+optional prior `history` (list of turns: user text, ordered assistant
+parts — text / thinking / tool calls — and tool results; same algebra as
+host `Turn` / snapshot agent `agHistory`) and return the updated
+`history` with the usual result fields. Assistant turns store the
+provider’s exact part order for replay; opaque thinking / tool-call
+metadata is persisted in snapshots but omitted from author-facing JSON.
+New `prompt` appends as `TurnUser`. Workflows can own a multi-turn
+`human.ask` loop that replays tool-inclusive transcripts across calls.
+Do **not** encode tool turns as fake `{ role, content }` strings;
+`llm.chat_messages` stays the thin text-only path. Example:
 `examples/coding-agent` (chat → `coding_session`); thinner history loop
 in `examples/coding-agent-chat`.
 

@@ -2,30 +2,29 @@
 Last updated: 2026-10-06
 
 ## Current focus
-Upgrade hwfl to **llm-simple 0.2** (`task.md`): ordered assistant
-content, opaque replay state, cache usage/pricing. Working title
-**hwfl** remains provisional (rename next). User book is `manual/`;
-`docs/` is maintainer internals.
+Working title **hwfl** remains provisional (rename next). User book is
+`manual/`; `docs/` is maintainer internals.
 
 ## North star
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
-- **llm-simple 0.2 Phase 1–7** — ordered `AssistantPart` / opaque
-  thinking; Simple adapter; runtime stores exact `prParts`; snapshot
-  codec writes canonical `parts` (legacy `text`/`calls` still decode);
-  cache-aware pricing + catalog `capabilities`; Phase 7 ordered-replay
-  tests (PartBody conversion, opaque round-trip, streaming vs final
-  parts, agent replay, legacy→canonical rewrite, offline fixture gateway)
+- **llm-simple 0.2 upgrade complete** (`task.md` Phases 1–8) — ordered
+  `AssistantPart` / opaque replay; Simple adapter; snapshot `parts`
+  codec (legacy decode); cache-aware pricing + catalog `capabilities`;
+  ordered-replay tests; specs/manual updated; dependency `^>=0.2.0.0`
 - **CI** — GitHub Actions `cabal test` on GHC 9.6 / Ubuntu; mock LLM
   only. macOS runner deferred
 - **User manual** — author book under `manual/`
 
 ## Blockers
-None.
+- **llm-simple 0.2 not on Hackage yet** — local builds use gitignored
+  `cabal.project.local` → sibling `../llm-simple`. Clean CI / clone
+  needs a Hackage release (or a temporary `source-repository-package`
+  pin after the branch is published).
 
 ## Next up
-1. llm-simple 0.2 Phase 8 — docs + dependency cleanup
+1. Publish llm-simple 0.2 (or pin a remote source package) so CI is green
 2. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
 3. Prefer MCP / stdlib for domain tools (git, terminals, …)
 

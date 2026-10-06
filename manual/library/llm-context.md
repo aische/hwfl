@@ -1,8 +1,10 @@
 # Agent context
 
 Applies to `llm.agent` and `llm.agent_object`. These knobs only change
-what is sent to the model. The returned `history` is complete and is what
-you pass into a later call.
+what is sent to the model. The returned `history` is complete (ordered
+assistant parts preserved) and is what you pass into a later call.
+Windowing and tool-result caps reshape the wire view only; they do not
+rewrite stored assistant turns.
 
 ## `context_window`
 

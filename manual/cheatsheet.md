@@ -51,7 +51,7 @@ legal in those forms.
 | `Secret<T>` | Not interpolable; redacted in spans |
 | `Schema` | From `schema(T)` |
 | `ToolSpec` | From `tool(f)` |
-| `Turn` | Agent transcript turn |
+| `Turn` | Opaque agent transcript turn (pass through) |
 | `(T) -> U` | Function |
 | `(T) -[Read, Net]-> U` | Function with effects (optional annotation) |
 

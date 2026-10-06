@@ -7,8 +7,9 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 ## Now
 
-- [ ] **llm-simple 0.2 upgrade** — Phase 8 in repo-root `task.md`
-      (docs + dependency cleanup). Phases 1–7 done.
+- [ ] **Publish llm-simple 0.2** — Hackage (preferred) or temporary
+      `source-repository-package` pin so CI/clean clones build without a
+      sibling checkout. Local: gitignored `cabal.project.local`.
 - [ ] **Name freeze or rename** — CLI, fence info-string, `hwfl/` stdlib
       qnames, `.hwfl/` run dir. Do this before a public tag.
 
@@ -76,5 +77,6 @@ and interpreter. See [idea.md](idea.md).
 
 ## Done
 
-See [log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md) and
+See [log/archive/tasks-2026-10.md](log/archive/tasks-2026-10.md),
+[log/archive/tasks-2026-08.md](log/archive/tasks-2026-08.md), and
 [log/archive/tasks-2026-07.md](log/archive/tasks-2026-07.md).
