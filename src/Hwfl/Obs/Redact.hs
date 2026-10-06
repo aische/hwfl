@@ -62,11 +62,13 @@ redactJson = \case
 sensitiveKey :: Text -> Bool
 sensitiveKey k =
   let n = T.filter isAlphaNum (T.toLower k)
-   in -- Allow observability counters (token_in / token_out) while scrubbing
-      -- credential-shaped keys.
+   in -- Allow observability counters (token_in / token_out / cache) while
+      -- scrubbing credential-shaped keys.
       n
         `notElem` [ "tokenin",
                     "tokenout",
+                    "tokencacheread",
+                    "tokencachecreation",
                     "tokens",
                     "costusd",
                     "costmicros"

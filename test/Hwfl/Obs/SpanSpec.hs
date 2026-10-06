@@ -139,6 +139,17 @@ spec = describe "observability (M6)" $ do
       redactJson (object ["api_key" .= Aeson.String "tok", "n" .= Aeson.Number 1])
         `shouldBe` object ["api_key" .= Aeson.String redactMarker, "n" .= Aeson.Number 1]
 
+    it "keeps LLM usage counters including cache tokens" $ do
+      let attrs =
+            object
+              [ "token_in" .= (1000 :: Int),
+                "token_out" .= (50 :: Int),
+                "token_cache_read" .= (400 :: Int),
+                "token_cache_creation" .= (100 :: Int),
+                "cost_micros" .= (1234 :: Int)
+              ]
+      redactJson attrs `shouldBe` attrs
+
     it "redacts embedded JSON, credential-shaped keys, and token text" $ do
       redactText "{\"private_key\":\"short\",\"passphrase\":\"also-short\"}"
         `shouldBe` "{\"passphrase\":\"[REDACTED]\",\"private_key\":\"[REDACTED]\"}"

@@ -13,12 +13,13 @@ module Hwfl.Llm.Pricing
   )
 where
 
-import Data.Aeson (FromJSON, Value (..), object, withObject, (.:), (.=))
+import Data.Aeson (FromJSON, Value (..), object, withObject, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KM
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Scientific (toBoundedInteger, toRealFloat)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -31,9 +32,15 @@ import Hwfl.Llm.Types (
 import Hwfl.SafeIO (ReadError (..), readBytesFile, renderReadError)
 import Text.Printf (printf)
 
+-- | Pricing in dollars per million tokens.
+--
+-- Optional cache rates fall back to 'mrInputPerM' when absent, matching
+-- llm-simple.
 data ModelRates = ModelRates
   { mrInputPerM :: Double,
-    mrOutputPerM :: Double
+    mrOutputPerM :: Double,
+    mrCacheReadPerM :: Maybe Double,
+    mrCacheWritePerM :: Maybe Double
   }
   deriving stock (Eq, Show, Generic)
 
@@ -42,6 +49,8 @@ instance FromJSON ModelRates where
     ModelRates
       <$> o .: "pricePerMillionInput"
       <*> o .: "pricePerMillionOutput"
+      <*> o .:? "pricePerMillionCacheRead"
+      <*> o .:? "pricePerMillionCacheWrite"
 
 data CatalogEntry = CatalogEntry
   { ceName :: Text,
@@ -76,13 +85,25 @@ loadModelPricing path = do
               (Map.fromList [(e.ceName, e.cePricing) | e <- entries])
           )
 
-tokenCostMicros :: ModelPricing -> Text -> Int -> Int -> Maybe Int
-tokenCostMicros (ModelPricing rates) model tin tout =
+-- | Ordinary (uncached) input tokens used for input-rate pricing.
+usageOrdinaryInputTokens :: TokenUsage -> Int
+usageOrdinaryInputTokens u =
+  max 0 (u.usageInputTokens - u.usageCacheReadTokens - u.usageCacheCreationTokens)
+
+tokenCostMicros :: ModelPricing -> Text -> TokenUsage -> Maybe Int
+tokenCostMicros (ModelPricing rates) model u =
   case Map.lookup model rates of
     Nothing -> Nothing
     Just r ->
-      let cost =
-            (fromIntegral tin * mrInputPerM r + fromIntegral tout * mrOutputPerM r)
+      let ordinary = usageOrdinaryInputTokens u
+          cacheReadRate = fromMaybe (mrInputPerM r) (mrCacheReadPerM r)
+          cacheWriteRate = fromMaybe (mrInputPerM r) (mrCacheWritePerM r)
+          cost =
+            ( fromIntegral ordinary * mrInputPerM r
+                + fromIntegral u.usageCacheReadTokens * cacheReadRate
+                + fromIntegral u.usageCacheCreationTokens * cacheWriteRate
+                + fromIntegral u.usageOutputTokens * mrOutputPerM r
+            )
               / 1_000_000
        in Just (round (cost * 1_000_000 :: Double))
 
@@ -108,13 +129,15 @@ usageCostAttrs pricing model mUsage = case mUsage of
         tout = u.usageOutputTokens
         base =
           [ Key.fromText "token_in" .= tin,
-            Key.fromText "token_out" .= tout
+            Key.fromText "token_out" .= tout,
+            Key.fromText "token_cache_read" .= u.usageCacheReadTokens,
+            Key.fromText "token_cache_creation" .= u.usageCacheCreationTokens
           ]
-     in base <> costPair pricing model tin tout
+     in base <> costPair pricing model u
 
-costPair :: ModelPricing -> Text -> Int -> Int -> [(Key.Key, Aeson.Value)]
-costPair pricing model tin tout =
-  case tokenCostMicros pricing model tin tout of
+costPair :: ModelPricing -> Text -> TokenUsage -> [(Key.Key, Aeson.Value)]
+costPair pricing model u =
+  case tokenCostMicros pricing model u of
     Nothing -> []
     Just micros ->
       -- Integer micros are the source of truth for aggregation; full-precision

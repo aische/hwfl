@@ -1,10 +1,16 @@
 module Hwfl.Llm.PricingSpec (spec) where
 
 import Data.Aeson (encode, object, (.=))
+import Data.Aeson.Key qualified as Key
+import Data.Aeson.KeyMap qualified as KM
+import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy.Char8 qualified as LBS8
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Text (Text)
 import Hwfl.Llm.Pricing
-  ( ModelPricing,
+  ( ModelPricing (..),
+    ModelRates (..),
     attrsCostMicros,
     formatCostDollars,
     formatCostUsd,
@@ -13,7 +19,7 @@ import Hwfl.Llm.Pricing
   )
 import Hwfl.Llm.Types (
     FinishReason (..),
-    ProviderResult (..),
+    TokenUsage (..),
     mkTokenUsage,
     providerResultText,
   )
@@ -112,10 +118,136 @@ spec = describe "LLM pricing" $ do
       LBS8.unpack (encode (head closes)) `shouldContain` "cost_usd"
       LBS8.unpack (encode (head closes)) `shouldContain` "cost_micros"
 
+  it "prices no-cache usage at ordinary input/output rates" $ do
+    let pricing =
+          ModelPricing
+            ( Map.singleton
+                "m"
+                ( ModelRates
+                    { mrInputPerM = 1.0,
+                      mrOutputPerM = 5.0,
+                      mrCacheReadPerM = Nothing,
+                      mrCacheWritePerM = Nothing
+                    }
+                )
+            )
+        usage = mkTokenUsage 1_000_000 1_000_000
+        attrs =
+          providerCloseAttrs
+            pricing
+            "m"
+            (providerResultText "x" (Just usage) FinishStop)
+    attrsCostMicros attrs `shouldBe` Just 6_000_000
+    attrInt attrs "token_in" `shouldBe` Just 1_000_000
+    attrInt attrs "token_out" `shouldBe` Just 1_000_000
+    attrInt attrs "token_cache_read" `shouldBe` Just 0
+    attrInt attrs "token_cache_creation" `shouldBe` Just 0
+
+  it "prices mixed cache read/write with distinct rates" $ do
+    let pricing =
+          ModelPricing
+            ( Map.singleton
+                "m"
+                ( ModelRates
+                    { mrInputPerM = 3.0,
+                      mrOutputPerM = 15.0,
+                      mrCacheReadPerM = Just 0.3,
+                      mrCacheWritePerM = Just 3.75
+                    }
+                )
+            )
+        usage =
+          TokenUsage
+            { usageInputTokens = 1_000_000,
+              usageOutputTokens = 0,
+              usageCacheReadTokens = 400_000,
+              usageCacheCreationTokens = 100_000
+            }
+        -- ordinary 500k * 3 + read 400k * 0.3 + write 100k * 3.75 = 1.995
+        attrs =
+          providerCloseAttrs
+            pricing
+            "m"
+            (providerResultText "x" (Just usage) FinishStop)
+    attrsCostMicros attrs `shouldBe` Just 1_995_000
+    attrInt attrs "token_in" `shouldBe` Just 1_000_000
+    attrInt attrs "token_cache_read" `shouldBe` Just 400_000
+    attrInt attrs "token_cache_creation" `shouldBe` Just 100_000
+
+  it "falls back to input rate when cache rates are absent" $ do
+    let pricing =
+          ModelPricing
+            ( Map.singleton
+                "m"
+                ( ModelRates
+                    { mrInputPerM = 2.0,
+                      mrOutputPerM = 0.0,
+                      mrCacheReadPerM = Nothing,
+                      mrCacheWritePerM = Nothing
+                    }
+                )
+            )
+        usage =
+          TokenUsage
+            { usageInputTokens = 1_000_000,
+              usageOutputTokens = 0,
+              usageCacheReadTokens = 250_000,
+              usageCacheCreationTokens = 250_000
+            }
+        attrs =
+          providerCloseAttrs
+            pricing
+            "m"
+            (providerResultText "x" (Just usage) FinishStop)
+    -- All 1M tokens priced at input rate → $2.00
+    attrsCostMicros attrs `shouldBe` Just 2_000_000
+
+  it "parses optional cache rates from the model catalog" $ do
+    withSystemTempDirectory "hwfl-pricing-cache-rates" $ \dir -> do
+      let path = dir </> "catalog.json"
+      LBS8.writeFile path $
+        encode
+          [ object
+              [ "modelConfigName" .= ("claude" :: String),
+                "pricing"
+                  .= object
+                    [ "pricePerMillionInput" .= (3.0 :: Double),
+                      "pricePerMillionOutput" .= (15.0 :: Double),
+                      "pricePerMillionCacheRead" .= (0.3 :: Double),
+                      "pricePerMillionCacheWrite" .= (3.75 :: Double)
+                    ]
+              ]
+          ]
+      pricing <- loadPricing path
+      case Map.lookup "claude" pricing.mpRates of
+        Nothing -> expectationFailure "missing catalog entry"
+        Just rates -> do
+          rates.mrInputPerM `shouldBe` 3.0
+          rates.mrOutputPerM `shouldBe` 15.0
+          rates.mrCacheReadPerM `shouldBe` Just 0.3
+          rates.mrCacheWritePerM `shouldBe` Just 3.75
+
   it "reports malformed catalogs instead of silently using zero pricing" $
     withSystemTempDirectory "hwfl-pricing-invalid" $ \dir -> do
       let path = dir </> "catalog.json"
       LBS8.writeFile path "not json"
+      result <- loadModelPricing path
+      result `shouldSatisfy` isLeft
+
+  it "rejects catalog entries with incomplete pricing objects" $
+    withSystemTempDirectory "hwfl-pricing-incomplete" $ \dir -> do
+      let path = dir </> "catalog.json"
+      LBS8.writeFile path $
+        encode
+          [ object
+              [ "modelConfigName" .= ("broken" :: String),
+                "pricing"
+                  .= object
+                    [ "pricePerMillionInput" .= (1.0 :: Double)
+                      -- missing pricePerMillionOutput
+                    ]
+              ]
+          ]
       result <- loadModelPricing path
       result `shouldSatisfy` isLeft
 
@@ -125,6 +257,12 @@ loadPricing path = do
   case result of
     Left err -> expectationFailure ("expected valid catalog: " <> show err) >> error "unreachable"
     Right pricing -> pure pricing
+
+attrInt :: Aeson.Value -> Text -> Maybe Int
+attrInt (Aeson.Object km) key = case KM.lookup (Key.fromText key) km of
+  Just (Aeson.Number n) -> Just (round n)
+  _ -> Nothing
+attrInt _ _ = Nothing
 
 isLeft :: Either a b -> Bool
 isLeft = \case

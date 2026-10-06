@@ -26,7 +26,8 @@ Span
   kind              # host | region | module | agent_round | agent_tool
   t_start, t_end?
   status            # ok | error | cancelled
-  attrs             # redacted JSON (model, path, token_in, token_out, args?)
+  attrs             # redacted JSON (model, path, token_in, token_out,
+                    # token_cache_read, token_cache_creation, args?)
   snapshot_seq?     # link to machine seq when host transition
 ```
 
@@ -120,8 +121,9 @@ see progress — without changing language return types or snapshot grain.
 ### Semantics
 
 - Host transition stays atomic: open span → provider call (with on-chunk
-  hook) → close span with final attrs (`token_*`, `cost_micros`,
-  `cost_usd`, …)
+  hook) → close span with final attrs (`token_in` = total input,
+  `token_out`, `token_cache_read`, `token_cache_creation`,
+  `cost_micros`, `cost_usd`, …)
 - Partials are **not** control-flow truth; crash mid-stream re-runs the
   whole transition (existing at-least-once rule)
 - Usage / cost attribution stays on **close** attrs (providers often send
@@ -138,9 +140,9 @@ full messages in/out — without bloating the always-on span index.
 
 - **Off** unless enabled (`hwfl run --trace`, workspace policy, or
   library run option). Compare / mutate fitness stays span + cost only.
-- Spans remain thin: model, lengths, `token_*`, `cost_micros` /
-  `cost_usd`, truncated
-  tool args. Optional `payload_ref` / join on `span_id` when capture is on.
+- Spans remain thin: model, lengths, `token_in` / `token_out` /
+  cache counters, `cost_micros` / `cost_usd`, truncated tool args.
+  Optional `payload_ref` / join on `span_id` when capture is on.
 - Do **not** store full prompt/reply bodies in `spans.jsonl` attrs.
 
 ### Shape (illustrative)
@@ -161,7 +163,8 @@ Transcript
   messages?         # request turns sent to the provider
   reply?            # final assistant text / structured object
   tool_calls?       # complete calls (not fragment streaming)
-  usage?            # token_in / token_out (mirror of close attrs)
+  usage?            # token_in / token_out / cache counters
+                    # (mirror of close attrs)
 ```
 
 ### Rules
