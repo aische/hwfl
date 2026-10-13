@@ -79,6 +79,12 @@ handleDelta store st bufRef lastFlushRef flush = \case
           <> " id="
           <> tc.tcId
       )
+  DeltaAttemptReset -> do
+    -- Drop unflushed partials; already-emitted llm.delta events stay in the
+    -- append-only log but are marked stale by the attempt_reset marker.
+    writeIORef bufRef Nothing
+    emitEvent store st (object ["kind" .= ("attempt_reset" :: Text)])
+    debugLog st "llm Δ     attempt_reset"
 
 appendText ::
   RunStore ->

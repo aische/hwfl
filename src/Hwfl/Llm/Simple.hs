@@ -135,6 +135,8 @@ chatWithModels dump models req = do
 
 -- | Map llm-simple stream chunks onto engine 'StreamDelta's. Role-commit
 -- signals are internal and dropped; tool calls are complete only.
+-- 'StreamAttemptReset' becomes 'DeltaAttemptReset' so obs sinks can discard
+-- partials from a failed attempt before retry / fallback.
 mapStreamChunk :: (StreamDelta -> IO ()) -> StreamChunk -> IO ()
 mapStreamChunk onChunk = \case
   AnswerDelta t -> onChunk (DeltaText t)
@@ -143,6 +145,7 @@ mapStreamChunk onChunk = \case
   ReasoningDelta t -> onChunk (DeltaReasoning t)
   RoundTextRoleCommitted _ -> pure ()
   StreamToolCallChunk tc -> onChunk (DeltaToolCall (fromLLMToolCall tc))
+  StreamAttemptReset -> onChunk DeltaAttemptReset
 
 -- | Collapse a 'ChatRequest' into llm-simple's single system slot + turns.
 -- Message-path requests may carry several 'RoleSystem' entries (and an optional

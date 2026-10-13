@@ -3,7 +3,7 @@
 ## 1. Requirement
 
 v0 ships with **[llm-simple](https://hackage.haskell.org/package/llm-simple)**
-(`^>=0.2.0.0`) as the **default** backend, but workflows and most of the
+(`^>=0.3.0.0`) as the **default** backend, but workflows and most of the
 engine must not depend on that package directly.
 
 It must be possible to swap in a more production-ready client (official
@@ -86,6 +86,10 @@ return path:
 - The final `ProviderResult` (from `respContent` / equivalent) remains
   the source of authoritative ordered parts and opaque metadata.
   Streaming must not replace or reorder that content.
+- When the backend retries or falls back after streaming some chunks,
+  adapters must emit `DeltaAttemptReset`. Obs sinks discard unflushed
+  partials and append an `llm.delta` marker (`kind: attempt_reset`) so
+  readers can treat earlier progressive events on that span as stale.
 - Mock adapter must fake chunked delivery for tests.
 - Adapters without stream support may ignore `on_chunk` and complete in
   one shot (no progressive events).

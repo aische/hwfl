@@ -195,6 +195,9 @@ data StreamDelta
     DeltaReasoning Text
   | -- | Complete tool call (no fragment-level arg streaming).
     DeltaToolCall ToolCall
+  | -- | Provider retry / fallback restart: discard progressive deltas already
+    -- seen for this model call. Final 'ProviderResult' remains authoritative.
+    DeltaAttemptReset
   deriving stock (Eq, Show)
 
 -- | Provider-agnostic chat request (host builds this from @llm.chat@ / agent rounds).

@@ -46,6 +46,7 @@ import Hwfl.Llm.Types
 import LLM.Core.Types
   ( LLMGateway (..),
     StreamEvent (..),
+    commonImageMediaTypes,
     imageUrlPart,
     mkChatResponse,
     textPart,
@@ -506,6 +507,8 @@ spec = describe "LlmProvider" $ do
           gateway =
             LLMGateway
               { gwName = "fixture",
+                gwImageMediaTypes = commonImageMediaTypes,
+                gwImageUrlSupport = True,
                 gwGenerateText = \_ _ -> pure (Right resp),
                 gwStreamText = \_ _ onEvent -> do
                   onEvent (StreamReasoningDelta "stale-think")
@@ -586,6 +589,8 @@ spec = describe "LlmProvider" $ do
           gateway =
             LLMGateway
               { gwName = "fixture",
+                gwImageMediaTypes = commonImageMediaTypes,
+                gwImageUrlSupport = True,
                 gwGenerateText = \_ _ -> pure (Right resp),
                 gwStreamText = \_ _ _ -> pure (Right resp),
                 gwGenerateObject = \_ _ _ -> pure (Left LLM.EmptyResponse)

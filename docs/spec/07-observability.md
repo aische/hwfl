@@ -158,6 +158,10 @@ see progress — without changing language return types or snapshot grain.
   usage only at stream end)
 - Coalesce by time and/or character budget before append to avoid flooding
   `events.jsonl` and `--debug`
+- Provider retry / fallback after streamed output emits
+  `kind: attempt_reset` on the open span; drop any unflushed buffer and
+  treat earlier `llm.delta` events for that call as stale. Final span
+  close attrs still come from the authoritative `ProviderResult`.
 
 ## 10. Opt-in LLM transcripts (planned)
 

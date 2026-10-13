@@ -1,5 +1,5 @@
 # Status
-Last updated: 2026-10-06
+Last updated: 2026-10-13
 
 ## Current focus
 Working title **hwfl** remains provisional (rename next). User book is
@@ -9,24 +9,21 @@ Working title **hwfl** remains provisional (rename next). User book is
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
-- **llm-simple 0.2 upgrade complete** (`task.md` Phases 1–8) — ordered
-  `AssistantPart` / opaque replay; Simple adapter; snapshot `parts`
-  codec (legacy decode); cache-aware pricing + catalog `capabilities`;
-  ordered-replay tests; specs/manual updated; dependency `^>=0.2.0.0`
+- **llm-simple 0.3** — dependency `^>=0.3.0.0` from Hackage;
+  `StreamAttemptReset` → `DeltaAttemptReset` + obs `attempt_reset`;
+  fixture `LLMGateway` image fields; suite green on Hackage 0.3
+- **llm-simple 0.2 upgrade** — ordered `AssistantPart` / opaque replay;
+  Simple adapter; snapshot `parts`; cache-aware pricing
 - **CI** — GitHub Actions `cabal test` on GHC 9.6 / Ubuntu; mock LLM
   only. macOS runner deferred
 - **User manual** — author book under `manual/`
 
 ## Blockers
-- **llm-simple 0.2 not on Hackage yet** — local builds use gitignored
-  `cabal.project.local` → sibling `../llm-simple`. Clean CI / clone
-  needs a Hackage release (or a temporary `source-repository-package`
-  pin after the branch is published).
+None.
 
 ## Next up
-1. Publish llm-simple 0.2 (or pin a remote source package) so CI is green
-2. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
-3. Prefer MCP / stdlib for domain tools (git, terminals, …)
+1. Freeze or rename **hwfl** (CLI, fence, stdlib qnames, `.hwfl/`)
+2. Prefer MCP / stdlib for domain tools (git, terminals, …)
 
 ## Deferred
 - Git / persistent terminals (MCP first)

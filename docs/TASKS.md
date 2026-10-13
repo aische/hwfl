@@ -7,9 +7,6 @@ here and in the report when fixed; do not re-litigate severity in this file.
 
 ## Now
 
-- [ ] **Publish llm-simple 0.2** — Hackage (preferred) or temporary
-      `source-repository-package` pin so CI/clean clones build without a
-      sibling checkout. Local: gitignored `cabal.project.local`.
 - [ ] **Name freeze or rename** — CLI, fence info-string, `hwfl/` stdlib
       qnames, `.hwfl/` run dir. Do this before a public tag.
 

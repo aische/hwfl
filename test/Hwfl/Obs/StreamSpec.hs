@@ -14,7 +14,6 @@ import Hwfl.Llm.Mock (mockProvider)
 import Hwfl.Obs.Observer (noopObserver)
 import Hwfl.Llm.Types (
     StreamDelta (..),
-    ToolCall (..),
     mkToolCall,
   )
 import Hwfl.Obs.Span (SpanKind (..), SpanStatus (..))
@@ -99,6 +98,22 @@ spec = describe "streaming LLM spans" $ do
       events <- decodeEvents <$> readEventValues store
       let deltas = [e | e <- events, eMessage e == "llm.delta"]
       map (`fieldTextStr` "kind") deltas `shouldBe` ["text", "tool_call"]
+
+  it "attempt_reset drops buffered text and emits a marker" $
+    withSystemTempDirectory "hwfl-stream-reset" $ \dir -> do
+      store <- openRunDir dir "s3"
+      st <- newSpanState
+      _ <- openSpan store st "llm.chat" SkHost (object [])
+      sink <- newStreamSink store st
+      sink.ssOnChunk (DeltaText "stale")
+      sink.ssOnChunk DeltaAttemptReset
+      sink.ssOnChunk (DeltaText "fresh")
+      sink.ssFlush
+      events <- decodeEvents <$> readEventValues store
+      let deltas = [e | e <- events, eMessage e == "llm.delta"]
+      map (`fieldTextStr` "kind") deltas `shouldBe` ["attempt_reset", "text"]
+      mconcat [t | e <- deltas, Just t <- [fieldText e "text"]]
+        `shouldBe` "fresh"
 
   it "llm.chat run writes llm.delta events on the open host span" $
     withSystemTempDirectory "hwfl-stream-run" $ \dir -> do
