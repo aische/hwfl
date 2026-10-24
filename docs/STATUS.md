@@ -1,5 +1,5 @@
 # Status
-Last updated: 2026-10-13
+Last updated: 2026-10-24
 
 ## Current focus
 Working title **hwfl** remains provisional (rename next). User book is
@@ -9,6 +9,9 @@ Working title **hwfl** remains provisional (rename next). User book is
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
+- **llm-simple 0.4** — dependency `^>=0.4.0.0` from Hackage; new
+  `ResponseBlocked` mapped to `OtherProviderError`; dropped
+  `ToolLoopExceeded` from the adapter; suite green on Hackage 0.4
 - **llm-simple 0.3** — dependency `^>=0.3.0.0` from Hackage;
   `StreamAttemptReset` → `DeltaAttemptReset` + obs `attempt_reset`;
   fixture `LLMGateway` image fields; suite green on Hackage 0.3

@@ -285,6 +285,6 @@ mapLLMError = \case
   LLM.TimeoutError -> Hwfl.TimeoutError "provider timeout"
   LLM.ParseError t -> OtherProviderError t
   LLM.EmptyResponse -> OtherProviderError "empty response"
-  LLM.ToolLoopExceeded n -> OtherProviderError ("tool loop exceeded: " <> T.pack (show n))
   LLM.Aborted -> Hwfl.TimeoutError "aborted"
   LLM.UnsupportedCapability msg -> InvalidRequestError msg
+  LLM.ResponseBlocked reason -> OtherProviderError ("response blocked: " <> reason)

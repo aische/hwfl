@@ -623,6 +623,23 @@ spec = describe "LlmProvider" $ do
                        ]
           pr.prFinishReason `shouldBe` FinishToolCalls
 
+    it "maps a blocked response to a provider error naming the reason" $ do
+      let blocked = LLM.ResponseBlocked "SAFETY"
+          gateway =
+            LLMGateway
+              { gwName = "fixture",
+                gwImageMediaTypes = commonImageMediaTypes,
+                gwImageUrlSupport = True,
+                gwGenerateText = \_ _ -> pure (Left blocked),
+                gwStreamText = \_ _ _ -> pure (Left blocked),
+                gwGenerateObject = \_ _ _ -> pure (Left blocked)
+              }
+          provider = mkSimpleProviderFromModel False (fixtureModelConfig gateway)
+      result <-
+        provider.llmChat
+          (emptyChatRequest "fixture-model") {chatTurns = [TurnUser "q"]}
+      result `shouldBe` Left (OtherProviderError "response blocked: SAFETY")
+
 catalogFixture :: FilePath -> FilePath
 catalogFixture name = "test" </> "fixtures" </> "catalogs" </> name
 
