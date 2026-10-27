@@ -1,5 +1,5 @@
 # Status
-Last updated: 2026-10-24
+Last updated: 2026-10-27
 
 ## Current focus
 Working title **hwfl** remains provisional (rename next). User book is
@@ -9,14 +9,14 @@ Working title **hwfl** remains provisional (rename next). User book is
 Language + durable interpreter (library + CLI). See [idea.md](idea.md).
 
 ## Done recently
+- **llm-simple 0.4.0.1** — dependency `^>=0.4.0.1` from Hackage;
+  dangling-symlink sandbox fix only (no adapter changes); suite builds
 - **llm-simple 0.4** — dependency `^>=0.4.0.0` from Hackage; new
   `ResponseBlocked` mapped to `OtherProviderError`; dropped
   `ToolLoopExceeded` from the adapter; suite green on Hackage 0.4
 - **llm-simple 0.3** — dependency `^>=0.3.0.0` from Hackage;
   `StreamAttemptReset` → `DeltaAttemptReset` + obs `attempt_reset`;
   fixture `LLMGateway` image fields; suite green on Hackage 0.3
-- **llm-simple 0.2 upgrade** — ordered `AssistantPart` / opaque replay;
-  Simple adapter; snapshot `parts`; cache-aware pricing
 - **CI** — GitHub Actions `cabal test` on GHC 9.6 / Ubuntu; mock LLM
   only. macOS runner deferred
 - **User manual** — author book under `manual/`
